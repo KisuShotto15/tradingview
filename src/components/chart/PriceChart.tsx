@@ -272,20 +272,21 @@ export function PriceChart({ symbol, timeframe }: Props) {
         return;
       }
 
-      if (toolRef.current === "trendline") {
+      if (toolRef.current === "trendline" || toolRef.current === "ray") {
         if (!param.time) return;
         const time = Number(param.time);
         const first = firstPointRef.current;
+        const kind = toolRef.current;
         if (!first) {
           firstPointRef.current = { time, price };
         } else {
           void drawingsApiRef.current.add({
             id: generateId(),
-            kind: "trendline",
+            kind,
             symbol: symbolRef.current,
             a: first,
             b: { time, price },
-          });
+          } as Parameters<typeof drawingsApiRef.current.add>[0]);
           firstPointRef.current = null;
           setToolRef.current("cursor");
         }

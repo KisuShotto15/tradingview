@@ -6,6 +6,7 @@ import {
   GripVertical,
   MoveRight,
   Ruler,
+  Slash,
   Trash2,
   TrendingUp,
   Undo2,
@@ -49,6 +50,12 @@ const TOOLS: ToolDef[] = [
     icon: TrendingUp,
     label: "Trend line",
     hint: "Click start, then end. Drag endpoints to edit",
+  },
+  {
+    key: "ray",
+    icon: Slash,
+    label: "Ray",
+    hint: "Click origin, then direction — extends to infinity",
   },
   {
     key: "measure",
