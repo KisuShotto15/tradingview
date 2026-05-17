@@ -12,17 +12,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useChartStore, type IndicatorKey } from "@/lib/store/chart-store";
 
+import type { IndicatorConfig } from "@/lib/store/chart-store";
+
 interface Entry {
   key: IndicatorKey;
-  label: (cfg: {
-    ema20: number;
-    ema50: number;
-    ema200: number;
-    rsi: number;
-    macdFast: number;
-    macdSlow: number;
-    macdSignal: number;
-  }) => string;
+  label: (cfg: IndicatorConfig) => string;
   group: string;
 }
 
@@ -36,6 +30,17 @@ const ENTRIES: Entry[] = [
     key: "macd",
     group: "Oscillators",
     label: (c) => `MACD (${c.macdFast}, ${c.macdSlow}, ${c.macdSignal})`,
+  },
+  { key: "adx", group: "Trend", label: (c) => `ADX (${c.adx})` },
+  {
+    key: "squeeze",
+    group: "Momentum",
+    label: () => "Squeeze Momentum [LazyBear]",
+  },
+  {
+    key: "vumanchu",
+    group: "Momentum",
+    label: () => "VuManChu Cipher B + Div",
   },
 ];
 

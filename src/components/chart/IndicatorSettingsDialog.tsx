@@ -22,6 +22,9 @@ const TITLES: Record<IndicatorKey, string> = {
   rsi: "RSI",
   macd: "MACD",
   volume: "Volume",
+  adx: "ADX",
+  squeeze: "Squeeze Momentum",
+  vumanchu: "VuManChu Cipher B",
 };
 
 export function IndicatorSettingsDialog() {

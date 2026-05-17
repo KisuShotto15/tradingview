@@ -6,14 +6,22 @@ import {
   CandlestickSeries,
   LineSeries,
   HistogramSeries,
+  AreaSeries,
   CrosshairMode,
+  createSeriesMarkers,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type SeriesMarker,
+  type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
 import { fetchKlines } from "@/lib/binance/rest";
 import { getBinanceWS } from "@/lib/binance/ws";
 import { ema, rsi, macd } from "@/lib/indicators";
+import { adx as adxCalc } from "@/lib/indicators/adx";
+import { squeezeMomentum } from "@/lib/indicators/squeeze";
+import { vumanchu as vumanchuCalc } from "@/lib/indicators/vumanchu";
 import type { Candle, Timeframe } from "@/lib/binance/types";
 import {
   INDICATOR_COLORS,
@@ -109,6 +117,24 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const macdRef = useRef<ISeriesApi<"Line"> | null>(null);
   const macdSignalRef = useRef<ISeriesApi<"Line"> | null>(null);
   const macdHistRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  // ADX pane
+  const adxRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const adxPlusDIRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const adxMinusDIRef = useRef<ISeriesApi<"Line"> | null>(null);
+  // Squeeze Momentum pane
+  const squeezeHistRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const squeezeDotsRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const squeezeDotsMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  // VuManChu pane
+  const vmcWt1Ref = useRef<ISeriesApi<"Area"> | null>(null);
+  const vmcWt2Ref = useRef<ISeriesApi<"Area"> | null>(null);
+  const vmcVwapRef = useRef<ISeriesApi<"Area"> | null>(null);
+  const vmcMfiRef = useRef<ISeriesApi<"Area"> | null>(null);
+  const vmcRsiRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const vmcObRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const vmcOsRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const vmcZeroRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const vmcMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const candlesRef = useRef<Candle[]>([]);
   const firstPointRef = useRef<{ time: number; price: number } | null>(null);
   const placementPointsRef = useRef<Array<{ time: number; price: number }>>([]);
@@ -651,6 +677,218 @@ export function PriceChart({ symbol, timeframe }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [indicators.macd, indicators.rsi]);
 
+  /**
+   * Compute pane index for a sub-chart indicator. Fixed display order:
+   *   1: RSI, 2: MACD, 3: ADX, 4: Squeeze, 5: VuManChu
+   * Each indicator falls into the next available index based on which higher-priority ones are enabled.
+   */
+  function panelIndexFor(key: "rsi" | "macd" | "adx" | "squeeze" | "vumanchu"): number {
+    const order: Array<typeof key> = ["rsi", "macd", "adx", "squeeze", "vumanchu"];
+    let idx = 1;
+    for (const k of order) {
+      if (k === key) return idx;
+      if (indicators[k]) idx++;
+    }
+    return idx;
+  }
+
+  // ── ADX pane ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!chartRef.current) return;
+    if (indicators.adx && !adxRef.current) {
+      const paneIndex = panelIndexFor("adx");
+      adxRef.current = chartRef.current.addSeries(
+        LineSeries,
+        { color: "#ffb74d", lineWidth: 2, priceLineVisible: false, lastValueVisible: false },
+        paneIndex,
+      );
+      adxPlusDIRef.current = chartRef.current.addSeries(
+        LineSeries,
+        { color: "#26a69a", lineWidth: 1, priceLineVisible: false, lastValueVisible: false },
+        paneIndex,
+      );
+      adxMinusDIRef.current = chartRef.current.addSeries(
+        LineSeries,
+        { color: "#ef5350", lineWidth: 1, priceLineVisible: false, lastValueVisible: false },
+        paneIndex,
+      );
+      try {
+        chartRef.current.panes()[paneIndex]?.setStretchFactor(1);
+        chartRef.current.panes()[0]?.setStretchFactor(3);
+      } catch {}
+      updateADX();
+    } else if (!indicators.adx && adxRef.current && chartRef.current) {
+      if (adxRef.current) chartRef.current.removeSeries(adxRef.current);
+      if (adxPlusDIRef.current) chartRef.current.removeSeries(adxPlusDIRef.current);
+      if (adxMinusDIRef.current) chartRef.current.removeSeries(adxMinusDIRef.current);
+      adxRef.current = null;
+      adxPlusDIRef.current = null;
+      adxMinusDIRef.current = null;
+    }
+    requestAnimationFrame(() => recomputePaneOffsets());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indicators.adx, indicators.rsi, indicators.macd]);
+
+  // ── Squeeze Momentum pane ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!chartRef.current) return;
+    if (indicators.squeeze && !squeezeHistRef.current) {
+      const paneIndex = panelIndexFor("squeeze");
+      squeezeHistRef.current = chartRef.current.addSeries(
+        HistogramSeries,
+        { priceLineVisible: false, lastValueVisible: false },
+        paneIndex,
+      );
+      // Invisible line at y=0 used to anchor the squeeze-state markers
+      squeezeDotsRef.current = chartRef.current.addSeries(
+        LineSeries,
+        {
+          color: "transparent",
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        },
+        paneIndex,
+      );
+      squeezeDotsMarkersRef.current = createSeriesMarkers(squeezeDotsRef.current);
+      try {
+        chartRef.current.panes()[paneIndex]?.setStretchFactor(1);
+        chartRef.current.panes()[0]?.setStretchFactor(3);
+      } catch {}
+      updateSqueeze();
+    } else if (!indicators.squeeze && squeezeHistRef.current && chartRef.current) {
+      if (squeezeHistRef.current) chartRef.current.removeSeries(squeezeHistRef.current);
+      if (squeezeDotsRef.current) chartRef.current.removeSeries(squeezeDotsRef.current);
+      squeezeHistRef.current = null;
+      squeezeDotsRef.current = null;
+      squeezeDotsMarkersRef.current = null;
+    }
+    requestAnimationFrame(() => recomputePaneOffsets());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indicators.squeeze, indicators.rsi, indicators.macd, indicators.adx]);
+
+  // ── VuManChu Cipher B pane ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!chartRef.current) return;
+    if (indicators.vumanchu && !vmcWt2Ref.current) {
+      const paneIndex = panelIndexFor("vumanchu");
+      // WT1 (lighter blue area)
+      vmcWt1Ref.current = chartRef.current.addSeries(
+        AreaSeries,
+        {
+          lineColor: "#4994ec",
+          topColor: "rgba(73, 148, 236, 0.4)",
+          bottomColor: "rgba(73, 148, 236, 0.05)",
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        },
+        paneIndex,
+      );
+      // WT2 (darker purple area)
+      vmcWt2Ref.current = chartRef.current.addSeries(
+        AreaSeries,
+        {
+          lineColor: "#1f1559",
+          topColor: "rgba(31, 21, 89, 0.7)",
+          bottomColor: "rgba(31, 21, 89, 0.15)",
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        },
+        paneIndex,
+      );
+      // VWAP wt1-wt2 — white wash
+      vmcVwapRef.current = chartRef.current.addSeries(
+        AreaSeries,
+        {
+          lineColor: "rgba(255, 255, 255, 0.6)",
+          topColor: "rgba(255, 255, 255, 0.18)",
+          bottomColor: "rgba(255, 255, 255, 0.02)",
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        },
+        paneIndex,
+      );
+      // MFI area
+      vmcMfiRef.current = chartRef.current.addSeries(
+        AreaSeries,
+        {
+          lineColor: "transparent",
+          topColor: "rgba(62, 225, 69, 0.4)",
+          bottomColor: "rgba(62, 225, 69, 0.05)",
+          priceLineVisible: false,
+          lastValueVisible: false,
+        },
+        paneIndex,
+      );
+      // RSI line
+      vmcRsiRef.current = chartRef.current.addSeries(
+        LineSeries,
+        {
+          color: "#c33ee1",
+          lineWidth: 2,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        },
+        paneIndex,
+      );
+      // OB/OS reference levels
+      vmcObRef.current = chartRef.current.addSeries(
+        LineSeries,
+        {
+          color: "rgba(255, 255, 255, 0.25)",
+          lineWidth: 1,
+          lineStyle: 2,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        },
+        paneIndex,
+      );
+      vmcOsRef.current = chartRef.current.addSeries(
+        LineSeries,
+        {
+          color: "rgba(255, 255, 255, 0.25)",
+          lineWidth: 1,
+          lineStyle: 2,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        },
+        paneIndex,
+      );
+      vmcZeroRef.current = chartRef.current.addSeries(
+        LineSeries,
+        {
+          color: "rgba(255, 255, 255, 0.4)",
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        },
+        paneIndex,
+      );
+      if (vmcWt2Ref.current) {
+        vmcMarkersRef.current = createSeriesMarkers(vmcWt2Ref.current);
+      }
+      try {
+        chartRef.current.panes()[paneIndex]?.setStretchFactor(1.4);
+        chartRef.current.panes()[0]?.setStretchFactor(3);
+      } catch {}
+      updateVumanchu();
+    } else if (!indicators.vumanchu && vmcWt2Ref.current && chartRef.current) {
+      const refs = [vmcWt1Ref, vmcWt2Ref, vmcVwapRef, vmcMfiRef, vmcRsiRef, vmcObRef, vmcOsRef, vmcZeroRef];
+      for (const r of refs) {
+        if (r.current) {
+          try { chartRef.current.removeSeries(r.current); } catch {}
+          r.current = null;
+        }
+      }
+      vmcMarkersRef.current = null;
+    }
+    requestAnimationFrame(() => recomputePaneOffsets());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indicators.vumanchu, indicators.rsi, indicators.macd, indicators.adx, indicators.squeeze]);
+
   // Visibility — eye toggle (hidden state) + enabled state combined
   useEffect(() => {
     const v = (key: IndicatorKey) => indicators[key] && !hidden[key];
@@ -678,6 +916,23 @@ export function PriceChart({ symbol, timeframe }: Props) {
   useEffect(() => {
     updateMACD();
   }, [config.macdFast, config.macdSlow, config.macdSignal]);
+
+  useEffect(() => {
+    updateADX();
+  }, [config.adx]);
+
+  useEffect(() => {
+    updateSqueeze();
+  }, [config.squeezeBB, config.squeezeBBMult, config.squeezeKC, config.squeezeKCMult]);
+
+  useEffect(() => {
+    updateVumanchu();
+  }, [
+    config.vumanchuChannelLen,
+    config.vumanchuAvgLen,
+    config.vumanchuMaLen,
+    config.vumanchuMfiPeriod,
+  ]);
 
   // Reset selection when symbol changes
   useEffect(() => {
@@ -784,6 +1039,163 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }));
   }
 
+  function updateADX() {
+    const c = candlesRef.current;
+    if (c.length === 0 || !adxRef.current) return;
+    const cfg = configRef.current;
+    const data = adxCalc(c, cfg.adx);
+    adxRef.current.setData(data.map((p) => ({ time: p.time as UTCTimestamp, value: p.adx })));
+    adxPlusDIRef.current?.setData(
+      data.map((p) => ({ time: p.time as UTCTimestamp, value: p.plusDI })),
+    );
+    adxMinusDIRef.current?.setData(
+      data.map((p) => ({ time: p.time as UTCTimestamp, value: p.minusDI })),
+    );
+  }
+
+  function updateSqueeze() {
+    const c = candlesRef.current;
+    if (c.length === 0 || !squeezeHistRef.current) return;
+    const cfg = configRef.current;
+    const pts = squeezeMomentum(c, {
+      bbLength: cfg.squeezeBB,
+      bbMult: cfg.squeezeBBMult,
+      kcLength: cfg.squeezeKC,
+      kcMult: cfg.squeezeKCMult,
+    });
+    const COLORS: Record<string, string> = {
+      lime: "#00ff00",
+      green: "#26a69a",
+      red: "#ef5350",
+      maroon: "#a52a2a",
+    };
+    squeezeHistRef.current.setData(
+      pts.map((p) => ({
+        time: p.time as UTCTimestamp,
+        value: p.momentum,
+        color: COLORS[p.color],
+      })),
+    );
+    // Zero-line dots: invisible line at 0 + colored markers for squeeze state
+    squeezeDotsRef.current?.setData(
+      pts.map((p) => ({ time: p.time as UTCTimestamp, value: 0 })),
+    );
+    if (squeezeDotsMarkersRef.current) {
+      const markers: SeriesMarker<Time>[] = pts.map((p) => ({
+        time: p.time as UTCTimestamp,
+        position: "inBar",
+        shape: "circle",
+        size: 0.5,
+        color:
+          p.state === "on" ? "#000000" : p.state === "off" ? "#787b86" : "#2962ff",
+      }));
+      squeezeDotsMarkersRef.current.setMarkers(markers);
+    }
+  }
+
+  function updateVumanchu() {
+    const c = candlesRef.current;
+    if (c.length === 0 || !vmcWt2Ref.current) return;
+    const cfg = configRef.current;
+    const pts = vumanchuCalc(c, {
+      wtChannelLen: cfg.vumanchuChannelLen,
+      wtAverageLen: cfg.vumanchuAvgLen,
+      wtMALen: cfg.vumanchuMaLen,
+      mfiPeriod: cfg.vumanchuMfiPeriod,
+    });
+    if (pts.length === 0) return;
+    const t0 = pts[0].time as UTCTimestamp;
+    const tN = pts[pts.length - 1].time as UTCTimestamp;
+    vmcWt1Ref.current?.setData(pts.map((p) => ({ time: p.time as UTCTimestamp, value: p.wt1 })));
+    vmcWt2Ref.current.setData(pts.map((p) => ({ time: p.time as UTCTimestamp, value: p.wt2 })));
+    vmcVwapRef.current?.setData(pts.map((p) => ({ time: p.time as UTCTimestamp, value: p.vwap })));
+    vmcMfiRef.current?.setData(pts.map((p) => ({ time: p.time as UTCTimestamp, value: p.mfi })));
+    vmcRsiRef.current?.setData(
+      pts.map((p) => ({ time: p.time as UTCTimestamp, value: p.rsi - 50 })),
+    );
+    // Reference levels stretched across the visible range
+    vmcObRef.current?.setData([
+      { time: t0, value: 60 },
+      { time: tN, value: 60 },
+    ]);
+    vmcOsRef.current?.setData([
+      { time: t0, value: -60 },
+      { time: tN, value: -60 },
+    ]);
+    vmcZeroRef.current?.setData([
+      { time: t0, value: 0 },
+      { time: tN, value: 0 },
+    ]);
+    // Markers on wt2: crosses, buy/sell, gold, divergences
+    if (vmcMarkersRef.current) {
+      const markers: SeriesMarker<Time>[] = [];
+      for (const p of pts) {
+        // Regular cross (small dot)
+        if (p.cross && !p.buySignal && !p.sellSignal && !p.goldBuy) {
+          markers.push({
+            time: p.time as UTCTimestamp,
+            position: "inBar",
+            shape: "circle",
+            size: 0.7,
+            color: p.crossUp ? "#00e676" : "#ff5252",
+          });
+        }
+        // Buy / Sell signals (bigger circle)
+        if (p.buySignal) {
+          markers.push({
+            time: p.time as UTCTimestamp,
+            position: "belowBar",
+            shape: "circle",
+            size: 1.4,
+            color: "#3fff00",
+            text: "B",
+          });
+        }
+        if (p.sellSignal) {
+          markers.push({
+            time: p.time as UTCTimestamp,
+            position: "aboveBar",
+            shape: "circle",
+            size: 1.4,
+            color: "#ff0000",
+            text: "S",
+          });
+        }
+        // Gold buy
+        if (p.goldBuy) {
+          markers.push({
+            time: p.time as UTCTimestamp,
+            position: "belowBar",
+            shape: "circle",
+            size: 1.6,
+            color: "#e2a400",
+            text: "G",
+          });
+        }
+        // Divergences (purple triangles)
+        if (p.wtBullDiv || p.rsiBullDiv) {
+          markers.push({
+            time: p.time as UTCTimestamp,
+            position: "belowBar",
+            shape: "arrowUp",
+            size: 1,
+            color: "#00e676",
+          });
+        }
+        if (p.wtBearDiv || p.rsiBearDiv) {
+          markers.push({
+            time: p.time as UTCTimestamp,
+            position: "aboveBar",
+            shape: "arrowDown",
+            size: 1,
+            color: "#e60000",
+          });
+        }
+      }
+      vmcMarkersRef.current.setMarkers(markers);
+    }
+  }
+
   // Load historical data + subscribe live
   useEffect(() => {
     let unsub: (() => void) | null = null;
@@ -817,6 +1229,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
         updateEMAs();
         updateRSI();
         updateMACD();
+        updateADX();
+        updateSqueeze();
+        updateVumanchu();
         chartRef.current?.timeScale().fitContent();
         requestAnimationFrame(() => recomputePaneOffsets());
 
@@ -862,6 +1277,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
             updateEMAs();
             updateRSI();
             updateMACD();
+            updateADX();
+            updateSqueeze();
+            updateVumanchu();
             const prev = arr[arr.length - 2] ?? lastCandle;
             setLastPrice({
               value: k.close,

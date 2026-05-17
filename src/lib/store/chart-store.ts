@@ -10,7 +10,10 @@ export type IndicatorKey =
   | "ema200"
   | "rsi"
   | "macd"
-  | "volume";
+  | "volume"
+  | "adx"
+  | "squeeze"
+  | "vumanchu";
 
 export type DrawingTool =
   | "cursor"
@@ -36,6 +39,15 @@ export interface IndicatorConfig {
   macdFast: number;
   macdSlow: number;
   macdSignal: number;
+  adx: number;
+  squeezeBB: number;
+  squeezeBBMult: number;
+  squeezeKC: number;
+  squeezeKCMult: number;
+  vumanchuChannelLen: number;
+  vumanchuAvgLen: number;
+  vumanchuMaLen: number;
+  vumanchuMfiPeriod: number;
 }
 
 export const DEFAULT_CONFIG: IndicatorConfig = {
@@ -46,6 +58,15 @@ export const DEFAULT_CONFIG: IndicatorConfig = {
   macdFast: 12,
   macdSlow: 26,
   macdSignal: 9,
+  adx: 14,
+  squeezeBB: 20,
+  squeezeBBMult: 2,
+  squeezeKC: 20,
+  squeezeKCMult: 1.5,
+  vumanchuChannelLen: 9,
+  vumanchuAvgLen: 12,
+  vumanchuMaLen: 3,
+  vumanchuMfiPeriod: 60,
 };
 
 export const INDICATOR_COLORS: Record<IndicatorKey, string> = {
@@ -55,6 +76,9 @@ export const INDICATOR_COLORS: Record<IndicatorKey, string> = {
   rsi: "#ab47bc",
   macd: "#2962ff",
   volume: "#787b86",
+  adx: "#ffb74d",
+  squeeze: "#2962ff",
+  vumanchu: "#4994ec",
 };
 
 export const DEFAULT_WATCHLIST = [
@@ -113,6 +137,9 @@ export const useChartStore = create<ChartState>()(
         rsi: true,
         macd: false,
         volume: true,
+        adx: false,
+        squeeze: false,
+        vumanchu: false,
       },
       hidden: {
         ema20: false,
@@ -121,6 +148,9 @@ export const useChartStore = create<ChartState>()(
         rsi: false,
         macd: false,
         volume: false,
+        adx: false,
+        squeeze: false,
+        vumanchu: false,
       },
       config: { ...DEFAULT_CONFIG },
       watchlist: DEFAULT_WATCHLIST,
