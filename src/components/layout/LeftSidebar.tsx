@@ -33,79 +33,59 @@ interface ToolDef {
   hint?: string;
 }
 
-const TOOLS: ToolDef[] = [
-  { key: "cursor", icon: MousePointer2, label: "Cursor", hint: "Pan & navigate" },
+interface ToolGroup {
+  label: string | null;
+  tools: ToolDef[];
+}
+
+const TOOL_GROUPS: ToolGroup[] = [
   {
-    key: "hline",
-    icon: Minus,
-    label: "Horizontal line",
-    hint: "Click to mark a price across the chart",
+    label: null,
+    tools: [
+      { key: "cursor", icon: MousePointer2, label: "Cursor", hint: "Pan & navigate" },
+    ],
   },
   {
-    key: "vline",
-    icon: GripVertical,
-    label: "Vertical line",
-    hint: "Click to mark a time across the chart",
+    label: "LINES",
+    tools: [
+      { key: "trendline", icon: TrendingUp, label: "Trend line", hint: "Click start, then end. Drag endpoints to edit" },
+      { key: "ray", icon: Slash, label: "Ray", hint: "Click origin, then direction — extends to infinity" },
+      { key: "hline", icon: Minus, label: "Horizontal line", hint: "Click to mark a price across the chart" },
+      { key: "hray", icon: MoveRight, label: "Horizontal ray", hint: "Click anchor — extends to the right" },
+      { key: "vline", icon: GripVertical, label: "Vertical line", hint: "Click to mark a time across the chart" },
+    ],
   },
   {
-    key: "hray",
-    icon: MoveRight,
-    label: "Horizontal ray",
-    hint: "Click anchor — extends to the right",
+    label: "CHANNELS",
+    tools: [
+      { key: "parallel-channel", icon: Layers3, label: "Parallel channel", hint: "Click A, then B (baseline), then C (parallel offset)" },
+    ],
   },
   {
-    key: "trendline",
-    icon: TrendingUp,
-    label: "Trend line",
-    hint: "Click start, then end. Drag endpoints to edit",
+    label: "FIBONACCI",
+    tools: [
+      { key: "fib-retracement", icon: Percent, label: "Fib retracement", hint: "Click swing high, then swing low (or vice versa)" },
+    ],
   },
   {
-    key: "ray",
-    icon: Slash,
-    label: "Ray",
-    hint: "Click origin, then direction — extends to infinity",
+    label: "RANGES",
+    tools: [
+      { key: "price-range", icon: RectangleHorizontal, label: "Price range", hint: "Click two prices to measure absolute & % range" },
+      { key: "date-range", icon: CalendarRange, label: "Date range", hint: "Click two timestamps to measure duration" },
+    ],
   },
   {
-    key: "parallel-channel",
-    icon: Layers3,
-    label: "Parallel channel",
-    hint: "Click A, then B (baseline), then C (parallel offset)",
+    label: "TRADE",
+    tools: [
+      { key: "long", icon: ArrowUpToLine, label: "Long position", hint: "Click entry, then target. Stop auto-set; drag handles to edit" },
+      { key: "short", icon: ArrowDownToLine, label: "Short position", hint: "Click entry, then target. Stop auto-set; drag handles to edit" },
+    ],
   },
   {
-    key: "fib-retracement",
-    icon: Percent,
-    label: "Fib retracement",
-    hint: "Click swing high, then swing low (or vice versa)",
-  },
-  {
-    key: "price-range",
-    icon: RectangleHorizontal,
-    label: "Price range",
-    hint: "Click two prices to measure absolute & % range",
-  },
-  {
-    key: "date-range",
-    icon: CalendarRange,
-    label: "Date range",
-    hint: "Click two timestamps to measure duration",
-  },
-  {
-    key: "long",
-    icon: ArrowUpToLine,
-    label: "Long position",
-    hint: "Click entry, then target. Stop auto-set; drag handles to edit",
-  },
-  {
-    key: "short",
-    icon: ArrowDownToLine,
-    label: "Short position",
-    hint: "Click entry, then target. Stop auto-set; drag handles to edit",
-  },
-  {
-    key: "measure",
-    icon: Ruler,
-    label: "Measure",
-    hint: "Click two points to measure Δ price, %, bars, volume",
+    label: "MEASURE",
+    tools: [
+      { key: "measure", icon: Ruler, label: "Measure", hint: "Click two points to measure Δ price, %, bars, volume" },
+    ],
   },
 ];
 
@@ -134,76 +114,91 @@ export function LeftSidebar() {
 
   return (
     <aside className="flex w-11 flex-col items-center gap-0.5 border-r border-tv-border bg-tv-panel py-1.5">
-      {TOOLS.map((t) => {
-        const Icon = t.icon;
-        const active = tool === t.key;
-        return (
-          <Tooltip key={t.key}>
-            <TooltipTrigger
-              onClick={() => setTool(t.key)}
-              aria-label={t.label}
-              className={cn(
-                "flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-tv-panel-hover",
-                active
-                  ? "bg-tv-blue/15 text-tv-blue"
-                  : "text-tv-text-muted hover:text-tv-text",
-              )}
-            >
-              <Icon className="h-4 w-4" />
-            </TooltipTrigger>
-            <TooltipContent side="right" className="text-xs">
-              <div className="font-medium">{t.label}</div>
-              {t.hint && (
-                <div className="mt-0.5 text-[10px] text-tv-text-muted">{t.hint}</div>
-              )}
-            </TooltipContent>
-          </Tooltip>
-        );
-      })}
-
-      <div className="my-1 h-px w-6 bg-tv-border" />
-
-      <Tooltip>
-        <TooltipTrigger
-          onClick={toggleAlert}
-          disabled={!canAlert}
-          aria-label="Toggle alert"
-          className={cn(
-            "flex h-8 w-8 items-center justify-center rounded transition-colors",
-            !canAlert && "cursor-not-allowed opacity-30",
-            canAlert && alertOn && "bg-tv-yellow/15 text-tv-yellow",
-            canAlert && !alertOn && "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
+      {TOOL_GROUPS.map((group, gi) => (
+        <div key={gi} className="flex w-full flex-col items-center gap-0.5">
+          {group.label && (
+            <div className="mt-1 flex w-full items-center gap-1 px-1">
+              <div className="h-px flex-1 bg-tv-border" />
+              <span className="text-[7px] font-bold uppercase tracking-widest text-tv-text-muted/60 select-none">
+                {group.label}
+              </span>
+              <div className="h-px flex-1 bg-tv-border" />
+            </div>
           )}
-        >
-          {alertOn ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
-        </TooltipTrigger>
-        <TooltipContent side="right" className="text-xs">
-          <div className="font-medium">
-            {alertOn ? "Disable alert" : "Enable alert"}
-          </div>
-          <div className="mt-0.5 text-[10px] text-tv-text-muted">
-            {canAlert
-              ? "Beeps + toast when price crosses this level"
-              : "Select a horizontal line or ray first"}
-          </div>
-        </TooltipContent>
-      </Tooltip>
+          {group.tools.map((t) => {
+            const Icon = t.icon;
+            const active = tool === t.key;
+            return (
+              <Tooltip key={t.key}>
+                <TooltipTrigger
+                  onClick={() => setTool(t.key)}
+                  aria-label={t.label}
+                  className={cn(
+                    "flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-tv-panel-hover",
+                    active
+                      ? "bg-tv-blue/15 text-tv-blue"
+                      : "text-tv-text-muted hover:text-tv-text",
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                </TooltipTrigger>
+                <TooltipContent side="right" className="text-xs">
+                  <div className="font-medium">{t.label}</div>
+                  {t.hint && (
+                    <div className="mt-0.5 text-[10px] text-tv-text-muted">{t.hint}</div>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            );
+          })}
+        </div>
+      ))}
 
-      <Tooltip>
-        <TooltipTrigger
-          onClick={() => void clearDrawings(symbol)}
-          aria-label="Clear drawings"
-          className="flex h-8 w-8 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-red"
-        >
-          <Trash2 className="h-4 w-4" />
-        </TooltipTrigger>
-        <TooltipContent side="right" className="text-xs">
-          <div className="font-medium">Clear drawings</div>
-          <div className="mt-0.5 text-[10px] text-tv-text-muted">
-            Remove all on this symbol
-          </div>
-        </TooltipContent>
-      </Tooltip>
+      <div className="mt-auto flex w-full flex-col items-center gap-0.5 pb-0.5">
+        <div className="my-1 h-px w-6 bg-tv-border" />
+
+        <Tooltip>
+          <TooltipTrigger
+            onClick={toggleAlert}
+            disabled={!canAlert}
+            aria-label="Toggle alert"
+            className={cn(
+              "flex h-8 w-8 items-center justify-center rounded transition-colors",
+              !canAlert && "cursor-not-allowed opacity-30",
+              canAlert && alertOn && "bg-tv-yellow/15 text-tv-yellow",
+              canAlert && !alertOn && "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
+            )}
+          >
+            {alertOn ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+          </TooltipTrigger>
+          <TooltipContent side="right" className="text-xs">
+            <div className="font-medium">
+              {alertOn ? "Disable alert" : "Enable alert"}
+            </div>
+            <div className="mt-0.5 text-[10px] text-tv-text-muted">
+              {canAlert
+                ? "Beeps + toast when price crosses this level"
+                : "Select a horizontal line or ray first"}
+            </div>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger
+            onClick={() => void clearDrawings(symbol)}
+            aria-label="Clear drawings"
+            className="flex h-8 w-8 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-red"
+          >
+            <Trash2 className="h-4 w-4" />
+          </TooltipTrigger>
+          <TooltipContent side="right" className="text-xs">
+            <div className="font-medium">Clear drawings</div>
+            <div className="mt-0.5 text-[10px] text-tv-text-muted">
+              Remove all on this symbol
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </div>
     </aside>
   );
 }
