@@ -1,6 +1,6 @@
 "use client";
 
-import { Code2, LogOut, Redo2, Undo2 } from "lucide-react";
+import { Code2, LogOut, Redo2, Settings2, Undo2 } from "lucide-react";
 import { SymbolSelector } from "@/components/chart/SymbolSelector";
 import { TimeframeSelector } from "@/components/chart/TimeframeSelector";
 import { IndicatorMenu } from "@/components/chart/IndicatorMenu";
@@ -8,10 +8,12 @@ import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDrawings } from "@/lib/supabase/use-drawings";
+import { useChartStore } from "@/lib/store/chart-store";
 
 export function Header() {
   const { user, signOut } = useAuth();
   const { undo, redo } = useDrawings();
+  const setChartSettingsOpen = useChartStore((s) => s.setChartSettingsOpen);
 
   return (
     <header className="flex h-12 items-center justify-between border-b border-tv-border bg-tv-panel px-3">
@@ -51,6 +53,18 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-2">
+        <Tooltip>
+          <TooltipTrigger
+            onClick={() => setChartSettingsOpen(true)}
+            aria-label="Chart settings"
+            className="flex h-7 w-7 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">
+            Chart settings
+          </TooltipContent>
+        </Tooltip>
         <a
           href="https://github.com/KisuShotto15/tradingview"
           target="_blank"

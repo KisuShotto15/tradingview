@@ -81,6 +81,24 @@ export const INDICATOR_COLORS: Record<IndicatorKey, string> = {
   vumanchu: "#4994ec",
 };
 
+export interface ChartColors {
+  bg: string;
+  candleUp: string;
+  candleDown: string;
+  wickUp: string;
+  wickDown: string;
+  gridLines: string;
+}
+
+export const DEFAULT_CHART_COLORS: ChartColors = {
+  bg: "#131722",
+  candleUp: "#26a69a",
+  candleDown: "#ef5350",
+  wickUp: "#26a69a",
+  wickDown: "#ef5350",
+  gridLines: "#1e222d",
+};
+
 export const DEFAULT_WATCHLIST = [
   "BTCUSDT",
   "ETHUSDT",
@@ -105,15 +123,20 @@ interface ChartState {
   config: IndicatorConfig;
   watchlist: string[];
 
+  /** Chart color customization */
+  chartColors: ChartColors;
+
   // Ephemeral UI state (not persisted)
   tool: DrawingTool;
   symbolDialogOpen: boolean;
   /** Which indicator's settings dialog is open (null = closed) */
   settingsTarget: IndicatorKey | null;
+  chartSettingsOpen: boolean;
 
   // Actions
   setSymbol: (s: string) => void;
   setTimeframe: (t: Timeframe) => void;
+  setChartColors: (patch: Partial<ChartColors>) => void;
   toggleIndicator: (key: IndicatorKey) => void;
   removeIndicator: (key: IndicatorKey) => void;
   toggleHidden: (key: IndicatorKey) => void;
@@ -123,6 +146,7 @@ interface ChartState {
   setTool: (t: DrawingTool) => void;
   setSymbolDialogOpen: (v: boolean) => void;
   setSettingsTarget: (k: IndicatorKey | null) => void;
+  setChartSettingsOpen: (v: boolean) => void;
 }
 
 export const useChartStore = create<ChartState>()(
@@ -154,9 +178,11 @@ export const useChartStore = create<ChartState>()(
       },
       config: { ...DEFAULT_CONFIG },
       watchlist: DEFAULT_WATCHLIST,
+      chartColors: { ...DEFAULT_CHART_COLORS },
       tool: "cursor",
       symbolDialogOpen: false,
       settingsTarget: null,
+      chartSettingsOpen: false,
 
       setSymbol: (symbol) => set({ symbol }),
       setTimeframe: (timeframe) => set({ timeframe }),
@@ -187,9 +213,12 @@ export const useChartStore = create<ChartState>()(
         set((state) => ({
           watchlist: state.watchlist.filter((x) => x !== s),
         })),
+      setChartColors: (patch) =>
+        set((s) => ({ chartColors: { ...s.chartColors, ...patch } })),
       setTool: (tool) => set({ tool }),
       setSymbolDialogOpen: (symbolDialogOpen) => set({ symbolDialogOpen }),
       setSettingsTarget: (settingsTarget) => set({ settingsTarget }),
+      setChartSettingsOpen: (chartSettingsOpen) => set({ chartSettingsOpen }),
     }),
     {
       name: "tv-gratis-chart-state",
@@ -200,6 +229,7 @@ export const useChartStore = create<ChartState>()(
         hidden: s.hidden,
         config: s.config,
         watchlist: s.watchlist,
+        chartColors: s.chartColors,
       }),
     },
   ),

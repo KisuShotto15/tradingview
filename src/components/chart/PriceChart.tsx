@@ -27,6 +27,7 @@ import {
   INDICATOR_COLORS,
   useChartStore,
   type IndicatorKey,
+  DEFAULT_CHART_COLORS,
 } from "@/lib/store/chart-store";
 import { formatPrice, formatVolume } from "@/lib/format";
 import { IndicatorPill } from "./IndicatorPill";
@@ -149,10 +150,13 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const candlesRef = useRef<Candle[]>([]);
   const firstPointRef = useRef<{ time: number; price: number } | null>(null);
   const placementPointsRef = useRef<Array<{ time: number; price: number }>>([]);
+  const chartColorsRef = useRef(DEFAULT_CHART_COLORS);
 
   const indicators = useChartStore((s) => s.indicators);
   const hidden = useChartStore((s) => s.hidden);
   const config = useChartStore((s) => s.config);
+  const chartColors = useChartStore((s) => s.chartColors);
+  chartColorsRef.current = chartColors;
   const tool = useChartStore((s) => s.tool);
   const setTool = useChartStore((s) => s.setTool);
   const removeIndicator = useChartStore((s) => s.removeIndicator);
@@ -204,17 +208,18 @@ export function PriceChart({ symbol, timeframe }: Props) {
   useEffect(() => {
     if (!containerRef.current) return;
 
+    const initColors = chartColorsRef.current;
     const chart = createChart(containerRef.current, {
       layout: {
-        background: { color: TV_COLORS.bg },
+        background: { color: initColors.bg },
         textColor: TV_COLORS.text,
         fontFamily: "var(--font-sans), Inter, system-ui, sans-serif",
         fontSize: 11,
         panes: { separatorColor: TV_COLORS.border, separatorHoverColor: TV_COLORS.border },
       },
       grid: {
-        vertLines: { color: TV_COLORS.grid },
-        horzLines: { color: TV_COLORS.grid },
+        vertLines: { color: initColors.gridLines },
+        horzLines: { color: initColors.gridLines },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
@@ -237,12 +242,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
     // PANE 0 — Candles + EMAs
     candleSeriesRef.current = chart.addSeries(CandlestickSeries, {
-      upColor: TV_COLORS.green,
-      downColor: TV_COLORS.red,
-      borderUpColor: TV_COLORS.green,
-      borderDownColor: TV_COLORS.red,
-      wickUpColor: TV_COLORS.green,
-      wickDownColor: TV_COLORS.red,
+      upColor: initColors.candleUp,
+      downColor: initColors.candleDown,
+      borderUpColor: initColors.candleUp,
+      borderDownColor: initColors.candleDown,
+      wickUpColor: initColors.wickUp,
+      wickDownColor: initColors.wickDown,
       priceLineColor: TV_COLORS.textMuted,
       priceLineStyle: 2,
     });
@@ -922,6 +927,28 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (macdHistRef.current) macdHistRef.current.applyOptions({ visible: v("macd") });
     if (volumeSeriesRef.current) volumeSeriesRef.current.applyOptions({ visible: v("volume") });
   }, [indicators, hidden]);
+
+  // Apply chart color customization
+  useEffect(() => {
+    if (!chartRef.current) return;
+    chartRef.current.applyOptions({
+      layout: { background: { color: chartColors.bg } },
+      grid: {
+        vertLines: { color: chartColors.gridLines },
+        horzLines: { color: chartColors.gridLines },
+      },
+    });
+    if (candleSeriesRef.current) {
+      candleSeriesRef.current.applyOptions({
+        upColor: chartColors.candleUp,
+        downColor: chartColors.candleDown,
+        borderUpColor: chartColors.candleUp,
+        borderDownColor: chartColors.candleDown,
+        wickUpColor: chartColors.wickUp,
+        wickDownColor: chartColors.wickDown,
+      });
+    }
+  }, [chartColors]);
 
   // Recompute indicators when config changes (periods)
   useEffect(() => {
