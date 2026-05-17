@@ -3,6 +3,8 @@
 import {
   MousePointer2,
   Minus,
+  GripVertical,
+  MoveRight,
   Ruler,
   Trash2,
   Undo2,
@@ -27,7 +29,19 @@ const TOOLS: ToolDef[] = [
     key: "hline",
     icon: Minus,
     label: "Horizontal line",
-    hint: "Click on the chart to mark a price",
+    hint: "Click to mark a price across the chart",
+  },
+  {
+    key: "vline",
+    icon: GripVertical,
+    label: "Vertical line",
+    hint: "Click to mark a time across the chart",
+  },
+  {
+    key: "hray",
+    icon: MoveRight,
+    label: "Horizontal ray",
+    hint: "Click anchor — extends to the right",
   },
   {
     key: "measure",

@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { IChartApi, ISeriesApi } from "lightweight-charts";
+import type { IChartApi, ISeriesApi, UTCTimestamp } from "lightweight-charts";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import type { Drawing } from "@/lib/drawings/types";
 import { HLineDraw } from "./HLineDraw";
+import { VLineDraw } from "./VLineDraw";
+import { HRayDraw } from "./HRayDraw";
 
 interface Props {
   symbol: string;
@@ -43,13 +45,16 @@ export function DrawingsLayer({
       className="pointer-events-none absolute inset-0 z-10 h-full w-full"
       style={{ overflow: "visible" }}
     >
-      {visible.map((d) => renderDrawing(d, candleSeries, width, height, selectedId === d.id, () => setSelected(d.id)))}
+      {visible.map((d) =>
+        renderDrawing(d, chart, candleSeries, width, height, selectedId === d.id, () => setSelected(d.id)),
+      )}
     </svg>
   );
 }
 
 function renderDrawing(
   d: Drawing,
+  chart: IChartApi,
   series: ISeriesApi<"Candlestick">,
   width: number,
   height: number,
@@ -71,9 +76,37 @@ function renderDrawing(
         />
       );
     }
+    case "vline": {
+      const x = chart.timeScale().timeToCoordinate(d.time as UTCTimestamp);
+      if (x === null) return null;
+      return (
+        <VLineDraw
+          key={d.id}
+          drawing={d}
+          x={x}
+          height={height}
+          selected={selected}
+          onSelect={onSelect}
+        />
+      );
+    }
+    case "hray": {
+      const x = chart.timeScale().timeToCoordinate(d.anchor.time as UTCTimestamp);
+      const y = series.priceToCoordinate(d.anchor.price);
+      if (x === null || y === null) return null;
+      return (
+        <HRayDraw
+          key={d.id}
+          drawing={d}
+          anchorX={x}
+          y={y}
+          width={width}
+          selected={selected}
+          onSelect={onSelect}
+        />
+      );
+    }
     default:
-      // Other kinds will be added in later phases
-      void height;
       return null;
   }
 }

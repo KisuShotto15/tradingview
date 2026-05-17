@@ -240,6 +240,30 @@ export function PriceChart({ symbol, timeframe }: Props) {
         return;
       }
 
+      if (toolRef.current === "vline") {
+        if (!param.time) return;
+        void drawingsApiRef.current.add({
+          id: generateId(),
+          kind: "vline",
+          symbol: symbolRef.current,
+          time: Number(param.time),
+        });
+        setToolRef.current("cursor");
+        return;
+      }
+
+      if (toolRef.current === "hray") {
+        if (!param.time) return;
+        void drawingsApiRef.current.add({
+          id: generateId(),
+          kind: "hray",
+          symbol: symbolRef.current,
+          anchor: { time: Number(param.time), price },
+        });
+        setToolRef.current("cursor");
+        return;
+      }
+
       if (toolRef.current === "measure") {
         if (!param.time) return;
         const time = Number(param.time);
@@ -513,7 +537,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.style.cursor =
-        tool === "hline" || tool === "measure" ? "crosshair" : "";
+        tool !== "cursor" && tool !== "eraser" ? "crosshair" : "";
     }
     if (tool !== "measure") setMeasure(INITIAL_MEASURE);
   }, [tool]);
