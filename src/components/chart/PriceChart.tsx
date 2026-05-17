@@ -27,6 +27,7 @@ import { DrawingsLayer } from "./drawings/DrawingsLayer";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { generateId, FIB_LEVELS_DEFAULT } from "@/lib/drawings/types";
+import { useAlertMonitor } from "@/hooks/useAlertMonitor";
 
 interface MeasurePoint {
   time: number;
@@ -121,6 +122,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const toggleHidden = useChartStore((s) => s.toggleHidden);
   const setSettingsTarget = useChartStore((s) => s.setSettingsTarget);
   const drawingsApi = useDrawings();
+  // Note: useAlertMonitor relies on lastPrice (state); see below where it's invoked.
 
   // Refs to avoid recreating subscribeClick on every tool change
   const toolRef = useRef(tool);
@@ -143,6 +145,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const measureRef = useRef(measure);
   measureRef.current = measure;
+
+  // Drive alerts off the live price tick
+  useAlertMonitor(symbol, lastPrice?.value ?? null);
 
   // Helper — compute pane top offsets from chart layout
   function recomputePaneOffsets() {

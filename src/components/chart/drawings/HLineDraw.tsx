@@ -48,7 +48,7 @@ export function HLineDraw({ drawing, y, width, selected, onSelect }: Props) {
         <rect
           x={4}
           y={y - 8}
-          width={70}
+          width={drawing.alert?.enabled ? 84 : 70}
           height={16}
           fill={color}
           rx={2}
@@ -62,6 +62,11 @@ export function HLineDraw({ drawing, y, width, selected, onSelect }: Props) {
         >
           {formatPrice(drawing.price)}
         </text>
+        {drawing.alert?.enabled && (
+          <text x={76} y={y + 3} fill="#ffffff" fontSize={11}>
+            🔔
+          </text>
+        )}
       </g>
     </g>
   );

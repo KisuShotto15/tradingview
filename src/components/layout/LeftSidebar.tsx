@@ -5,6 +5,8 @@ import {
   Minus,
   ArrowDownToLine,
   ArrowUpToLine,
+  Bell,
+  BellOff,
   CalendarRange,
   GripVertical,
   Layers3,
@@ -21,7 +23,9 @@ import {
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useChartStore, type DrawingTool } from "@/lib/store/chart-store";
+import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { useDrawings } from "@/lib/supabase/use-drawings";
+import type { Drawing, AlertConfig } from "@/lib/drawings/types";
 import { cn } from "@/lib/utils";
 
 interface ToolDef {
@@ -111,7 +115,24 @@ export function LeftSidebar() {
   const tool = useChartStore((s) => s.tool);
   const setTool = useChartStore((s) => s.setTool);
   const symbol = useChartStore((s) => s.symbol);
-  const { clear: clearDrawings, undo, redo } = useDrawings();
+  const selectedId = useDrawingsStore((s) => s.selectedId);
+  const drawings = useDrawingsStore((s) => s.drawings);
+  const { clear: clearDrawings, undo, redo, update } = useDrawings();
+
+  const selected = drawings.find((d) => d.id === selectedId);
+  const canAlert = selected && (selected.kind === "hline" || selected.kind === "hray");
+  const alertOn = canAlert ? !!selected?.alert?.enabled : false;
+
+  function toggleAlert() {
+    if (!selected || !canAlert) return;
+    const newAlert: AlertConfig = {
+      enabled: !alertOn,
+      sound: true,
+      direction: "cross",
+      lastTriggeredAt: undefined,
+    };
+    void update(selected.id, { alert: newAlert } as Partial<Drawing>);
+  }
 
   return (
     <aside className="flex w-11 flex-col items-center gap-0.5 border-r border-tv-border bg-tv-panel py-1.5">
@@ -169,6 +190,32 @@ export function LeftSidebar() {
         <TooltipContent side="right" className="text-xs">
           <div className="font-medium">Redo</div>
           <div className="mt-0.5 text-[10px] text-tv-text-muted">Ctrl+Shift+Z</div>
+        </TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger
+          onClick={toggleAlert}
+          disabled={!canAlert}
+          aria-label="Toggle alert"
+          className={cn(
+            "flex h-8 w-8 items-center justify-center rounded transition-colors",
+            !canAlert && "cursor-not-allowed opacity-30",
+            canAlert && alertOn && "bg-tv-yellow/15 text-tv-yellow",
+            canAlert && !alertOn && "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
+          )}
+        >
+          {alertOn ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+        </TooltipTrigger>
+        <TooltipContent side="right" className="text-xs">
+          <div className="font-medium">
+            {alertOn ? "Disable alert" : "Enable alert"}
+          </div>
+          <div className="mt-0.5 text-[10px] text-tv-text-muted">
+            {canAlert
+              ? "Beeps + toast when price crosses this level"
+              : "Select a horizontal line or ray first"}
+          </div>
         </TooltipContent>
       </Tooltip>
 

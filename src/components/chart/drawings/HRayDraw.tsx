@@ -59,7 +59,7 @@ export function HRayDraw({ drawing, anchorX, y, width, selected, onSelect }: Pro
         <rect
           x={anchorX + 8}
           y={y - 8}
-          width={70}
+          width={drawing.alert?.enabled ? 84 : 70}
           height={16}
           fill={color}
           rx={2}
@@ -73,6 +73,11 @@ export function HRayDraw({ drawing, anchorX, y, width, selected, onSelect }: Pro
         >
           {formatPrice(drawing.anchor.price)}
         </text>
+        {drawing.alert?.enabled && (
+          <text x={anchorX + 80} y={y + 3} fill="#ffffff" fontSize={11}>
+            🔔
+          </text>
+        )}
       </g>
     </g>
   );
