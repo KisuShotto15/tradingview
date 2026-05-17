@@ -83,20 +83,27 @@ export const INDICATOR_COLORS: Record<IndicatorKey, string> = {
 
 export interface ChartColors {
   bg: string;
-  candleUp: string;
-  candleDown: string;
+  gridLines: string;
+  /** Candle body (filled rectangle) */
+  bodyUp: string;
+  bodyDown: string;
+  /** Candle border (outline of the body) */
+  borderUp: string;
+  borderDown: string;
+  /** Candle wick (high/low extension lines) */
   wickUp: string;
   wickDown: string;
-  gridLines: string;
 }
 
 export const DEFAULT_CHART_COLORS: ChartColors = {
   bg: "#131722",
-  candleUp: "#26a69a",
-  candleDown: "#ef5350",
+  gridLines: "#1e222d",
+  bodyUp: "#26a69a",
+  bodyDown: "#ef5350",
+  borderUp: "#26a69a",
+  borderDown: "#ef5350",
   wickUp: "#26a69a",
   wickDown: "#ef5350",
-  gridLines: "#1e222d",
 };
 
 export const DEFAULT_WATCHLIST = [

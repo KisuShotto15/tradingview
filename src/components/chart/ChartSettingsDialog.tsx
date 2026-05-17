@@ -39,13 +39,13 @@ export function ChartSettingsDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-xs bg-tv-panel">
+      <DialogContent className="max-w-sm bg-tv-panel">
         <DialogHeader>
           <DialogTitle className="text-sm font-semibold">Chart settings</DialogTitle>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4">
-          <Section label="Background">
+        <div className="flex flex-col gap-5">
+          <Section label="Canvas">
             <ColorRow
               label="Background"
               value={draft.bg}
@@ -59,25 +59,26 @@ export function ChartSettingsDialog() {
           </Section>
 
           <Section label="Candles">
-            <ColorRow
-              label="Bullish body"
-              value={draft.candleUp}
-              onChange={(v) => setDraft((d) => ({ ...d, candleUp: v }))}
+            <PairRow
+              label="Body"
+              up={draft.bodyUp}
+              down={draft.bodyDown}
+              onUp={(v) => setDraft((d) => ({ ...d, bodyUp: v }))}
+              onDown={(v) => setDraft((d) => ({ ...d, bodyDown: v }))}
             />
-            <ColorRow
-              label="Bearish body"
-              value={draft.candleDown}
-              onChange={(v) => setDraft((d) => ({ ...d, candleDown: v }))}
+            <PairRow
+              label="Borders"
+              up={draft.borderUp}
+              down={draft.borderDown}
+              onUp={(v) => setDraft((d) => ({ ...d, borderUp: v }))}
+              onDown={(v) => setDraft((d) => ({ ...d, borderDown: v }))}
             />
-            <ColorRow
-              label="Bullish wick"
-              value={draft.wickUp}
-              onChange={(v) => setDraft((d) => ({ ...d, wickUp: v }))}
-            />
-            <ColorRow
-              label="Bearish wick"
-              value={draft.wickDown}
-              onChange={(v) => setDraft((d) => ({ ...d, wickDown: v }))}
+            <PairRow
+              label="Wick"
+              up={draft.wickUp}
+              down={draft.wickDown}
+              onUp={(v) => setDraft((d) => ({ ...d, wickUp: v }))}
+              onDown={(v) => setDraft((d) => ({ ...d, wickDown: v }))}
             />
           </Section>
         </div>
@@ -106,7 +107,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
       <span className="text-[10px] font-bold uppercase tracking-wider text-tv-text-muted">
         {label}
       </span>
-      {children}
+      <div className="flex flex-col gap-2">{children}</div>
     </div>
   );
 }
@@ -123,17 +124,51 @@ function ColorRow({
   return (
     <label className="flex cursor-pointer items-center justify-between gap-3">
       <span className="text-xs text-tv-text">{label}</span>
-      <div className="relative flex items-center gap-2">
-        <input
-          type="color"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="h-6 w-10 cursor-pointer rounded border border-tv-border bg-transparent p-0.5"
-        />
-        <span className="w-16 text-right font-mono text-[10px] uppercase text-tv-text-muted">
-          {value}
-        </span>
-      </div>
+      <ColorSwatch value={value} onChange={onChange} />
     </label>
+  );
+}
+
+function PairRow({
+  label,
+  up,
+  down,
+  onUp,
+  onDown,
+}: {
+  label: string;
+  up: string;
+  down: string;
+  onUp: (v: string) => void;
+  onDown: (v: string) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-xs text-tv-text">{label}</span>
+      <div className="flex items-center gap-2">
+        <ColorSwatch value={up} onChange={onUp} />
+        <ColorSwatch value={down} onChange={onDown} />
+      </div>
+    </div>
+  );
+}
+
+function ColorSwatch({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="relative">
+      <input
+        type="color"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-7 w-9 cursor-pointer rounded border border-tv-border bg-transparent p-0.5"
+        title={value}
+      />
+    </div>
   );
 }

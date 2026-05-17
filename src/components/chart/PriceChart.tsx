@@ -242,10 +242,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
     // PANE 0 — Candles + EMAs
     candleSeriesRef.current = chart.addSeries(CandlestickSeries, {
-      upColor: initColors.candleUp,
-      downColor: initColors.candleDown,
-      borderUpColor: initColors.candleUp,
-      borderDownColor: initColors.candleDown,
+      upColor: initColors.bodyUp,
+      downColor: initColors.bodyDown,
+      borderUpColor: initColors.borderUp,
+      borderDownColor: initColors.borderDown,
       wickUpColor: initColors.wickUp,
       wickDownColor: initColors.wickDown,
       priceLineColor: TV_COLORS.textMuted,
@@ -957,10 +957,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
     });
     if (candleSeriesRef.current) {
       candleSeriesRef.current.applyOptions({
-        upColor: chartColors.candleUp,
-        downColor: chartColors.candleDown,
-        borderUpColor: chartColors.candleUp,
-        borderDownColor: chartColors.candleDown,
+        upColor: chartColors.bodyUp,
+        downColor: chartColors.bodyDown,
+        borderUpColor: chartColors.borderUp,
+        borderDownColor: chartColors.borderDown,
         wickUpColor: chartColors.wickUp,
         wickDownColor: chartColors.wickDown,
       });
