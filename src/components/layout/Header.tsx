@@ -19,7 +19,7 @@ export function Header() {
             <Zap className="h-4 w-4 text-tv-blue" />
           </div>
           <span className="text-sm font-semibold text-tv-text">
-            TradingView <span className="text-tv-text-muted">Gratis</span>
+            TradingView <span className="text-tv-text-muted">Free</span>
           </span>
         </div>
         <Separator orientation="vertical" className="h-6 bg-tv-border" />
@@ -56,7 +56,7 @@ export function Header() {
                   <LogOut className="h-3.5 w-3.5" />
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="text-xs">
-                  Cerrar sesión
+                  Sign out
                 </TooltipContent>
               </Tooltip>
             </div>

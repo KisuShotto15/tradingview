@@ -54,7 +54,7 @@ export function SymbolSelector() {
       </DialogTrigger>
       <DialogContent className="max-w-md gap-0 bg-tv-panel p-0">
         <DialogHeader className="border-b border-tv-border px-4 py-3">
-          <DialogTitle className="text-sm font-medium">Buscar símbolo</DialogTitle>
+          <DialogTitle className="text-sm font-medium">Search symbol</DialogTitle>
         </DialogHeader>
         <div className="border-b border-tv-border p-3">
           <Input
@@ -69,7 +69,7 @@ export function SymbolSelector() {
           <div className="flex flex-col">
             {filtered.length === 0 && (
               <div className="p-4 text-center text-xs text-tv-text-muted">
-                Sin resultados
+                No results
               </div>
             )}
             {filtered.map((s) => (

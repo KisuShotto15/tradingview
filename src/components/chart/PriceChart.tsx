@@ -1006,7 +1006,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
               </span>
             </>
           ) : (
-            <span className="text-xs text-tv-text-muted">Cargando…</span>
+            <span className="text-xs text-tv-text-muted">Loading…</span>
           )}
         </div>
 

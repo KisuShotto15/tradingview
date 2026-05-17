@@ -16,9 +16,9 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TradingView Gratis — Crypto charts open source",
+  title: "TradingView Free — Open source crypto charts",
   description:
-    "Plataforma de charts crypto en vivo. Alternativa gratis a TradingView. Powered by Binance + lightweight-charts.",
+    "Live crypto charting platform. A free alternative to TradingView. Powered by Binance + lightweight-charts.",
 };
 
 export default function RootLayout({
@@ -28,7 +28,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="es"
+      lang="en"
       className={`dark ${inter.variable} ${jetbrains.variable} h-full antialiased`}
     >
       <body className="h-full overflow-hidden bg-tv-bg text-tv-text">

@@ -27,14 +27,14 @@ interface Entry {
 }
 
 const ENTRIES: Entry[] = [
-  { key: "ema20", group: "Medias móviles", label: (c) => `EMA ${c.ema20}` },
-  { key: "ema50", group: "Medias móviles", label: (c) => `EMA ${c.ema50}` },
-  { key: "ema200", group: "Medias móviles", label: (c) => `EMA ${c.ema200}` },
-  { key: "volume", group: "Volumen", label: () => "Volumen" },
-  { key: "rsi", group: "Osciladores", label: (c) => `RSI (${c.rsi})` },
+  { key: "ema20", group: "Moving averages", label: (c) => `EMA ${c.ema20}` },
+  { key: "ema50", group: "Moving averages", label: (c) => `EMA ${c.ema50}` },
+  { key: "ema200", group: "Moving averages", label: (c) => `EMA ${c.ema200}` },
+  { key: "volume", group: "Volume", label: () => "Volume" },
+  { key: "rsi", group: "Oscillators", label: (c) => `RSI (${c.rsi})` },
   {
     key: "macd",
-    group: "Osciladores",
+    group: "Oscillators",
     label: (c) => `MACD (${c.macdFast}, ${c.macdSlow}, ${c.macdSignal})`,
   },
 ];
@@ -55,7 +55,7 @@ export function IndicatorMenu() {
     <DropdownMenu>
       <DropdownMenuTrigger className="flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs text-tv-text hover:bg-tv-panel-hover">
         <Activity className="h-3.5 w-3.5" />
-        <span>Indicadores</span>
+        <span>Indicators</span>
         {activeCount > 0 && (
           <span className="ml-1 rounded bg-tv-blue/20 px-1.5 py-0.5 text-[10px] font-semibold text-tv-blue">
             {activeCount}

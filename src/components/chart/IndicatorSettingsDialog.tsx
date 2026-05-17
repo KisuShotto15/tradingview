@@ -21,7 +21,7 @@ const TITLES: Record<IndicatorKey, string> = {
   ema200: "EMA — Slot 3",
   rsi: "RSI",
   macd: "MACD",
-  volume: "Volumen",
+  volume: "Volume",
 };
 
 export function IndicatorSettingsDialog() {
@@ -42,7 +42,7 @@ export function IndicatorSettingsDialog() {
       <DialogContent className="max-w-sm bg-tv-panel">
         <DialogHeader>
           <DialogTitle className="text-sm font-semibold">
-            {target ? TITLES[target] : ""} — Configuración
+            {target ? TITLES[target] : ""} — Settings
           </DialogTitle>
         </DialogHeader>
         {target && (
@@ -113,14 +113,14 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
     <div className="flex flex-col gap-3">
       {(target === "ema20" || target === "ema50" || target === "ema200") && (
         <Field
-          label="Período"
+          label="Period"
           value={draft[target]}
           onChange={(n) => setDraft((d) => ({ ...d, [target]: n }))}
         />
       )}
       {target === "rsi" && (
         <Field
-          label="Período"
+          label="Period"
           value={draft.rsi}
           onChange={(n) => setDraft((d) => ({ ...d, rsi: n }))}
         />
@@ -128,17 +128,17 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
       {target === "macd" && (
         <div className="grid grid-cols-3 gap-2">
           <Field
-            label="Rápida"
+            label="Fast"
             value={draft.macdFast}
             onChange={(n) => setDraft((d) => ({ ...d, macdFast: n }))}
           />
           <Field
-            label="Lenta"
+            label="Slow"
             value={draft.macdSlow}
             onChange={(n) => setDraft((d) => ({ ...d, macdSlow: n }))}
           />
           <Field
-            label="Señal"
+            label="Signal"
             value={draft.macdSignal}
             onChange={(n) => setDraft((d) => ({ ...d, macdSignal: n }))}
           />
@@ -146,8 +146,7 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
       )}
       {target === "volume" && (
         <p className="text-xs text-tv-text-muted">
-          El indicador de volumen no tiene parámetros configurables en esta
-          versión.
+          The volume indicator has no configurable parameters in this version.
         </p>
       )}
 
@@ -161,7 +160,7 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
           Reset defaults
         </Button>
         <Button size="sm" onClick={save} className="bg-tv-blue hover:bg-tv-blue/90">
-          Aplicar
+          Apply
         </Button>
       </div>
     </div>

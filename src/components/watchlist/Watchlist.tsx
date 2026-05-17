@@ -90,15 +90,15 @@ export function Watchlist() {
         <button
           onClick={() => openSymbolDialog(true)}
           className="rounded p-1 text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
-          title="Agregar símbolo"
-          aria-label="Agregar al watchlist"
+          title="Add symbol"
+          aria-label="Add to watchlist"
         >
           <Plus className="h-3.5 w-3.5" />
         </button>
       </div>
       <div className="grid grid-cols-[1fr_auto_auto] gap-2 border-b border-tv-border px-3 py-1.5 text-[10px] uppercase tracking-wider text-tv-text-dim">
-        <span>Símbolo</span>
-        <span className="text-right">Precio</span>
+        <span>Symbol</span>
+        <span className="text-right">Price</span>
         <span className="text-right">24h</span>
       </div>
       <ScrollArea className="flex-1">
@@ -152,7 +152,7 @@ export function Watchlist() {
                       removeFromWatchlist(s);
                     }}
                     className="invisible rounded p-0.5 text-tv-text-muted hover:bg-tv-bg hover:text-tv-red group-hover:visible"
-                    aria-label={`Quitar ${s} del watchlist`}
+                    aria-label={`Remove ${s} from watchlist`}
                   >
                     <X className="h-3 w-3" />
                   </button>

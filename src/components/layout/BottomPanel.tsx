@@ -33,19 +33,19 @@ export function BottomPanel() {
 
   return (
     <div className="flex h-9 items-center gap-0 border-t border-tv-border bg-tv-panel px-3 text-xs">
-      <Stat label="Símbolo" value={symbol} />
+      <Stat label="Symbol" value={symbol} />
       <Stat
-        label="24h Cambio"
+        label="24h Change"
         value={t ? formatPct(t.priceChangePercent) : "—"}
         valueClass={t ? upClass(t.priceChangePercent) : ""}
       />
       <Stat
-        label="24h Alto"
+        label="24h High"
         value={t ? formatPrice(t.highPrice) : "—"}
         valueClass="text-tv-green"
       />
       <Stat
-        label="24h Bajo"
+        label="24h Low"
         value={t ? formatPrice(t.lowPrice) : "—"}
         valueClass="text-tv-red"
       />

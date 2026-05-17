@@ -67,16 +67,16 @@ export default function LoginPage() {
             <TrendingUp className="h-6 w-6 text-[#2962ff]" />
           </div>
           <div className="text-center">
-            <h1 className="text-xl font-semibold text-[#d1d4dc]">TradingView Gratis</h1>
-            <p className="mt-1 text-sm text-[#787b86]">Charts crypto en tiempo real</p>
+            <h1 className="text-xl font-semibold text-[#d1d4dc]">TradingView Free</h1>
+            <p className="mt-1 text-sm text-[#787b86]">Real-time crypto charts</p>
           </div>
         </div>
 
         {status === "sent" ? (
           <div className="rounded-lg border border-[#26a69a]/30 bg-[#26a69a]/10 p-4 text-center text-sm text-[#26a69a]">
             {mode === "magic"
-              ? "Revisá tu email — te mandamos un link para entrar."
-              : "Cuenta creada. Revisá tu email para confirmar."}
+              ? "Check your email — we sent you a sign-in link."
+              : "Account created. Check your email to confirm."}
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -93,7 +93,7 @@ export default function LoginPage() {
                       : "text-[#787b86] hover:text-[#d1d4dc]"
                   }`}
                 >
-                  {m === "magic" ? "Magic Link" : m === "password" ? "Contraseña" : "Registrarme"}
+                  {m === "magic" ? "Magic Link" : m === "password" ? "Password" : "Sign up"}
                 </button>
               ))}
             </div>
@@ -103,7 +103,7 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="tu@email.com"
+                placeholder="you@email.com"
                 required
                 className="w-full rounded-lg border border-[#2a2e39] bg-[#1e222d] px-3 py-2.5 text-sm text-[#d1d4dc] placeholder-[#787b86] outline-none focus:border-[#2962ff] transition-colors"
               />
@@ -113,7 +113,7 @@ export default function LoginPage() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Contraseña"
+                  placeholder="Password"
                   required
                   minLength={6}
                   className="w-full rounded-lg border border-[#2a2e39] bg-[#1e222d] px-3 py-2.5 text-sm text-[#d1d4dc] placeholder-[#787b86] outline-none focus:border-[#2962ff] transition-colors"
@@ -131,18 +131,18 @@ export default function LoginPage() {
               className="w-full rounded-lg bg-[#2962ff] py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {status === "loading"
-                ? "Cargando…"
+                ? "Loading…"
                 : mode === "magic"
-                ? "Enviar link"
+                ? "Send link"
                 : mode === "signup"
-                ? "Crear cuenta"
-                : "Entrar"}
+                ? "Create account"
+                : "Sign in"}
             </button>
           </form>
         )}
 
         <p className="text-center text-[10px] text-[#787b86]">
-          Gratis · Sin tarjeta · Sin ads
+          Free · No card · No ads
         </p>
       </div>
     </div>

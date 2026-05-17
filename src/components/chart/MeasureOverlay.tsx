@@ -87,7 +87,7 @@ export function MeasureOverlay({
           strokeDasharray={isPreview ? "4,3" : undefined}
         />
 
-        {/* Línea horizontal de referencia al precio A */}
+        {/* Horizontal reference line at price A */}
         <line
           x1={left}
           x2={right}
@@ -126,7 +126,7 @@ export function MeasureOverlay({
           {pctChange.toFixed(2)}%)
         </div>
         <div className="opacity-90">
-          {bars} barras · {durationText}
+          {bars} bars · {durationText}
         </div>
         <div className="opacity-90">Vol {formatVolume(volume)}</div>
       </div>
