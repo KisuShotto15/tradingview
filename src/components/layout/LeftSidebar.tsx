@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   MousePointer2,
   Minus,
@@ -8,6 +9,7 @@ import {
   Bell,
   BellOff,
   CalendarRange,
+  ChevronRight,
   GripVertical,
   Layers3,
   MoveRight,
@@ -19,6 +21,12 @@ import {
   TrendingUp,
   type LucideIcon,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useChartStore, type DrawingTool } from "@/lib/store/chart-store";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
@@ -46,7 +54,7 @@ const TOOL_GROUPS: ToolGroup[] = [
     ],
   },
   {
-    label: "LINES",
+    label: "Lines",
     tools: [
       { key: "trendline", icon: TrendingUp, label: "Trend line", hint: "Click start, then end. Drag endpoints to edit" },
       { key: "ray", icon: Slash, label: "Ray", hint: "Click origin, then direction — extends to infinity" },
@@ -56,33 +64,33 @@ const TOOL_GROUPS: ToolGroup[] = [
     ],
   },
   {
-    label: "CHANNELS",
+    label: "Channels",
     tools: [
       { key: "parallel-channel", icon: Layers3, label: "Parallel channel", hint: "Click A, then B (baseline), then C (parallel offset)" },
     ],
   },
   {
-    label: "FIBONACCI",
+    label: "Fibonacci",
     tools: [
       { key: "fib-retracement", icon: Percent, label: "Fib retracement", hint: "Click swing high, then swing low (or vice versa)" },
     ],
   },
   {
-    label: "RANGES",
+    label: "Ranges",
     tools: [
       { key: "price-range", icon: RectangleHorizontal, label: "Price range", hint: "Click two prices to measure absolute & % range" },
       { key: "date-range", icon: CalendarRange, label: "Date range", hint: "Click two timestamps to measure duration" },
     ],
   },
   {
-    label: "TRADE",
+    label: "Trade",
     tools: [
       { key: "long", icon: ArrowUpToLine, label: "Long position", hint: "Click entry, then target. Stop auto-set; drag handles to edit" },
       { key: "short", icon: ArrowDownToLine, label: "Short position", hint: "Click entry, then target. Stop auto-set; drag handles to edit" },
     ],
   },
   {
-    label: "MEASURE",
+    label: "Tools",
     tools: [
       { key: "measure", icon: Ruler, label: "Measure", hint: "Click two points to measure Δ price, %, bars, volume" },
     ],
@@ -96,6 +104,17 @@ export function LeftSidebar() {
   const selectedId = useDrawingsStore((s) => s.selectedId);
   const drawings = useDrawingsStore((s) => s.drawings);
   const { clear: clearDrawings, update } = useDrawings();
+
+  // Per-category "active" tool — the one whose icon shows on the button
+  const [categoryActive, setCategoryActive] = useState<Record<string, DrawingTool>>(
+    () => {
+      const m: Record<string, DrawingTool> = {};
+      for (const g of TOOL_GROUPS) {
+        if (g.label) m[g.label] = g.tools[0].key;
+      }
+      return m;
+    },
+  );
 
   const selected = drawings.find((d) => d.id === selectedId);
   const canAlert = selected && (selected.kind === "hline" || selected.kind === "hray");
@@ -114,45 +133,84 @@ export function LeftSidebar() {
 
   return (
     <aside className="flex w-11 flex-col items-center gap-0.5 border-r border-tv-border bg-tv-panel py-1.5">
-      {TOOL_GROUPS.map((group, gi) => (
-        <div key={gi} className="flex w-full flex-col items-center gap-0.5">
-          {group.label && (
-            <div className="mt-1 flex w-full items-center gap-1 px-1">
-              <div className="h-px flex-1 bg-tv-border" />
-              <span className="text-[7px] font-bold uppercase tracking-widest text-tv-text-muted/60 select-none">
-                {group.label}
-              </span>
-              <div className="h-px flex-1 bg-tv-border" />
-            </div>
-          )}
-          {group.tools.map((t) => {
-            const Icon = t.icon;
-            const active = tool === t.key;
-            return (
-              <Tooltip key={t.key}>
-                <TooltipTrigger
-                  onClick={() => setTool(t.key)}
-                  aria-label={t.label}
-                  className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-tv-panel-hover",
-                    active
-                      ? "bg-tv-blue/15 text-tv-blue"
-                      : "text-tv-text-muted hover:text-tv-text",
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                </TooltipTrigger>
-                <TooltipContent side="right" className="text-xs">
-                  <div className="font-medium">{t.label}</div>
-                  {t.hint && (
-                    <div className="mt-0.5 text-[10px] text-tv-text-muted">{t.hint}</div>
-                  )}
-                </TooltipContent>
-              </Tooltip>
-            );
-          })}
-        </div>
-      ))}
+      {TOOL_GROUPS.map((group, gi) => {
+        if (!group.label) {
+          // Cursor (no category)
+          return group.tools.map((t) => renderSimpleTool(t, tool === t.key, () => setTool(t.key)));
+        }
+        if (group.tools.length === 1) {
+          // Single-tool category: simple button
+          const t = group.tools[0];
+          return renderSimpleTool(t, tool === t.key, () => setTool(t.key), gi);
+        }
+        // Multi-tool category: button + dropdown menu
+        const activeKey = categoryActive[group.label] ?? group.tools[0].key;
+        const activeTool = group.tools.find((t) => t.key === activeKey) ?? group.tools[0];
+        const ActiveIcon = activeTool.icon;
+        const groupHasActive = group.tools.some((t) => t.key === tool);
+        return (
+          <div key={gi} className="relative">
+            <Tooltip>
+              <TooltipTrigger
+                onClick={() => setTool(activeTool.key)}
+                aria-label={activeTool.label}
+                className={cn(
+                  "flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-tv-panel-hover",
+                  groupHasActive
+                    ? "bg-tv-blue/15 text-tv-blue"
+                    : "text-tv-text-muted hover:text-tv-text",
+                )}
+              >
+                <ActiveIcon className="h-4 w-4" />
+              </TooltipTrigger>
+              <TooltipContent side="right" className="text-xs">
+                <div className="font-medium">{activeTool.label}</div>
+                {activeTool.hint && (
+                  <div className="mt-0.5 text-[10px] text-tv-text-muted">{activeTool.hint}</div>
+                )}
+              </TooltipContent>
+            </Tooltip>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                aria-label={`${group.label} tools`}
+                className="absolute -right-0 bottom-0 flex h-3 w-3 items-center justify-center rounded-tl-[2px] text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+              >
+                <ChevronRight className="h-2.5 w-2.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                side="right"
+                align="start"
+                sideOffset={4}
+                className="min-w-44 bg-tv-panel"
+              >
+                <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-tv-text-muted">
+                  {group.label}
+                </div>
+                {group.tools.map((t) => {
+                  const Icon = t.icon;
+                  const isActive = tool === t.key;
+                  return (
+                    <DropdownMenuItem
+                      key={t.key}
+                      onClick={() => {
+                        setTool(t.key);
+                        setCategoryActive((m) => ({ ...m, [group.label!]: t.key }));
+                      }}
+                      className={cn(
+                        "flex items-center gap-2 text-xs",
+                        isActive && "bg-tv-blue/15 text-tv-blue",
+                      )}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      <span>{t.label}</span>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        );
+      })}
 
       <div className="mt-auto flex w-full flex-col items-center gap-0.5 pb-0.5">
         <div className="my-1 h-px w-6 bg-tv-border" />
@@ -200,5 +258,36 @@ export function LeftSidebar() {
         </Tooltip>
       </div>
     </aside>
+  );
+}
+
+function renderSimpleTool(
+  t: ToolDef,
+  active: boolean,
+  onClick: () => void,
+  key?: React.Key,
+) {
+  const Icon = t.icon;
+  return (
+    <Tooltip key={key ?? t.key}>
+      <TooltipTrigger
+        onClick={onClick}
+        aria-label={t.label}
+        className={cn(
+          "flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-tv-panel-hover",
+          active
+            ? "bg-tv-blue/15 text-tv-blue"
+            : "text-tv-text-muted hover:text-tv-text",
+        )}
+      >
+        <Icon className="h-4 w-4" />
+      </TooltipTrigger>
+      <TooltipContent side="right" className="text-xs">
+        <div className="font-medium">{t.label}</div>
+        {t.hint && (
+          <div className="mt-0.5 text-[10px] text-tv-text-muted">{t.hint}</div>
+        )}
+      </TooltipContent>
+    </Tooltip>
   );
 }
