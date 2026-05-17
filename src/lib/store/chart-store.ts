@@ -155,6 +155,17 @@ export const DEFAULT_WATCHLIST = [
   "MATICUSDT",
 ];
 
+/** Either a symbol entry or a section label inside a watchlist. */
+export type WatchlistItem =
+  | { id: string; type: "symbol"; value: string }
+  | { id: string; type: "label"; value: string };
+
+export interface Watchlist {
+  id: string;
+  name: string;
+  items: WatchlistItem[];
+}
+
 /** Tagged settings target — either a builtin indicator key or an EMA instance id. */
 export type SettingsTarget = IndicatorKey | { kind: "ema"; id: string };
 
@@ -173,7 +184,9 @@ interface ChartState {
   squeezeStyle: SqueezeStyle;
   /** Logarithmic price scale */
   logScale: boolean;
-  watchlist: string[];
+  /** User watchlists with sections/labels */
+  watchlists: Watchlist[];
+  activeWatchlistId: string;
 
   /** Chart color customization */
   chartColors: ChartColors;
@@ -199,8 +212,15 @@ interface ChartState {
   toggleUserEMAHidden: (id: string) => void;
   setSqueezeStyle: (patch: Partial<SqueezeStyle>) => void;
   setLogScale: (v: boolean) => void;
-  addToWatchlist: (s: string) => void;
-  removeFromWatchlist: (s: string) => void;
+  createWatchlist: (name: string) => string;
+  renameWatchlist: (id: string, name: string) => void;
+  deleteWatchlist: (id: string) => void;
+  setActiveWatchlist: (id: string) => void;
+  addSymbolToWatchlist: (watchlistId: string, symbol: string) => void;
+  addLabelToWatchlist: (watchlistId: string, label: string, beforeId?: string) => void;
+  removeWatchlistItem: (watchlistId: string, itemId: string) => void;
+  moveWatchlistItem: (watchlistId: string, itemId: string, delta: -1 | 1) => void;
+  renameWatchlistItem: (watchlistId: string, itemId: string, value: string) => void;
   setTool: (t: DrawingTool) => void;
   setSymbolDialogOpen: (v: boolean) => void;
   setSettingsTarget: (k: SettingsTarget | null) => void;
@@ -209,6 +229,27 @@ interface ChartState {
 
 function randomId(): string {
   return Math.random().toString(36).slice(2, 10);
+}
+
+function initialWatchlists(): {
+  watchlists: Watchlist[];
+  activeWatchlistId: string;
+} {
+  const id = randomId();
+  return {
+    watchlists: [
+      {
+        id,
+        name: "Default",
+        items: DEFAULT_WATCHLIST.map((sym) => ({
+          id: randomId(),
+          type: "symbol" as const,
+          value: sym,
+        })),
+      },
+    ],
+    activeWatchlistId: id,
+  };
 }
 
 export const useChartStore = create<ChartState>()(
@@ -239,7 +280,7 @@ export const useChartStore = create<ChartState>()(
       ],
       squeezeStyle: { ...DEFAULT_SQUEEZE_STYLE },
       logScale: false,
-      watchlist: DEFAULT_WATCHLIST,
+      ...initialWatchlists(),
       chartColors: { ...DEFAULT_CHART_COLORS },
       tool: "cursor",
       symbolDialogOpen: false,
@@ -301,15 +342,102 @@ export const useChartStore = create<ChartState>()(
       setSqueezeStyle: (patch) =>
         set((s) => ({ squeezeStyle: { ...s.squeezeStyle, ...patch } })),
       setLogScale: (logScale) => set({ logScale }),
-      addToWatchlist: (s) =>
+      createWatchlist: (name) => {
+        const id = randomId();
         set((state) => ({
-          watchlist: state.watchlist.includes(s)
-            ? state.watchlist
-            : [...state.watchlist, s],
+          watchlists: [...state.watchlists, { id, name, items: [] }],
+          activeWatchlistId: id,
+        }));
+        return id;
+      },
+      renameWatchlist: (id, name) =>
+        set((state) => ({
+          watchlists: state.watchlists.map((w) =>
+            w.id === id ? { ...w, name } : w,
+          ),
         })),
-      removeFromWatchlist: (s) =>
+      deleteWatchlist: (id) =>
+        set((state) => {
+          if (state.watchlists.length <= 1) return state;
+          const next = state.watchlists.filter((w) => w.id !== id);
+          return {
+            watchlists: next,
+            activeWatchlistId:
+              state.activeWatchlistId === id
+                ? next[0].id
+                : state.activeWatchlistId,
+          };
+        }),
+      setActiveWatchlist: (id) => set({ activeWatchlistId: id }),
+      addSymbolToWatchlist: (watchlistId, symbol) =>
         set((state) => ({
-          watchlist: state.watchlist.filter((x) => x !== s),
+          watchlists: state.watchlists.map((w) => {
+            if (w.id !== watchlistId) return w;
+            if (w.items.some((i) => i.type === "symbol" && i.value === symbol)) {
+              return w;
+            }
+            return {
+              ...w,
+              items: [
+                ...w.items,
+                { id: randomId(), type: "symbol", value: symbol },
+              ],
+            };
+          }),
+        })),
+      addLabelToWatchlist: (watchlistId, label, beforeId) =>
+        set((state) => ({
+          watchlists: state.watchlists.map((w) => {
+            if (w.id !== watchlistId) return w;
+            const newItem: WatchlistItem = {
+              id: randomId(),
+              type: "label",
+              value: label,
+            };
+            if (!beforeId) {
+              return { ...w, items: [...w.items, newItem] };
+            }
+            const idx = w.items.findIndex((i) => i.id === beforeId);
+            if (idx === -1) return { ...w, items: [...w.items, newItem] };
+            return {
+              ...w,
+              items: [...w.items.slice(0, idx), newItem, ...w.items.slice(idx)],
+            };
+          }),
+        })),
+      removeWatchlistItem: (watchlistId, itemId) =>
+        set((state) => ({
+          watchlists: state.watchlists.map((w) =>
+            w.id === watchlistId
+              ? { ...w, items: w.items.filter((i) => i.id !== itemId) }
+              : w,
+          ),
+        })),
+      moveWatchlistItem: (watchlistId, itemId, delta) =>
+        set((state) => ({
+          watchlists: state.watchlists.map((w) => {
+            if (w.id !== watchlistId) return w;
+            const idx = w.items.findIndex((i) => i.id === itemId);
+            if (idx === -1) return w;
+            const target = idx + delta;
+            if (target < 0 || target >= w.items.length) return w;
+            const next = [...w.items];
+            [next[idx], next[target]] = [next[target], next[idx]];
+            return { ...w, items: next };
+          }),
+        })),
+      renameWatchlistItem: (watchlistId, itemId, value) =>
+        set((state) => ({
+          watchlists: state.watchlists.map((w) =>
+            w.id === watchlistId
+              ? {
+                  ...w,
+                  items: w.items.map((i) =>
+                    i.id === itemId ? { ...i, value } : i,
+                  ),
+                }
+              : w,
+          ),
         })),
       setChartColors: (patch) =>
         set((s) => ({ chartColors: { ...s.chartColors, ...patch } })),
@@ -320,7 +448,27 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: "tv-gratis-chart-state",
-      version: 2,
+      version: 3,
+      migrate: (persisted, fromVersion) => {
+        const p = persisted as Record<string, unknown>;
+        if (fromVersion < 3 && Array.isArray(p.watchlist)) {
+          const id = randomId();
+          p.watchlists = [
+            {
+              id,
+              name: "Default",
+              items: (p.watchlist as string[]).map((sym) => ({
+                id: randomId(),
+                type: "symbol",
+                value: sym,
+              })),
+            },
+          ];
+          p.activeWatchlistId = id;
+          delete p.watchlist;
+        }
+        return p;
+      },
       partialize: (s) => ({
         symbol: s.symbol,
         timeframe: s.timeframe,
@@ -330,7 +478,8 @@ export const useChartStore = create<ChartState>()(
         userEMAs: s.userEMAs,
         squeezeStyle: s.squeezeStyle,
         logScale: s.logScale,
-        watchlist: s.watchlist,
+        watchlists: s.watchlists,
+        activeWatchlistId: s.activeWatchlistId,
         chartColors: s.chartColors,
       }),
     },

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { Search, ChevronDown, Sparkles } from "lucide-react";
+import { Search, ChevronDown, Sparkles, Star } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -23,9 +23,19 @@ import type { SymbolInfo } from "@/lib/binance/types";
 export function SymbolSelector() {
   const symbol = useChartStore((s) => s.symbol);
   const setSymbol = useChartStore((s) => s.setSymbol);
-  const addToWatchlist = useChartStore((s) => s.addToWatchlist);
   const open = useChartStore((s) => s.symbolDialogOpen);
   const setOpen = useChartStore((s) => s.setSymbolDialogOpen);
+  const activeWatchlistId = useChartStore((s) => s.activeWatchlistId);
+  const watchlists = useChartStore((s) => s.watchlists);
+  const addSymbolToWatchlist = useChartStore((s) => s.addSymbolToWatchlist);
+  const activeWatchlistSymbols = useMemo(() => {
+    const w = watchlists.find((x) => x.id === activeWatchlistId);
+    return new Set(
+      (w?.items ?? [])
+        .filter((i) => i.type === "symbol")
+        .map((i) => i.value),
+    );
+  }, [watchlists, activeWatchlistId]);
 
   const [query, setQuery] = useState("");
   const [allSymbols, setAllSymbols] = useState<SymbolInfo[]>([]);
@@ -62,7 +72,6 @@ export function SymbolSelector() {
   function selectExpression() {
     if (!isExpression) return;
     setSymbol(trimmed);
-    addToWatchlist(trimmed);
     setOpen(false);
     setQuery("");
   }
@@ -128,27 +137,58 @@ export function SymbolSelector() {
                 No results
               </div>
             )}
-            {filtered.map((s) => (
-              <button
-                key={s.symbol}
-                onClick={() => {
-                  setSymbol(s.symbol);
-                  addToWatchlist(s.symbol);
-                  setOpen(false);
-                  setQuery("");
-                }}
-                className={cn(
-                  "flex items-center justify-between border-b border-tv-border px-4 py-2 text-left text-xs hover:bg-tv-panel-hover",
-                  s.symbol === symbol && "bg-tv-panel-hover",
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="font-semibold text-tv-text">{s.baseAsset}</span>
-                  <span className="text-tv-text-muted">/ {s.quoteAsset}</span>
+            {filtered.map((s) => {
+              const inList = activeWatchlistSymbols.has(s.symbol);
+              return (
+                <div
+                  key={s.symbol}
+                  className={cn(
+                    "group flex items-center justify-between gap-2 border-b border-tv-border px-4 py-2 text-xs hover:bg-tv-panel-hover",
+                    s.symbol === symbol && "bg-tv-panel-hover",
+                  )}
+                >
+                  <button
+                    onClick={() => {
+                      setSymbol(s.symbol);
+                      setOpen(false);
+                      setQuery("");
+                    }}
+                    className="flex flex-1 items-center justify-between text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="font-semibold text-tv-text">
+                        {s.baseAsset}
+                      </span>
+                      <span className="text-tv-text-muted">/ {s.quoteAsset}</span>
+                    </div>
+                    <span className="text-tv-text-muted">{s.symbol}</span>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!inList) {
+                        addSymbolToWatchlist(activeWatchlistId, s.symbol);
+                      }
+                    }}
+                    disabled={inList}
+                    title={
+                      inList ? "Already in active watchlist" : "Add to watchlist"
+                    }
+                    className={cn(
+                      "rounded p-1 transition-colors",
+                      inList
+                        ? "text-tv-yellow"
+                        : "text-tv-text-dim hover:bg-tv-bg hover:text-tv-yellow",
+                    )}
+                  >
+                    <Star
+                      className="h-3.5 w-3.5"
+                      fill={inList ? "currentColor" : "none"}
+                    />
+                  </button>
                 </div>
-                <span className="text-tv-text-muted">{s.symbol}</span>
-              </button>
-            ))}
+              );
+            })}
           </div>
         </ScrollArea>
       </DialogContent>

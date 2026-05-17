@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useChartStore, DEFAULT_CONFIG } from "@/lib/store/chart-store";
+import {
+  useChartStore,
+  DEFAULT_CONFIG,
+  type Watchlist,
+} from "@/lib/store/chart-store";
 import {
   loadChartSettings,
   saveChartSettings,
@@ -12,6 +16,12 @@ import { useAuth } from "./auth-context";
 
 const DEBOUNCE_MS = 1500;
 
+function activeSymbols(watchlists: Watchlist[], activeId: string): string[] {
+  const w = watchlists.find((x) => x.id === activeId);
+  if (!w) return [];
+  return w.items.filter((i) => i.type === "symbol").map((i) => i.value);
+}
+
 export function useCloudSync() {
   const { user } = useAuth();
   const initializedRef = useRef(false);
@@ -21,7 +31,8 @@ export function useCloudSync() {
   const indicators = useChartStore((s) => s.indicators);
   const hidden = useChartStore((s) => s.hidden);
   const config = useChartStore((s) => s.config);
-  const watchlist = useChartStore((s) => s.watchlist);
+  const watchlists = useChartStore((s) => s.watchlists);
+  const activeWatchlistId = useChartStore((s) => s.activeWatchlistId);
 
   const setSymbol = useChartStore((s) => s.setSymbol);
   const setTimeframe = useChartStore((s) => s.setTimeframe);
@@ -47,8 +58,29 @@ export function useCloudSync() {
         });
       }
 
-      if (wl) {
-        useChartStore.setState({ watchlist: wl });
+      if (wl && wl.length > 0) {
+        // Merge cloud symbols into the active watchlist as new entries (without
+        // duplicating). Preserves any labels/multi-list structure the user has
+        // locally.
+        useChartStore.setState((state) => {
+          const next = state.watchlists.map((w) => {
+            if (w.id !== state.activeWatchlistId) return w;
+            const have = new Set(
+              w.items.filter((i) => i.type === "symbol").map((i) => i.value),
+            );
+            const adds = wl
+              .filter((s) => !have.has(s))
+              .map((sym) => ({
+                id: Math.random().toString(36).slice(2, 10),
+                type: "symbol" as const,
+                value: sym,
+              }));
+            return adds.length === 0
+              ? w
+              : { ...w, items: [...w.items, ...adds] };
+          });
+          return { watchlists: next };
+        });
       }
     }
 
@@ -75,16 +107,18 @@ export function useCloudSync() {
     };
   }, [user, symbol, timeframe, indicators, hidden, config]);
 
-  // Debounced watchlist sync
+  // Debounced watchlist sync — only the active watchlist's symbols are pushed,
+  // since the cloud table stores a flat list (labels live local-only for now).
   const wlTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!user || !initializedRef.current) return;
     if (wlTimerRef.current) clearTimeout(wlTimerRef.current);
+    const symbols = activeSymbols(watchlists, activeWatchlistId);
     wlTimerRef.current = setTimeout(() => {
-      saveWatchlist(watchlist);
+      saveWatchlist(symbols);
     }, DEBOUNCE_MS);
     return () => {
       if (wlTimerRef.current) clearTimeout(wlTimerRef.current);
     };
-  }, [user, watchlist]);
+  }, [user, watchlists, activeWatchlistId]);
 }
