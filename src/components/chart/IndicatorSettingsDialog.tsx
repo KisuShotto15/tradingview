@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { ColorPicker } from "@/components/ui/color-picker";
 import {
   useChartStore,
   DEFAULT_CONFIG,
@@ -117,22 +118,12 @@ function EMAForm({
         max={500}
         onChange={(n) => setPeriod(n)}
       />
-      <label className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-tv-text-muted">
           Color
         </span>
-        <div className="flex items-center gap-2">
-          <input
-            type="color"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-            className="h-7 w-9 cursor-pointer rounded border border-tv-border bg-transparent p-0.5"
-          />
-          <span className="font-mono text-[10px] uppercase text-tv-text-muted">
-            {color}
-          </span>
-        </div>
-      </label>
+        <ColorPicker value={color} onChange={(v) => setColor(v)} />
+      </div>
       <label className="flex items-center justify-between gap-3">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-tv-text-muted">
           Line width
@@ -405,15 +396,10 @@ function ColorPick({
   onChange: (v: string) => void;
 }) {
   return (
-    <label className="flex items-center justify-between gap-2">
+    <div className="flex items-center justify-between gap-2">
       <span className="text-xs text-tv-text">{label}</span>
-      <input
-        type="color"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-6 w-8 cursor-pointer rounded border border-tv-border bg-transparent p-0.5"
-      />
-    </label>
+      <ColorPicker value={value} onChange={onChange} />
+    </div>
   );
 }
 

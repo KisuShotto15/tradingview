@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { ColorPicker } from "@/components/ui/color-picker";
 import {
   useChartStore,
   DEFAULT_CHART_COLORS,
@@ -160,15 +161,5 @@ function ColorSwatch({
   value: string;
   onChange: (v: string) => void;
 }) {
-  return (
-    <div className="relative">
-      <input
-        type="color"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-7 w-9 cursor-pointer rounded border border-tv-border bg-transparent p-0.5"
-        title={value}
-      />
-    </div>
-  );
+  return <ColorPicker value={value} onChange={onChange} />;
 }
