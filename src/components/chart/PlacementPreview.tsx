@@ -1,7 +1,9 @@
 "use client";
 
-import type { IChartApi, ISeriesApi, UTCTimestamp } from "lightweight-charts";
+import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { DrawingTool } from "@/lib/store/chart-store";
+import type { Candle } from "@/lib/binance/types";
+import { timeToX } from "@/lib/chart/coords";
 
 interface Point {
   time: number;
@@ -15,6 +17,8 @@ interface Props {
   cursor: Point | null;
   chart: IChartApi | null;
   candleSeries: ISeriesApi<"Candlestick"> | null;
+  candles: Candle[];
+  intervalSec: number;
   width: number;
   height: number;
 }
@@ -30,21 +34,20 @@ export function PlacementPreview({
   cursor,
   chart,
   candleSeries,
+  candles,
+  intervalSec,
   width,
   height,
 }: Props) {
   if (!chart || !candleSeries || !cursor) return null;
 
-  const toX = (t: number): number | null => {
-    const x = chart.timeScale().timeToCoordinate(t as UTCTimestamp);
-    return x === null ? null : x;
-  };
+  const toX = (t: number): number | null =>
+    timeToX(chart, t, candles, intervalSec);
   const toY = (p: number): number | null => {
     const y = candleSeries.priceToCoordinate(p);
     return y === null ? null : y;
   };
 
-  // Single-click tool needs first point only (cursor used for the leading edge)
   if (!first) return null;
 
   const aX = toX(first.time);
@@ -54,12 +57,10 @@ export function PlacementPreview({
 
   if (tool === "trendline" || tool === "ray") {
     if (aX === null || aY === null || bX === null || bY === null) return null;
-    // For a ray, we'd extend infinitely; preview just shows the segment
     return (
       <svg
         className="pointer-events-none absolute inset-0"
-        width={width}
-        height={height}
+        style={{ width, height }}
       >
         <line
           x1={aX}
@@ -71,6 +72,7 @@ export function PlacementPreview({
           strokeDasharray={PREVIEW_DASH}
         />
         <circle cx={aX} cy={aY} r={3} fill={PREVIEW_STROKE} />
+        <circle cx={bX} cy={bY} r={3} fill={PREVIEW_STROKE} fillOpacity={0.5} />
       </svg>
     );
   }
@@ -86,13 +88,11 @@ export function PlacementPreview({
     const left = Math.min(aX, bX);
     const right = Math.max(aX, bX);
     const w = Math.max(right - left, 4);
-    const isLong = tool === "long";
-    const targetColor = isLong ? "rgba(38, 166, 154, 0.18)" : "rgba(38, 166, 154, 0.18)";
+    const targetColor = "rgba(38, 166, 154, 0.18)";
     const stopColor = "rgba(239, 83, 80, 0.18)";
     if (eY === null || tY === null || sY === null) return null;
     return (
-      <svg className="pointer-events-none absolute inset-0" width={width} height={height}>
-        {/* Profit zone */}
+      <svg className="pointer-events-none absolute inset-0" style={{ width, height }}>
         <rect
           x={left}
           y={Math.min(eY, tY)}
@@ -103,7 +103,6 @@ export function PlacementPreview({
           strokeDasharray={PREVIEW_DASH}
           strokeWidth={1}
         />
-        {/* Loss zone */}
         <rect
           x={left}
           y={Math.min(eY, sY)}
@@ -126,7 +125,7 @@ export function PlacementPreview({
     const top = Math.min(aY, bY);
     const bottom = Math.max(aY, bY);
     return (
-      <svg className="pointer-events-none absolute inset-0" width={width} height={height}>
+      <svg className="pointer-events-none absolute inset-0" style={{ width, height }}>
         <rect
           x={left}
           y={top}
@@ -146,7 +145,7 @@ export function PlacementPreview({
     const left = Math.min(aX, bX);
     const right = Math.max(aX, bX);
     return (
-      <svg className="pointer-events-none absolute inset-0" width={width} height={height}>
+      <svg className="pointer-events-none absolute inset-0" style={{ width, height }}>
         <rect
           x={left}
           y={0}
@@ -171,7 +170,7 @@ export function PlacementPreview({
       label: lv.toFixed(3),
     }));
     return (
-      <svg className="pointer-events-none absolute inset-0" width={width} height={height}>
+      <svg className="pointer-events-none absolute inset-0" style={{ width, height }}>
         {lines.map((l, i) => (
           <line
             key={i}
@@ -190,12 +189,10 @@ export function PlacementPreview({
   }
 
   if (tool === "parallel-channel") {
-    // First click sets a, second sets b (baseline), cursor is preview b or c
     if (extra.length === 0) {
-      // Show baseline preview from a to cursor
       if (aX === null || aY === null || bX === null || bY === null) return null;
       return (
-        <svg className="pointer-events-none absolute inset-0" width={width} height={height}>
+        <svg className="pointer-events-none absolute inset-0" style={{ width, height }}>
           <line
             x1={aX}
             y1={aY}
@@ -209,7 +206,6 @@ export function PlacementPreview({
         </svg>
       );
     } else {
-      // Show baseline + parallel-offset preview
       const b = extra[0];
       const baseX1 = toX(first.time);
       const baseY1 = toY(first.price);
@@ -222,20 +218,16 @@ export function PlacementPreview({
         baseX2 === null || baseY2 === null ||
         cX === null || cY === null
       ) return null;
-      // Parallel: shift baseline so it passes through cursor at same x
-      // Slope: (baseY2 - baseY1) / (baseX2 - baseX1)
       const dx = baseX2 - baseX1;
       const dy = baseY2 - baseY1;
       const slope = dx === 0 ? 0 : dy / dx;
-      // The parallel line passes through (cX, cY)
-      // y = slope * (x - cX) + cY
       const offset = cY - (slope * (cX - baseX1) + baseY1);
       const pX1 = baseX1;
       const pY1 = baseY1 + offset;
       const pX2 = baseX2;
       const pY2 = baseY2 + offset;
       return (
-        <svg className="pointer-events-none absolute inset-0" width={width} height={height}>
+        <svg className="pointer-events-none absolute inset-0" style={{ width, height }}>
           <line
             x1={baseX1}
             y1={baseY1}
@@ -268,6 +260,8 @@ interface MagnetProps {
   target: Point | null;
   chart: IChartApi | null;
   candleSeries: ISeriesApi<"Candlestick"> | null;
+  candles: Candle[];
+  intervalSec: number;
   width: number;
   height: number;
 }
@@ -277,15 +271,17 @@ export function MagnetIndicator({
   target,
   chart,
   candleSeries,
+  candles,
+  intervalSec,
   width,
   height,
 }: MagnetProps) {
   if (!target || !chart || !candleSeries) return null;
-  const x = chart.timeScale().timeToCoordinate(target.time as UTCTimestamp);
+  const x = timeToX(chart, target.time, candles, intervalSec);
   const y = candleSeries.priceToCoordinate(target.price);
   if (x === null || y === null) return null;
   return (
-    <svg className="pointer-events-none absolute inset-0" width={width} height={height}>
+    <svg className="pointer-events-none absolute inset-0" style={{ width, height }}>
       <circle cx={x} cy={y} r={5} fill="none" stroke="#ffb74d" strokeWidth={2} />
       <circle cx={x} cy={y} r={2} fill="#ffb74d" />
     </svg>

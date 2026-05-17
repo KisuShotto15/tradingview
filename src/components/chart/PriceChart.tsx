@@ -40,6 +40,7 @@ import { IndicatorPill } from "./IndicatorPill";
 import { MeasureOverlay } from "./MeasureOverlay";
 import { DrawingsLayer } from "./drawings/DrawingsLayer";
 import { PlacementPreview, MagnetIndicator } from "./PlacementPreview";
+import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { generateId, FIB_LEVELS_DEFAULT } from "@/lib/drawings/types";
@@ -275,10 +276,23 @@ export function PriceChart({ symbol, timeframe }: Props) {
       if (rawPrice === null || !isFinite(rawPrice as number)) return;
       let price: number = rawPrice as number;
 
+      // Resolve cursor time — extrapolate past last candle if needed
+      const intervalSec = timeframeToSeconds(
+        useChartStore.getState().timeframe,
+      );
+      let resolvedTime: number | null = param.time ? Number(param.time) : null;
+      if (resolvedTime === null) {
+        resolvedTime = xToTime(
+          chart,
+          param.point.x,
+          candlesRef.current,
+          intervalSec,
+        );
+      }
+
       // Magnet: Ctrl held → snap price to nearest OHLC of the closest candle
-      if (param.sourceEvent?.ctrlKey && param.time) {
-        const t = Number(param.time);
-        const snapped = snapToOHLC(price, t, candlesRef.current);
+      if (param.sourceEvent?.ctrlKey && resolvedTime !== null) {
+        const snapped = snapToOHLC(price, resolvedTime, candlesRef.current);
         if (snapped !== null) price = snapped;
       }
 
@@ -300,32 +314,32 @@ export function PriceChart({ symbol, timeframe }: Props) {
       }
 
       if (toolRef.current === "vline") {
-        if (!param.time) return;
+        if (resolvedTime === null) return;
         void drawingsApiRef.current.add({
           id: generateId(),
           kind: "vline",
           symbol: symbolRef.current,
-          time: Number(param.time),
+          time: resolvedTime,
         });
         setToolRef.current("cursor");
         return;
       }
 
       if (toolRef.current === "hray") {
-        if (!param.time) return;
+        if (resolvedTime === null) return;
         void drawingsApiRef.current.add({
           id: generateId(),
           kind: "hray",
           symbol: symbolRef.current,
-          anchor: { time: Number(param.time), price },
+          anchor: { time: resolvedTime, price },
         });
         setToolRef.current("cursor");
         return;
       }
 
       if (toolRef.current === "trendline" || toolRef.current === "ray") {
-        if (!param.time) return;
-        const time = Number(param.time);
+        if (resolvedTime === null) return;
+        const time = resolvedTime;
         const first = firstPointRef.current;
         const kind = toolRef.current;
         if (!first) {
@@ -347,8 +361,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
       }
 
       if (toolRef.current === "long" || toolRef.current === "short") {
-        if (!param.time) return;
-        const time = Number(param.time);
+        if (resolvedTime === null) return;
+        const time = resolvedTime;
         const first = firstPointRef.current;
         const kind = toolRef.current;
         if (!first) {
@@ -377,8 +391,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
       }
 
       if (toolRef.current === "price-range") {
-        if (!param.time) return;
-        const time = Number(param.time);
+        if (resolvedTime === null) return;
+        const time = resolvedTime;
         const first = firstPointRef.current;
         if (!first) {
           firstPointRef.current = { time, price };
@@ -401,8 +415,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
       }
 
       if (toolRef.current === "date-range") {
-        if (!param.time) return;
-        const time = Number(param.time);
+        if (resolvedTime === null) return;
+        const time = resolvedTime;
         const first = firstPointRef.current;
         if (!first) {
           firstPointRef.current = { time, price };
@@ -423,8 +437,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
       }
 
       if (toolRef.current === "fib-retracement") {
-        if (!param.time) return;
-        const time = Number(param.time);
+        if (resolvedTime === null) return;
+        const time = resolvedTime;
         const first = firstPointRef.current;
         if (!first) {
           firstPointRef.current = { time, price };
@@ -446,8 +460,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
       }
 
       if (toolRef.current === "parallel-channel") {
-        if (!param.time) return;
-        const time = Number(param.time);
+        if (resolvedTime === null) return;
+        const time = resolvedTime;
         placementPointsRef.current.push({ time, price });
         if (placementPointsRef.current.length >= 3) {
           const [a, b, c] = placementPointsRef.current;
@@ -475,8 +489,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
       }
 
       if (toolRef.current === "measure") {
-        if (!param.time) return;
-        const time = Number(param.time);
+        if (resolvedTime === null) return;
+        const time = resolvedTime;
         const current = measureRef.current;
         if (current.phase === "idle") {
           setMeasure({
@@ -505,11 +519,24 @@ export function PriceChart({ symbol, timeframe }: Props) {
       // Compute the cursor's (time, price) — used by placement preview + magnet
       let cursorTime: number | null = null;
       let cursorPrice: number | null = null;
-      if (param.point && param.time && candleSeriesRef.current) {
+      if (param.point && candleSeriesRef.current) {
         const p = candleSeriesRef.current.coordinateToPrice(param.point.y);
         if (p !== null && isFinite(p as number)) {
-          cursorTime = Number(param.time);
           cursorPrice = p as number;
+          if (param.time) {
+            cursorTime = Number(param.time);
+          } else {
+            // Past last candle / before first — extrapolate
+            const intervalSec = timeframeToSeconds(
+              useChartStore.getState().timeframe,
+            );
+            cursorTime = xToTime(
+              chart,
+              param.point.x,
+              candlesRef.current,
+              intervalSec,
+            );
+          }
         }
       }
 
@@ -1583,6 +1610,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
           cursor={previewState.cursor}
           chart={chartRef.current}
           candleSeries={candleSeriesRef.current}
+          candles={candlesRef.current}
+          intervalSec={timeframeToSeconds(timeframe)}
           width={containerSize.width}
           height={containerSize.height}
         />
@@ -1592,6 +1621,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
           target={magnetTarget}
           chart={chartRef.current}
           candleSeries={candleSeriesRef.current}
+          candles={candlesRef.current}
+          intervalSec={timeframeToSeconds(timeframe)}
           width={containerSize.width}
           height={containerSize.height}
         />
