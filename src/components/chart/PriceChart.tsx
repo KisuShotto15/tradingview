@@ -25,6 +25,7 @@ import { IndicatorPill } from "./IndicatorPill";
 import { MeasureOverlay } from "./MeasureOverlay";
 import { DrawingsLayer } from "./drawings/DrawingsLayer";
 import { useDrawings } from "@/lib/supabase/use-drawings";
+import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { generateId } from "@/lib/drawings/types";
 
 interface MeasurePoint {
@@ -108,6 +109,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const macdSignalRef = useRef<ISeriesApi<"Line"> | null>(null);
   const macdHistRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const candlesRef = useRef<Candle[]>([]);
+  const firstPointRef = useRef<{ time: number; price: number } | null>(null);
 
   const indicators = useChartStore((s) => s.indicators);
   const hidden = useChartStore((s) => s.hidden);
@@ -229,6 +231,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
       const price = candleSeriesRef.current.coordinateToPrice(param.point.y);
       if (price === null || !isFinite(price)) return;
 
+      // Cursor click on empty chart area → deselect any selected drawing
+      if (toolRef.current === "cursor") {
+        useDrawingsStore.getState().setSelected(null);
+        return;
+      }
+
       if (toolRef.current === "hline") {
         void drawingsApiRef.current.add({
           id: generateId(),
@@ -261,6 +269,26 @@ export function PriceChart({ symbol, timeframe }: Props) {
           anchor: { time: Number(param.time), price },
         });
         setToolRef.current("cursor");
+        return;
+      }
+
+      if (toolRef.current === "trendline") {
+        if (!param.time) return;
+        const time = Number(param.time);
+        const first = firstPointRef.current;
+        if (!first) {
+          firstPointRef.current = { time, price };
+        } else {
+          void drawingsApiRef.current.add({
+            id: generateId(),
+            kind: "trendline",
+            symbol: symbolRef.current,
+            a: first,
+            b: { time, price },
+          });
+          firstPointRef.current = null;
+          setToolRef.current("cursor");
+        }
         return;
       }
 
@@ -540,6 +568,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
         tool !== "cursor" && tool !== "eraser" ? "crosshair" : "";
     }
     if (tool !== "measure") setMeasure(INITIAL_MEASURE);
+    // Reset multi-click placement when switching tools
+    firstPointRef.current = null;
   }, [tool]);
 
   function updateEMAs() {
@@ -793,6 +823,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         symbol={symbol}
         chart={chartRef.current}
         candleSeries={candleSeriesRef.current}
+        container={containerRef.current}
         width={containerSize.width}
         height={containerSize.height}
         renderTick={renderTick}

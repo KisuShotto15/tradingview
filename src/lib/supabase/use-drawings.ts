@@ -33,6 +33,25 @@ export function useDrawings() {
     if (user) await insertDrawing(d);
   }
 
+  /**
+   * Apply a patch immediately (used during drag). Does NOT push to history
+   * and does NOT touch the cloud — call `commit()` once the gesture ends.
+   */
+  function updateLive(id: string, patch: Partial<Drawing>) {
+    updateLocal(id, patch);
+  }
+
+  /**
+   * Commit the current drawing state as one history entry and sync to cloud.
+   * `previous` should be the snapshot taken BEFORE the gesture started.
+   */
+  async function commit(id: string, previous: Drawing) {
+    const current = useDrawingsStore.getState().drawings.find((d) => d.id === id);
+    if (!current) return;
+    historyStack.pushOp({ type: "update", id, previous, next: current });
+    if (user) await updateDrawingCloud(current);
+  }
+
   async function update(
     id: string,
     patch: Partial<Drawing>,
@@ -69,17 +88,14 @@ export function useDrawings() {
     if (!op) return;
     switch (op.type) {
       case "add":
-        // Was added → undo = remove
         removeLocal(op.drawing.id);
         if (user) await deleteDrawingCloud(op.drawing.id);
         break;
       case "remove":
-        // Was removed → undo = re-add
         addLocal(op.drawing);
         if (user) await insertDrawing(op.drawing);
         break;
       case "update":
-        // Was updated → undo = restore previous
         updateLocal(op.id, op.previous);
         if (user) await updateDrawingCloud(op.previous);
         break;
@@ -105,5 +121,5 @@ export function useDrawings() {
     }
   }
 
-  return { add, update, remove, clear, undo, redo };
+  return { add, update, updateLive, commit, remove, clear, undo, redo };
 }

@@ -7,6 +7,7 @@ import {
   MoveRight,
   Ruler,
   Trash2,
+  TrendingUp,
   Undo2,
   Redo2,
   type LucideIcon,
@@ -42,6 +43,12 @@ const TOOLS: ToolDef[] = [
     icon: MoveRight,
     label: "Horizontal ray",
     hint: "Click anchor — extends to the right",
+  },
+  {
+    key: "trendline",
+    icon: TrendingUp,
+    label: "Trend line",
+    hint: "Click start, then end. Drag endpoints to edit",
   },
   {
     key: "measure",
