@@ -1,33 +1,53 @@
 "use client";
 
-import { Code2, LogOut, Zap } from "lucide-react";
+import { Code2, LogOut, Redo2, Undo2 } from "lucide-react";
 import { SymbolSelector } from "@/components/chart/SymbolSelector";
 import { TimeframeSelector } from "@/components/chart/TimeframeSelector";
 import { IndicatorMenu } from "@/components/chart/IndicatorMenu";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useDrawings } from "@/lib/supabase/use-drawings";
 
 export function Header() {
   const { user, signOut } = useAuth();
+  const { undo, redo } = useDrawings();
 
   return (
     <header className="flex h-12 items-center justify-between border-b border-tv-border bg-tv-panel px-3">
       <div className="flex items-center gap-1">
-        <div className="flex items-center gap-2 pr-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded bg-tv-blue/20">
-            <Zap className="h-4 w-4 text-tv-blue" />
-          </div>
-          <span className="text-sm font-semibold text-tv-text">
-            TradingView <span className="text-tv-text-muted">Free</span>
-          </span>
-        </div>
-        <Separator orientation="vertical" className="h-6 bg-tv-border" />
         <SymbolSelector />
         <Separator orientation="vertical" className="h-6 bg-tv-border" />
         <TimeframeSelector />
         <Separator orientation="vertical" className="mx-1 h-6 bg-tv-border" />
         <IndicatorMenu />
+        <Separator orientation="vertical" className="mx-1 h-6 bg-tv-border" />
+        <Tooltip>
+          <TooltipTrigger
+            onClick={() => void undo()}
+            aria-label="Undo"
+            className="flex h-7 w-7 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+          >
+            <Undo2 className="h-3.5 w-3.5" />
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">
+            <div className="font-medium">Undo</div>
+            <div className="mt-0.5 text-[10px] text-tv-text-muted">Ctrl+Z</div>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            onClick={() => void redo()}
+            aria-label="Redo"
+            className="flex h-7 w-7 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+          >
+            <Redo2 className="h-3.5 w-3.5" />
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">
+            <div className="font-medium">Redo</div>
+            <div className="mt-0.5 text-[10px] text-tv-text-muted">Ctrl+Shift+Z</div>
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       <div className="flex items-center gap-2">

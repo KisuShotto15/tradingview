@@ -17,8 +17,6 @@ import {
   Slash,
   Trash2,
   TrendingUp,
-  Undo2,
-  Redo2,
   type LucideIcon,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -117,7 +115,7 @@ export function LeftSidebar() {
   const symbol = useChartStore((s) => s.symbol);
   const selectedId = useDrawingsStore((s) => s.selectedId);
   const drawings = useDrawingsStore((s) => s.drawings);
-  const { clear: clearDrawings, undo, redo, update } = useDrawings();
+  const { clear: clearDrawings, update } = useDrawings();
 
   const selected = drawings.find((d) => d.id === selectedId);
   const canAlert = selected && (selected.kind === "hline" || selected.kind === "hray");
@@ -164,34 +162,6 @@ export function LeftSidebar() {
       })}
 
       <div className="my-1 h-px w-6 bg-tv-border" />
-
-      <Tooltip>
-        <TooltipTrigger
-          onClick={() => void undo()}
-          aria-label="Undo"
-          className="flex h-8 w-8 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
-        >
-          <Undo2 className="h-4 w-4" />
-        </TooltipTrigger>
-        <TooltipContent side="right" className="text-xs">
-          <div className="font-medium">Undo</div>
-          <div className="mt-0.5 text-[10px] text-tv-text-muted">Ctrl+Z</div>
-        </TooltipContent>
-      </Tooltip>
-
-      <Tooltip>
-        <TooltipTrigger
-          onClick={() => void redo()}
-          aria-label="Redo"
-          className="flex h-8 w-8 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
-        >
-          <Redo2 className="h-4 w-4" />
-        </TooltipTrigger>
-        <TooltipContent side="right" className="text-xs">
-          <div className="font-medium">Redo</div>
-          <div className="mt-0.5 text-[10px] text-tv-text-muted">Ctrl+Shift+Z</div>
-        </TooltipContent>
-      </Tooltip>
 
       <Tooltip>
         <TooltipTrigger
