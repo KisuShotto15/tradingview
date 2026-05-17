@@ -796,62 +796,63 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (!chartRef.current) return;
     if (indicators.vumanchu && !vmcWt2Ref.current) {
       const paneIndex = panelIndexFor("vumanchu");
-      // WT1 (lighter blue area)
+      // WT1 (light blue area)
       vmcWt1Ref.current = chartRef.current.addSeries(
         AreaSeries,
         {
-          lineColor: "#4994ec",
-          topColor: "rgba(73, 148, 236, 0.4)",
-          bottomColor: "rgba(73, 148, 236, 0.05)",
-          lineWidth: 1,
+          lineColor: "#90caf9",
+          topColor: "rgba(144, 202, 249, 0.6)",
+          bottomColor: "rgba(144, 202, 249, 0.1)",
+          lineWidth: 2,
           priceLineVisible: false,
           lastValueVisible: false,
         },
         paneIndex,
       );
-      // WT2 (darker purple area)
+      // WT2 (deeper indigo area)
       vmcWt2Ref.current = chartRef.current.addSeries(
         AreaSeries,
         {
-          lineColor: "#1f1559",
-          topColor: "rgba(31, 21, 89, 0.7)",
-          bottomColor: "rgba(31, 21, 89, 0.15)",
-          lineWidth: 1,
+          lineColor: "#5b62e5",
+          topColor: "rgba(91, 98, 229, 0.5)",
+          bottomColor: "rgba(91, 98, 229, 0.08)",
+          lineWidth: 2,
           priceLineVisible: false,
           lastValueVisible: false,
         },
         paneIndex,
       );
-      // VWAP wt1-wt2 — white wash
+      // VWAP (wt1 - wt2) — white wash
       vmcVwapRef.current = chartRef.current.addSeries(
         AreaSeries,
         {
-          lineColor: "rgba(255, 255, 255, 0.6)",
-          topColor: "rgba(255, 255, 255, 0.18)",
-          bottomColor: "rgba(255, 255, 255, 0.02)",
+          lineColor: "rgba(255, 255, 255, 0.7)",
+          topColor: "rgba(255, 255, 255, 0.25)",
+          bottomColor: "rgba(255, 255, 255, 0.03)",
           lineWidth: 1,
           priceLineVisible: false,
           lastValueVisible: false,
         },
         paneIndex,
       );
-      // MFI area
+      // MFI area (green for positive, faded for negative)
       vmcMfiRef.current = chartRef.current.addSeries(
         AreaSeries,
         {
-          lineColor: "transparent",
-          topColor: "rgba(62, 225, 69, 0.4)",
-          bottomColor: "rgba(62, 225, 69, 0.05)",
+          lineColor: "rgba(62, 225, 69, 0.8)",
+          topColor: "rgba(62, 225, 69, 0.55)",
+          bottomColor: "rgba(239, 83, 80, 0.4)",
+          lineWidth: 1,
           priceLineVisible: false,
           lastValueVisible: false,
         },
         paneIndex,
       );
-      // RSI line
+      // RSI line (vivid purple)
       vmcRsiRef.current = chartRef.current.addSeries(
         LineSeries,
         {
-          color: "#c33ee1",
+          color: "#e040fb",
           lineWidth: 2,
           priceLineVisible: false,
           lastValueVisible: false,
@@ -926,6 +927,22 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (macdSignalRef.current) macdSignalRef.current.applyOptions({ visible: v("macd") });
     if (macdHistRef.current) macdHistRef.current.applyOptions({ visible: v("macd") });
     if (volumeSeriesRef.current) volumeSeriesRef.current.applyOptions({ visible: v("volume") });
+    // ADX pane
+    if (adxRef.current) adxRef.current.applyOptions({ visible: v("adx") });
+    if (adxPlusDIRef.current) adxPlusDIRef.current.applyOptions({ visible: v("adx") });
+    if (adxMinusDIRef.current) adxMinusDIRef.current.applyOptions({ visible: v("adx") });
+    // Squeeze pane
+    if (squeezeHistRef.current) squeezeHistRef.current.applyOptions({ visible: v("squeeze") });
+    if (squeezeDotsRef.current) squeezeDotsRef.current.applyOptions({ visible: v("squeeze") });
+    // VuManChu pane
+    if (vmcWt1Ref.current) vmcWt1Ref.current.applyOptions({ visible: v("vumanchu") });
+    if (vmcWt2Ref.current) vmcWt2Ref.current.applyOptions({ visible: v("vumanchu") });
+    if (vmcVwapRef.current) vmcVwapRef.current.applyOptions({ visible: v("vumanchu") });
+    if (vmcMfiRef.current) vmcMfiRef.current.applyOptions({ visible: v("vumanchu") });
+    if (vmcRsiRef.current) vmcRsiRef.current.applyOptions({ visible: v("vumanchu") });
+    if (vmcObRef.current) vmcObRef.current.applyOptions({ visible: v("vumanchu") });
+    if (vmcOsRef.current) vmcOsRef.current.applyOptions({ visible: v("vumanchu") });
+    if (vmcZeroRef.current) vmcZeroRef.current.applyOptions({ visible: v("vumanchu") });
   }, [indicators, hidden]);
 
   // Apply chart color customization
