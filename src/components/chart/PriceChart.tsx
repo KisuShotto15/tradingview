@@ -155,6 +155,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const userEMAs = useChartStore((s) => s.userEMAs);
   const removeUserEMA = useChartStore((s) => s.removeUserEMA);
   const toggleUserEMAHidden = useChartStore((s) => s.toggleUserEMAHidden);
+  const squeezeStyle = useChartStore((s) => s.squeezeStyle);
   const chartColors = useChartStore((s) => s.chartColors);
   chartColorsRef.current = chartColors;
   const tool = useChartStore((s) => s.tool);
@@ -1055,7 +1056,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
   useEffect(() => {
     updateSqueeze();
-  }, [config.squeezeBB, config.squeezeBBMult, config.squeezeKC, config.squeezeKCMult]);
+  }, [config.squeezeBB, config.squeezeBBMult, config.squeezeKC, config.squeezeKCMult, squeezeStyle]);
 
   useEffect(() => {
     updateVumanchu();
@@ -1185,6 +1186,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     const c = candlesRef.current;
     if (c.length === 0 || !squeezeHistRef.current) return;
     const cfg = configRef.current;
+    const style = useChartStore.getState().squeezeStyle;
     const pts = squeezeMomentum(c, {
       bbLength: cfg.squeezeBB,
       bbMult: cfg.squeezeBBMult,
@@ -1192,10 +1194,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
       kcMult: cfg.squeezeKCMult,
     });
     const COLORS: Record<string, string> = {
-      lime: "#00ff00",
-      green: "#26a69a",
-      red: "#ef5350",
-      maroon: "#a52a2a",
+      lime: style.momentumIncPos,
+      green: style.momentumDecPos,
+      red: style.momentumDecNeg,
+      maroon: style.momentumIncNeg,
     };
     squeezeHistRef.current.setData(
       pts.map((p) => ({
@@ -1204,18 +1206,23 @@ export function PriceChart({ symbol, timeframe }: Props) {
         color: COLORS[p.color],
       })),
     );
+    squeezeHistRef.current.applyOptions({ visible: style.showMomentum && indicators.squeeze });
     // Zero-line dots: invisible line at 0 + colored markers for squeeze state
     squeezeDotsRef.current?.setData(
       pts.map((p) => ({ time: p.time as UTCTimestamp, value: 0 })),
     );
     if (squeezeDotsMarkersRef.current) {
-      const markers: SeriesMarker<Time>[] = pts.map((p) => ({
+      const markers: SeriesMarker<Time>[] = !style.showSqueezeDots ? [] : pts.map((p) => ({
         time: p.time as UTCTimestamp,
         position: "inBar",
         shape: "circle",
         size: 0.5,
         color:
-          p.state === "on" ? "#000000" : p.state === "off" ? "#787b86" : "#2962ff",
+          p.state === "on"
+            ? style.squeezeOn
+            : p.state === "off"
+              ? style.squeezeOff
+              : style.noSqueeze,
       }));
       squeezeDotsMarkersRef.current.setMarkers(markers);
     }

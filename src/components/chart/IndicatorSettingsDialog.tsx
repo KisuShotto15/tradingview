@@ -12,9 +12,11 @@ import { Button } from "@/components/ui/button";
 import {
   useChartStore,
   DEFAULT_CONFIG,
+  DEFAULT_SQUEEZE_STYLE,
   type IndicatorKey,
   type IndicatorConfig,
   type UserEMA,
+  type SqueezeStyle,
 } from "@/lib/store/chart-store";
 
 const TITLES: Record<IndicatorKey, string> = {
@@ -268,28 +270,32 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
         />
       )}
       {target === "squeeze" && (
-        <div className="grid grid-cols-2 gap-2">
-          <Field
-            label="BB length"
-            value={draft.squeezeBB}
-            onChange={(n) => setDraft((d) => ({ ...d, squeezeBB: n }))}
-          />
-          <FloatField
-            label="BB mult"
-            value={draft.squeezeBBMult}
-            onChange={(n) => setDraft((d) => ({ ...d, squeezeBBMult: n }))}
-          />
-          <Field
-            label="KC length"
-            value={draft.squeezeKC}
-            onChange={(n) => setDraft((d) => ({ ...d, squeezeKC: n }))}
-          />
-          <FloatField
-            label="KC mult"
-            value={draft.squeezeKCMult}
-            onChange={(n) => setDraft((d) => ({ ...d, squeezeKCMult: n }))}
-          />
-        </div>
+        <>
+          <SectionLabel>Inputs</SectionLabel>
+          <div className="grid grid-cols-2 gap-2">
+            <Field
+              label="BB length"
+              value={draft.squeezeBB}
+              onChange={(n) => setDraft((d) => ({ ...d, squeezeBB: n }))}
+            />
+            <FloatField
+              label="BB mult"
+              value={draft.squeezeBBMult}
+              onChange={(n) => setDraft((d) => ({ ...d, squeezeBBMult: n }))}
+            />
+            <Field
+              label="KC length"
+              value={draft.squeezeKC}
+              onChange={(n) => setDraft((d) => ({ ...d, squeezeKC: n }))}
+            />
+            <FloatField
+              label="KC mult"
+              value={draft.squeezeKCMult}
+              onChange={(n) => setDraft((d) => ({ ...d, squeezeKCMult: n }))}
+            />
+          </div>
+          <SqueezeStyleSection />
+        </>
       )}
       {target === "volume" && (
         <p className="text-xs text-tv-text-muted">
@@ -379,4 +385,138 @@ function FloatField({
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mt-1 text-[10px] font-bold uppercase tracking-wider text-tv-text-muted">
+      {children}
+    </div>
+  );
+}
+
+function ColorPick({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-2">
+      <span className="text-xs text-tv-text">{label}</span>
+      <input
+        type="color"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-6 w-8 cursor-pointer rounded border border-tv-border bg-transparent p-0.5"
+      />
+    </label>
+  );
+}
+
+function Toggle({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center justify-between gap-2">
+      <span className="text-xs text-tv-text">{label}</span>
+      <input
+        type="checkbox"
+        checked={value}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-4 w-4 cursor-pointer accent-tv-blue"
+      />
+    </label>
+  );
+}
+
+function SqueezeStyleSection() {
+  const style = useChartStore((s) => s.squeezeStyle);
+  const setSqueezeStyle = useChartStore((s) => s.setSqueezeStyle);
+  const [draft, setDraft] = useState<SqueezeStyle>(style);
+
+  useEffect(() => {
+    setDraft(style);
+  }, [style]);
+
+  function commit(patch: Partial<SqueezeStyle>) {
+    const next = { ...draft, ...patch };
+    setDraft(next);
+    setSqueezeStyle(patch);
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <SectionLabel>Style — Momentum</SectionLabel>
+      <ColorPick
+        label="Increasing positive"
+        value={draft.momentumIncPos}
+        onChange={(v) => commit({ momentumIncPos: v })}
+      />
+      <ColorPick
+        label="Decreasing positive"
+        value={draft.momentumDecPos}
+        onChange={(v) => commit({ momentumDecPos: v })}
+      />
+      <ColorPick
+        label="Increasing negative"
+        value={draft.momentumIncNeg}
+        onChange={(v) => commit({ momentumIncNeg: v })}
+      />
+      <ColorPick
+        label="Decreasing negative"
+        value={draft.momentumDecNeg}
+        onChange={(v) => commit({ momentumDecNeg: v })}
+      />
+
+      <SectionLabel>Style — Squeeze dots</SectionLabel>
+      <ColorPick
+        label="Squeeze on"
+        value={draft.squeezeOn}
+        onChange={(v) => commit({ squeezeOn: v })}
+      />
+      <ColorPick
+        label="Squeeze off"
+        value={draft.squeezeOff}
+        onChange={(v) => commit({ squeezeOff: v })}
+      />
+      <ColorPick
+        label="No squeeze"
+        value={draft.noSqueeze}
+        onChange={(v) => commit({ noSqueeze: v })}
+      />
+
+      <SectionLabel>Visibility</SectionLabel>
+      <Toggle
+        label="Show momentum histogram"
+        value={draft.showMomentum}
+        onChange={(v) => commit({ showMomentum: v })}
+      />
+      <Toggle
+        label="Show squeeze state dots"
+        value={draft.showSqueezeDots}
+        onChange={(v) => commit({ showSqueezeDots: v })}
+      />
+
+      <button
+        type="button"
+        onClick={() => {
+          setDraft(DEFAULT_SQUEEZE_STYLE);
+          setSqueezeStyle(DEFAULT_SQUEEZE_STYLE);
+        }}
+        className="mt-1 self-end text-[10px] text-tv-text-muted underline hover:text-tv-text"
+      >
+        Reset style
+      </button>
+    </div>
+  );
 }

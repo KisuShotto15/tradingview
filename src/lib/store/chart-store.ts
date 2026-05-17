@@ -114,6 +114,34 @@ export const DEFAULT_CHART_COLORS: ChartColors = {
   wickDown: "#ef5350",
 };
 
+/** Per-indicator style overrides (colors, visibility) */
+export interface SqueezeStyle {
+  /** Momentum histogram colors (Pine: lime/green/red/maroon) */
+  momentumIncPos: string;
+  momentumDecPos: string;
+  momentumIncNeg: string;
+  momentumDecNeg: string;
+  /** Squeeze state dots (on/off/no-squeeze) */
+  squeezeOn: string;
+  squeezeOff: string;
+  noSqueeze: string;
+  /** Visibility toggles */
+  showMomentum: boolean;
+  showSqueezeDots: boolean;
+}
+
+export const DEFAULT_SQUEEZE_STYLE: SqueezeStyle = {
+  momentumIncPos: "#00ff00",
+  momentumDecPos: "#26a69a",
+  momentumIncNeg: "#a52a2a",
+  momentumDecNeg: "#ef5350",
+  squeezeOn: "#000000",
+  squeezeOff: "#787b86",
+  noSqueeze: "#2962ff",
+  showMomentum: true,
+  showSqueezeDots: true,
+};
+
 export const DEFAULT_WATCHLIST = [
   "BTCUSDT",
   "ETHUSDT",
@@ -141,6 +169,8 @@ interface ChartState {
   config: IndicatorConfig;
   /** User-added EMA instances (multi-instance) */
   userEMAs: UserEMA[];
+  /** Squeeze indicator style overrides */
+  squeezeStyle: SqueezeStyle;
   watchlist: string[];
 
   /** Chart color customization */
@@ -165,6 +195,7 @@ interface ChartState {
   removeUserEMA: (id: string) => void;
   updateUserEMA: (id: string, patch: Partial<UserEMA>) => void;
   toggleUserEMAHidden: (id: string) => void;
+  setSqueezeStyle: (patch: Partial<SqueezeStyle>) => void;
   addToWatchlist: (s: string) => void;
   removeFromWatchlist: (s: string) => void;
   setTool: (t: DrawingTool) => void;
@@ -203,6 +234,7 @@ export const useChartStore = create<ChartState>()(
         { id: randomId(), period: 20, color: EMA_PALETTE[0], lineWidth: 1, hidden: false },
         { id: randomId(), period: 50, color: EMA_PALETTE[1], lineWidth: 1, hidden: false },
       ],
+      squeezeStyle: { ...DEFAULT_SQUEEZE_STYLE },
       watchlist: DEFAULT_WATCHLIST,
       chartColors: { ...DEFAULT_CHART_COLORS },
       tool: "cursor",
@@ -262,6 +294,8 @@ export const useChartStore = create<ChartState>()(
             e.id === id ? { ...e, hidden: !e.hidden } : e,
           ),
         })),
+      setSqueezeStyle: (patch) =>
+        set((s) => ({ squeezeStyle: { ...s.squeezeStyle, ...patch } })),
       addToWatchlist: (s) =>
         set((state) => ({
           watchlist: state.watchlist.includes(s)
@@ -289,6 +323,7 @@ export const useChartStore = create<ChartState>()(
         hidden: s.hidden,
         config: s.config,
         userEMAs: s.userEMAs,
+        squeezeStyle: s.squeezeStyle,
         watchlist: s.watchlist,
         chartColors: s.chartColors,
       }),
