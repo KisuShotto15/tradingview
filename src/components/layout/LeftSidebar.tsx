@@ -3,6 +3,8 @@
 import {
   MousePointer2,
   Minus,
+  ArrowDownToLine,
+  ArrowUpToLine,
   CalendarRange,
   GripVertical,
   Layers3,
@@ -84,6 +86,18 @@ const TOOLS: ToolDef[] = [
     icon: CalendarRange,
     label: "Date range",
     hint: "Click two timestamps to measure duration",
+  },
+  {
+    key: "long",
+    icon: ArrowUpToLine,
+    label: "Long position",
+    hint: "Click entry, then target. Stop auto-set; drag handles to edit",
+  },
+  {
+    key: "short",
+    icon: ArrowDownToLine,
+    label: "Short position",
+    hint: "Click entry, then target. Stop auto-set; drag handles to edit",
   },
   {
     key: "measure",

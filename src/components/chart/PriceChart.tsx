@@ -294,6 +294,34 @@ export function PriceChart({ symbol, timeframe }: Props) {
         return;
       }
 
+      if (toolRef.current === "long" || toolRef.current === "short") {
+        if (!param.time) return;
+        const time = Number(param.time);
+        const first = firstPointRef.current;
+        const kind = toolRef.current;
+        if (!first) {
+          firstPointRef.current = { time, price };
+        } else {
+          const entry = first.price;
+          const target = price;
+          // Default stop: same absolute distance from entry as target, opposite side
+          const stop = entry - (target - entry);
+          void drawingsApiRef.current.add({
+            id: generateId(),
+            kind,
+            symbol: symbolRef.current,
+            entry,
+            stop,
+            target,
+            timeA: first.time,
+            timeB: time,
+          } as Parameters<typeof drawingsApiRef.current.add>[0]);
+          firstPointRef.current = null;
+          setToolRef.current("cursor");
+        }
+        return;
+      }
+
       if (toolRef.current === "price-range") {
         if (!param.time) return;
         const time = Number(param.time);

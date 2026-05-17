@@ -13,6 +13,7 @@ import { ParallelChannelDraw } from "./ParallelChannelDraw";
 import { FibRetracementDraw } from "./FibRetracementDraw";
 import { PriceRangeDraw } from "./PriceRangeDraw";
 import { DateRangeDraw } from "./DateRangeDraw";
+import { PositionDraw } from "./PositionDraw";
 
 interface Props {
   symbol: string;
@@ -170,6 +171,32 @@ function renderDrawing(args: RenderArgs) {
           selected={selected}
           onSelect={onSelect}
           chart={chart}
+          candleSeries={candleSeries}
+          container={container}
+        />
+      );
+    }
+    case "long":
+    case "short": {
+      const xA = chart.timeScale().timeToCoordinate(d.timeA as UTCTimestamp);
+      const xB = chart.timeScale().timeToCoordinate(d.timeB as UTCTimestamp);
+      const yEntry = candleSeries.priceToCoordinate(d.entry);
+      const yStop = candleSeries.priceToCoordinate(d.stop);
+      const yTarget = candleSeries.priceToCoordinate(d.target);
+      if (xA === null || xB === null || yEntry === null || yStop === null || yTarget === null) {
+        return null;
+      }
+      return (
+        <PositionDraw
+          key={d.id}
+          drawing={d}
+          xA={xA}
+          xB={xB}
+          yEntry={yEntry}
+          yStop={yStop}
+          yTarget={yTarget}
+          selected={selected}
+          onSelect={onSelect}
           candleSeries={candleSeries}
           container={container}
         />
