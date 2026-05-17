@@ -171,6 +171,8 @@ interface ChartState {
   userEMAs: UserEMA[];
   /** Squeeze indicator style overrides */
   squeezeStyle: SqueezeStyle;
+  /** Logarithmic price scale */
+  logScale: boolean;
   watchlist: string[];
 
   /** Chart color customization */
@@ -196,6 +198,7 @@ interface ChartState {
   updateUserEMA: (id: string, patch: Partial<UserEMA>) => void;
   toggleUserEMAHidden: (id: string) => void;
   setSqueezeStyle: (patch: Partial<SqueezeStyle>) => void;
+  setLogScale: (v: boolean) => void;
   addToWatchlist: (s: string) => void;
   removeFromWatchlist: (s: string) => void;
   setTool: (t: DrawingTool) => void;
@@ -235,6 +238,7 @@ export const useChartStore = create<ChartState>()(
         { id: randomId(), period: 50, color: EMA_PALETTE[1], lineWidth: 1, hidden: false },
       ],
       squeezeStyle: { ...DEFAULT_SQUEEZE_STYLE },
+      logScale: false,
       watchlist: DEFAULT_WATCHLIST,
       chartColors: { ...DEFAULT_CHART_COLORS },
       tool: "cursor",
@@ -296,6 +300,7 @@ export const useChartStore = create<ChartState>()(
         })),
       setSqueezeStyle: (patch) =>
         set((s) => ({ squeezeStyle: { ...s.squeezeStyle, ...patch } })),
+      setLogScale: (logScale) => set({ logScale }),
       addToWatchlist: (s) =>
         set((state) => ({
           watchlist: state.watchlist.includes(s)
@@ -324,6 +329,7 @@ export const useChartStore = create<ChartState>()(
         config: s.config,
         userEMAs: s.userEMAs,
         squeezeStyle: s.squeezeStyle,
+        logScale: s.logScale,
         watchlist: s.watchlist,
         chartColors: s.chartColors,
       }),

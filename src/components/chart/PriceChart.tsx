@@ -8,6 +8,7 @@ import {
   HistogramSeries,
   AreaSeries,
   CrosshairMode,
+  PriceScaleMode,
   createSeriesMarkers,
   type IChartApi,
   type ISeriesApi,
@@ -163,6 +164,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const removeUserEMA = useChartStore((s) => s.removeUserEMA);
   const toggleUserEMAHidden = useChartStore((s) => s.toggleUserEMAHidden);
   const squeezeStyle = useChartStore((s) => s.squeezeStyle);
+  const logScale = useChartStore((s) => s.logScale);
   const chartColors = useChartStore((s) => s.chartColors);
   chartColorsRef.current = chartColors;
   const tool = useChartStore((s) => s.tool);
@@ -1016,6 +1018,14 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (vmcZeroRef.current) vmcZeroRef.current.applyOptions({ visible: v("vumanchu") });
   }, [indicators, hidden]);
 
+  // Apply logarithmic price scale toggle
+  useEffect(() => {
+    if (!chartRef.current) return;
+    chartRef.current.priceScale("right").applyOptions({
+      mode: logScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
+    });
+  }, [logScale]);
+
   // Apply chart color customization
   useEffect(() => {
     if (!chartRef.current) return;
@@ -1628,6 +1638,28 @@ export function PriceChart({ symbol, timeframe }: Props) {
         />
       )}
       {measureRender}
+
+      {/* Bottom-right corner buttons: log scale toggle + auto-fit */}
+      <div className="pointer-events-auto absolute bottom-9 right-16 z-10 flex items-center gap-1">
+        <button
+          onClick={() => useChartStore.getState().setLogScale(!logScale)}
+          title={logScale ? "Switch to linear scale" : "Switch to logarithmic scale"}
+          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
+            logScale
+              ? "bg-tv-blue/20 text-tv-blue"
+              : "bg-tv-panel/80 text-tv-text-muted hover:text-tv-text"
+          }`}
+        >
+          log
+        </button>
+        <button
+          onClick={() => chartRef.current?.timeScale().fitContent()}
+          title="Fit content"
+          className="rounded bg-tv-panel/80 px-1.5 py-0.5 text-[10px] font-semibold text-tv-text-muted hover:text-tv-text"
+        >
+          auto
+        </button>
+      </div>
 
       {/* Top-left of main pane: symbol info + OHLC + Volume pill + EMA pills */}
       <div
