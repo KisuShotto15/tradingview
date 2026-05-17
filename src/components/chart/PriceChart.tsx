@@ -110,6 +110,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const macdHistRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const candlesRef = useRef<Candle[]>([]);
   const firstPointRef = useRef<{ time: number; price: number } | null>(null);
+  const placementPointsRef = useRef<Array<{ time: number; price: number }>>([]);
 
   const indicators = useChartStore((s) => s.indicators);
   const hidden = useChartStore((s) => s.hidden);
@@ -288,6 +289,26 @@ export function PriceChart({ symbol, timeframe }: Props) {
             b: { time, price },
           } as Parameters<typeof drawingsApiRef.current.add>[0]);
           firstPointRef.current = null;
+          setToolRef.current("cursor");
+        }
+        return;
+      }
+
+      if (toolRef.current === "parallel-channel") {
+        if (!param.time) return;
+        const time = Number(param.time);
+        placementPointsRef.current.push({ time, price });
+        if (placementPointsRef.current.length >= 3) {
+          const [a, b, c] = placementPointsRef.current;
+          void drawingsApiRef.current.add({
+            id: generateId(),
+            kind: "parallel-channel",
+            symbol: symbolRef.current,
+            a,
+            b,
+            c,
+          });
+          placementPointsRef.current = [];
           setToolRef.current("cursor");
         }
         return;
@@ -571,6 +592,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (tool !== "measure") setMeasure(INITIAL_MEASURE);
     // Reset multi-click placement when switching tools
     firstPointRef.current = null;
+    placementPointsRef.current = [];
   }, [tool]);
 
   function updateEMAs() {

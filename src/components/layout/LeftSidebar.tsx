@@ -4,6 +4,7 @@ import {
   MousePointer2,
   Minus,
   GripVertical,
+  Layers3,
   MoveRight,
   Ruler,
   Slash,
@@ -56,6 +57,12 @@ const TOOLS: ToolDef[] = [
     icon: Slash,
     label: "Ray",
     hint: "Click origin, then direction — extends to infinity",
+  },
+  {
+    key: "parallel-channel",
+    icon: Layers3,
+    label: "Parallel channel",
+    hint: "Click A, then B (baseline), then C (parallel offset)",
   },
   {
     key: "measure",

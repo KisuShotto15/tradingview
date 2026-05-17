@@ -9,6 +9,7 @@ import { VLineDraw } from "./VLineDraw";
 import { HRayDraw } from "./HRayDraw";
 import { TrendLineDraw } from "./TrendLineDraw";
 import { RayDraw } from "./RayDraw";
+import { ParallelChannelDraw } from "./ParallelChannelDraw";
 
 interface Props {
   symbol: string;
@@ -137,6 +138,32 @@ function renderDrawing(args: RenderArgs) {
           ay={ay}
           bx={bx}
           by={by}
+          selected={selected}
+          onSelect={onSelect}
+          chart={chart}
+          candleSeries={candleSeries}
+          container={container}
+        />
+      );
+    }
+    case "parallel-channel": {
+      const ax = chart.timeScale().timeToCoordinate(d.a.time as UTCTimestamp);
+      const ay = candleSeries.priceToCoordinate(d.a.price);
+      const bx = chart.timeScale().timeToCoordinate(d.b.time as UTCTimestamp);
+      const by = candleSeries.priceToCoordinate(d.b.price);
+      const cx = chart.timeScale().timeToCoordinate(d.c.time as UTCTimestamp);
+      const cy = candleSeries.priceToCoordinate(d.c.price);
+      if (ax === null || ay === null || bx === null || by === null || cx === null || cy === null) return null;
+      return (
+        <ParallelChannelDraw
+          key={d.id}
+          drawing={d}
+          ax={ax}
+          ay={ay}
+          bx={bx}
+          by={by}
+          cx={cx}
+          cy={cy}
           selected={selected}
           onSelect={onSelect}
           chart={chart}
