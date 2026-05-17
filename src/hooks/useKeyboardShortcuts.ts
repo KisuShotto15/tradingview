@@ -3,23 +3,46 @@
 import { useEffect } from "react";
 import { useChartStore } from "@/lib/store/chart-store";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
+import { useDrawings } from "@/lib/supabase/use-drawings";
 
 /**
  * Global keyboard shortcuts for the chart.
  *
  * - Esc: cancel placement → reset tool to cursor → deselect drawing
- * - (Ctrl+Z / Del wired up in later phases)
+ * - Ctrl+Z / Cmd+Z: undo
+ * - Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y: redo
  */
 export function useKeyboardShortcuts() {
   const setTool = useChartStore((s) => s.setTool);
   const resetPlacement = useDrawingsStore((s) => s.resetPlacement);
   const setSelected = useDrawingsStore((s) => s.setSelected);
+  const { undo, redo } = useDrawings();
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       // Ignore when typing in inputs
       const target = e.target as HTMLElement | null;
-      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable) {
+      if (
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+
+      const isUndo = (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z";
+      const isRedo =
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "z") ||
+        ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y");
+
+      if (isUndo) {
+        e.preventDefault();
+        void undo();
+        return;
+      }
+      if (isRedo) {
+        e.preventDefault();
+        void redo();
         return;
       }
 
@@ -44,5 +67,5 @@ export function useKeyboardShortcuts() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [setTool, resetPlacement, setSelected]);
+  }, [setTool, resetPlacement, setSelected, undo, redo]);
 }

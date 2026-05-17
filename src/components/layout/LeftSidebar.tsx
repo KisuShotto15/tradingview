@@ -1,6 +1,14 @@
 "use client";
 
-import { MousePointer2, Minus, Ruler, Trash2, Lock } from "lucide-react";
+import {
+  MousePointer2,
+  Minus,
+  Ruler,
+  Trash2,
+  Undo2,
+  Redo2,
+  type LucideIcon,
+} from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useChartStore, type DrawingTool } from "@/lib/store/chart-store";
 import { useDrawings } from "@/lib/supabase/use-drawings";
@@ -8,38 +16,32 @@ import { cn } from "@/lib/utils";
 
 interface ToolDef {
   key: DrawingTool;
-  icon: typeof MousePointer2;
+  icon: LucideIcon;
   label: string;
   hint?: string;
 }
 
 const TOOLS: ToolDef[] = [
-  { key: "cursor", icon: MousePointer2, label: "Cursor", hint: "Modo navegación" },
+  { key: "cursor", icon: MousePointer2, label: "Cursor", hint: "Pan & navigate" },
   {
     key: "hline",
     icon: Minus,
-    label: "Línea horizontal",
-    hint: "Click en el chart para marcar un precio",
+    label: "Horizontal line",
+    hint: "Click on the chart to mark a price",
   },
   {
     key: "measure",
     icon: Ruler,
-    label: "Regla / Medir",
-    hint: "Click en dos puntos para medir Δ precio, %, barras y volumen",
+    label: "Measure",
+    hint: "Click two points to measure Δ price, %, bars, volume",
   },
-];
-
-const LOCKED = [
-  { label: "Línea de tendencia" },
-  { label: "Fibonacci" },
-  { label: "Texto" },
 ];
 
 export function LeftSidebar() {
   const tool = useChartStore((s) => s.tool);
   const setTool = useChartStore((s) => s.setTool);
   const symbol = useChartStore((s) => s.symbol);
-  const { clear: clearDrawings } = useDrawings();
+  const { clear: clearDrawings, undo, redo } = useDrawings();
 
   return (
     <aside className="flex w-11 flex-col items-center gap-0.5 border-r border-tv-border bg-tv-panel py-1.5">
@@ -70,41 +72,51 @@ export function LeftSidebar() {
         );
       })}
 
+      <div className="my-1 h-px w-6 bg-tv-border" />
+
+      <Tooltip>
+        <TooltipTrigger
+          onClick={() => void undo()}
+          aria-label="Undo"
+          className="flex h-8 w-8 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+        >
+          <Undo2 className="h-4 w-4" />
+        </TooltipTrigger>
+        <TooltipContent side="right" className="text-xs">
+          <div className="font-medium">Undo</div>
+          <div className="mt-0.5 text-[10px] text-tv-text-muted">Ctrl+Z</div>
+        </TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger
+          onClick={() => void redo()}
+          aria-label="Redo"
+          className="flex h-8 w-8 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+        >
+          <Redo2 className="h-4 w-4" />
+        </TooltipTrigger>
+        <TooltipContent side="right" className="text-xs">
+          <div className="font-medium">Redo</div>
+          <div className="mt-0.5 text-[10px] text-tv-text-muted">Ctrl+Shift+Z</div>
+        </TooltipContent>
+      </Tooltip>
+
       <Tooltip>
         <TooltipTrigger
           onClick={() => void clearDrawings(symbol)}
-          aria-label="Borrar dibujos"
+          aria-label="Clear drawings"
           className="flex h-8 w-8 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-red"
         >
           <Trash2 className="h-4 w-4" />
         </TooltipTrigger>
         <TooltipContent side="right" className="text-xs">
-          <div className="font-medium">Borrar dibujos</div>
+          <div className="font-medium">Clear drawings</div>
           <div className="mt-0.5 text-[10px] text-tv-text-muted">
-            Limpia las líneas de este símbolo
+            Remove all on this symbol
           </div>
         </TooltipContent>
       </Tooltip>
-
-      <div className="my-1 h-px w-6 bg-tv-border" />
-
-      {LOCKED.map((t) => (
-        <Tooltip key={t.label}>
-          <TooltipTrigger
-            disabled
-            aria-label={t.label}
-            className="flex h-8 w-8 cursor-not-allowed items-center justify-center rounded text-tv-text-dim opacity-40"
-          >
-            <Lock className="h-3.5 w-3.5" />
-          </TooltipTrigger>
-          <TooltipContent side="right" className="text-xs">
-            <div className="font-medium">{t.label}</div>
-            <div className="mt-0.5 text-[10px] text-tv-yellow">
-              Próximamente · video 3
-            </div>
-          </TooltipContent>
-        </Tooltip>
-      ))}
     </aside>
   );
 }

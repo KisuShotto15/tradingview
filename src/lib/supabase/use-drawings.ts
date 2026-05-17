@@ -8,12 +8,15 @@ import {
   clearDrawingsCloud,
 } from "./drawings-data";
 import { useAuth } from "./auth-context";
+import { historyStack } from "@/lib/drawings/history-instance";
 import type { Drawing } from "@/lib/drawings/types";
 
 /**
- * Wrapper around the drawings store that also persists to Supabase
- * when the user is authenticated. Components should use this hook
- * for any mutation that needs to sync to the cloud.
+ * Wrapper around the drawings store that also:
+ *  - Persists to Supabase when the user is authenticated
+ *  - Records operations to the undo/redo history stack
+ *
+ * Components should use this hook for any mutation that should be undoable.
  */
 export function useDrawings() {
   const { user } = useAuth();
@@ -22,28 +25,85 @@ export function useDrawings() {
   const removeLocal = useDrawingsStore((s) => s.removeDrawing);
   const clearLocal = useDrawingsStore((s) => s.clearDrawings);
 
-  async function add(d: Drawing) {
+  async function add(d: Drawing, opts: { recordHistory?: boolean } = {}) {
     addLocal(d);
+    if (opts.recordHistory !== false) {
+      historyStack.pushOp({ type: "add", drawing: d });
+    }
     if (user) await insertDrawing(d);
   }
 
-  async function update(id: string, patch: Partial<Drawing>) {
+  async function update(
+    id: string,
+    patch: Partial<Drawing>,
+    opts: { recordHistory?: boolean } = {},
+  ) {
+    const before = useDrawingsStore.getState().drawings.find((d) => d.id === id);
+    if (!before) return;
     updateLocal(id, patch);
-    if (user) {
-      const current = useDrawingsStore.getState().drawings.find((d) => d.id === id);
-      if (current) await updateDrawingCloud(current);
+    const after = useDrawingsStore.getState().drawings.find((d) => d.id === id);
+    if (!after) return;
+    if (opts.recordHistory !== false) {
+      historyStack.pushOp({ type: "update", id, previous: before, next: after });
     }
+    if (user) await updateDrawingCloud(after);
   }
 
-  async function remove(id: string) {
+  async function remove(id: string, opts: { recordHistory?: boolean } = {}) {
+    const before = useDrawingsStore.getState().drawings.find((d) => d.id === id);
     removeLocal(id);
+    if (before && opts.recordHistory !== false) {
+      historyStack.pushOp({ type: "remove", drawing: before });
+    }
     if (user) await deleteDrawingCloud(id);
   }
 
   async function clear(symbol?: string) {
     clearLocal(symbol);
+    historyStack.clear();
     if (user) await clearDrawingsCloud(symbol);
   }
 
-  return { add, update, remove, clear };
+  async function undo() {
+    const op = historyStack.popUndo();
+    if (!op) return;
+    switch (op.type) {
+      case "add":
+        // Was added → undo = remove
+        removeLocal(op.drawing.id);
+        if (user) await deleteDrawingCloud(op.drawing.id);
+        break;
+      case "remove":
+        // Was removed → undo = re-add
+        addLocal(op.drawing);
+        if (user) await insertDrawing(op.drawing);
+        break;
+      case "update":
+        // Was updated → undo = restore previous
+        updateLocal(op.id, op.previous);
+        if (user) await updateDrawingCloud(op.previous);
+        break;
+    }
+  }
+
+  async function redo() {
+    const op = historyStack.popRedo();
+    if (!op) return;
+    switch (op.type) {
+      case "add":
+        addLocal(op.drawing);
+        if (user) await insertDrawing(op.drawing);
+        break;
+      case "remove":
+        removeLocal(op.drawing.id);
+        if (user) await deleteDrawingCloud(op.drawing.id);
+        break;
+      case "update":
+        updateLocal(op.id, op.next);
+        if (user) await updateDrawingCloud(op.next);
+        break;
+    }
+  }
+
+  return { add, update, remove, clear, undo, redo };
 }
