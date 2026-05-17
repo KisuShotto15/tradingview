@@ -18,6 +18,12 @@ import {
 } from "lightweight-charts";
 import { fetchKlines } from "@/lib/binance/rest";
 import { getBinanceWS } from "@/lib/binance/ws";
+import {
+  fetchSyntheticKlines,
+  isSyntheticExpression,
+  extractSymbols,
+  evaluateCandleAt,
+} from "@/lib/binance/synthetic";
 import { ema, rsi, macd } from "@/lib/indicators";
 import { adx as adxCalc } from "@/lib/indicators/adx";
 import { squeezeMomentum } from "@/lib/indicators/squeeze";
@@ -1338,7 +1344,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
     async function load() {
       try {
-        const klines = await fetchKlines(symbol, timeframe, 1000);
+        const synthetic = isSyntheticExpression(symbol);
+        const klines = synthetic
+          ? await fetchSyntheticKlines(symbol, timeframe, 1000)
+          : await fetchKlines(symbol, timeframe, 1000);
         if (cancelled) return;
         candlesRef.current = klines;
         if (candleSeriesRef.current) {
@@ -1380,6 +1389,67 @@ export function PriceChart({ symbol, timeframe }: Props) {
         }
 
         const ws = getBinanceWS();
+        if (synthetic) {
+          // Subscribe to each component, recompute synthetic candle on update
+          const symbols = extractSymbols(symbol);
+          const lastBySym = new Map<string, Candle>();
+          const unsubs = symbols.map((s) =>
+            ws.subscribeKline({
+              symbol: s,
+              interval: timeframe,
+              onCandle: (k) => {
+                lastBySym.set(s, k);
+                if (lastBySym.size !== symbols.length) return;
+                const synth = evaluateCandleAt(symbol, lastBySym);
+                if (!synth) return;
+                if (!candleSeriesRef.current) return;
+                const arr = candlesRef.current;
+                const lastCandle = arr[arr.length - 1];
+                if (lastCandle && lastCandle.time === synth.time) {
+                  arr[arr.length - 1] = synth;
+                } else if (!lastCandle || synth.time > lastCandle.time) {
+                  arr.push(synth);
+                  if (arr.length > 2000) arr.shift();
+                } else {
+                  return;
+                }
+                candleSeriesRef.current.update({
+                  time: synth.time as UTCTimestamp,
+                  open: synth.open,
+                  high: synth.high,
+                  low: synth.low,
+                  close: synth.close,
+                });
+                if (volumeSeriesRef.current) {
+                  volumeSeriesRef.current.update({
+                    time: synth.time as UTCTimestamp,
+                    value: synth.volume,
+                    color:
+                      synth.close >= synth.open
+                        ? `${TV_COLORS.green}66`
+                        : `${TV_COLORS.red}66`,
+                  });
+                }
+                updateEMAs();
+                updateRSI();
+                updateMACD();
+                updateADX();
+                updateSqueeze();
+                updateVumanchu();
+                const prev = arr[arr.length - 2] ?? lastCandle;
+                setLastPrice({
+                  value: synth.close,
+                  pct:
+                    prev && prev.close !== 0
+                      ? ((synth.close - prev.close) / prev.close) * 100
+                      : 0,
+                });
+              },
+            }),
+          );
+          unsub = () => unsubs.forEach((u) => u());
+          return;
+        }
         unsub = ws.subscribeKline({
           symbol,
           interval: timeframe,

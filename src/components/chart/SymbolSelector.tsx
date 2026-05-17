@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { Search, ChevronDown } from "lucide-react";
+import { Search, ChevronDown, Sparkles } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { fetchExchangeSymbols } from "@/lib/binance/rest";
+import {
+  isSyntheticExpression,
+  extractSymbols,
+} from "@/lib/binance/synthetic";
 import { useChartStore } from "@/lib/store/chart-store";
 import { cn } from "@/lib/utils";
 import type { SymbolInfo } from "@/lib/binance/types";
@@ -32,18 +36,36 @@ export function SymbolSelector() {
     }
   }, [open, allSymbols.length]);
 
+  const trimmed = query.trim().toUpperCase();
+  const isExpression = isSyntheticExpression(trimmed);
+  const expressionValid = useMemo(() => {
+    if (!isExpression) return false;
+    const tokens = extractSymbols(trimmed);
+    if (tokens.length === 0) return false;
+    const known = new Set(allSymbols.map((s) => s.symbol));
+    return tokens.every((t) => known.has(t));
+  }, [isExpression, trimmed, allSymbols]);
+
   const filtered = useMemo(() => {
-    const q = query.trim().toUpperCase();
-    if (!q) return allSymbols.slice(0, 100);
+    if (!trimmed) return allSymbols.slice(0, 100);
+    if (isExpression) return [];
     return allSymbols
       .filter(
         (s) =>
-          s.symbol.includes(q) ||
-          s.baseAsset.includes(q) ||
-          s.quoteAsset.includes(q),
+          s.symbol.includes(trimmed) ||
+          s.baseAsset.includes(trimmed) ||
+          s.quoteAsset.includes(trimmed),
       )
       .slice(0, 100);
-  }, [query, allSymbols]);
+  }, [trimmed, allSymbols, isExpression]);
+
+  function selectExpression() {
+    if (!isExpression) return;
+    setSymbol(trimmed);
+    addToWatchlist(trimmed);
+    setOpen(false);
+    setQuery("");
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -59,15 +81,49 @@ export function SymbolSelector() {
         <div className="border-b border-tv-border p-3">
           <Input
             autoFocus
-            placeholder="BTC, ETH, SOL…"
+            placeholder="BTC, ETH, or expression: BTCUSDT/ETHUSDT…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && isExpression && expressionValid) {
+                e.preventDefault();
+                selectExpression();
+              }
+            }}
             className="bg-tv-bg"
           />
+          <p className="mt-1.5 text-[10px] text-tv-text-muted">
+            Combine symbols with{" "}
+            <code className="rounded bg-tv-bg px-1">+ - * /</code> and{" "}
+            <code className="rounded bg-tv-bg px-1">( )</code>. Example:{" "}
+            <code className="rounded bg-tv-bg px-1">BTCUSDT+ETHUSDT</code>.
+          </p>
         </div>
         <ScrollArea className="h-[400px]">
           <div className="flex flex-col">
-            {filtered.length === 0 && (
+            {isExpression && (
+              <button
+                onClick={selectExpression}
+                disabled={!expressionValid}
+                className={cn(
+                  "flex items-center justify-between border-b border-tv-border px-4 py-3 text-left text-xs",
+                  expressionValid
+                    ? "hover:bg-tv-panel-hover"
+                    : "cursor-not-allowed opacity-50",
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-3.5 w-3.5 text-tv-blue" />
+                  <span className="font-mono font-semibold text-tv-text">
+                    {trimmed}
+                  </span>
+                </div>
+                <span className="text-[10px] uppercase tracking-wider text-tv-text-muted">
+                  {expressionValid ? "Use expression" : "Unknown symbol"}
+                </span>
+              </button>
+            )}
+            {filtered.length === 0 && !isExpression && (
               <div className="p-4 text-center text-xs text-tv-text-muted">
                 No results
               </div>
