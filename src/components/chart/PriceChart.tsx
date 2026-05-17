@@ -101,9 +101,6 @@ interface HoverInfo {
 }
 
 interface LastValues {
-  ema20?: number;
-  ema50?: number;
-  ema200?: number;
   rsi?: number;
   macd?: number;
   macdSignal?: number;
@@ -121,9 +118,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
-  const ema20Ref = useRef<ISeriesApi<"Line"> | null>(null);
-  const ema50Ref = useRef<ISeriesApi<"Line"> | null>(null);
-  const ema200Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  /** Per-user EMA instance: id → series */
+  const emaSeriesMapRef = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
   const rsiRef = useRef<ISeriesApi<"Line"> | null>(null);
   const rsi30Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const rsi70Ref = useRef<ISeriesApi<"Line"> | null>(null);
@@ -156,6 +152,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const indicators = useChartStore((s) => s.indicators);
   const hidden = useChartStore((s) => s.hidden);
   const config = useChartStore((s) => s.config);
+  const userEMAs = useChartStore((s) => s.userEMAs);
+  const removeUserEMA = useChartStore((s) => s.removeUserEMA);
+  const toggleUserEMAHidden = useChartStore((s) => s.toggleUserEMAHidden);
   const chartColors = useChartStore((s) => s.chartColors);
   chartColorsRef.current = chartColors;
   const tool = useChartStore((s) => s.tool);
@@ -258,25 +257,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
       wickDownColor: initColors.wickDown,
       priceLineColor: TV_COLORS.textMuted,
       priceLineStyle: 2,
-    });
-
-    ema20Ref.current = chart.addSeries(LineSeries, {
-      color: INDICATOR_COLORS.ema20,
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-    });
-    ema50Ref.current = chart.addSeries(LineSeries, {
-      color: INDICATOR_COLORS.ema50,
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-    });
-    ema200Ref.current = chart.addSeries(LineSeries, {
-      color: INDICATOR_COLORS.ema200,
-      lineWidth: 2,
-      priceLineVisible: false,
-      lastValueVisible: false,
     });
 
     chartRef.current = chart;
@@ -613,9 +593,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       chartRef.current = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
-      ema20Ref.current = null;
-      ema50Ref.current = null;
-      ema200Ref.current = null;
+      emaSeriesMapRef.current.clear();
       rsiRef.current = null;
       rsi30Ref.current = null;
       rsi70Ref.current = null;
@@ -978,9 +956,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   // Visibility — eye toggle (hidden state) + enabled state combined
   useEffect(() => {
     const v = (key: IndicatorKey) => indicators[key] && !hidden[key];
-    ema20Ref.current?.applyOptions({ visible: v("ema20") });
-    ema50Ref.current?.applyOptions({ visible: v("ema50") });
-    ema200Ref.current?.applyOptions({ visible: v("ema200") });
+    // EMAs visibility is driven by per-instance `hidden` flag in the sync effect
     if (rsiRef.current) rsiRef.current.applyOptions({ visible: v("rsi") });
     if (rsi30Ref.current) rsi30Ref.current.applyOptions({ visible: v("rsi") });
     if (rsi70Ref.current) rsi70Ref.current.applyOptions({ visible: v("rsi") });
@@ -1028,10 +1004,42 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
   }, [chartColors]);
 
-  // Recompute indicators when config changes (periods)
+  // Sync user EMAs: create/remove series, update color/lineWidth, refresh data
   useEffect(() => {
+    if (!chartRef.current) return;
+    const map = emaSeriesMapRef.current;
+    const wantedIds = new Set(userEMAs.map((e) => e.id));
+    // Remove series no longer in the list
+    for (const [id, series] of Array.from(map.entries())) {
+      if (!wantedIds.has(id)) {
+        try {
+          chartRef.current.removeSeries(series);
+        } catch {}
+        map.delete(id);
+      }
+    }
+    // Add or update series for current instances
+    for (const e of userEMAs) {
+      let series = map.get(e.id);
+      if (!series) {
+        series = chartRef.current.addSeries(LineSeries, {
+          color: e.color,
+          lineWidth: (e.lineWidth as 1 | 2 | 3 | 4) ?? 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          visible: !e.hidden,
+        });
+        map.set(e.id, series);
+      } else {
+        series.applyOptions({
+          color: e.color,
+          lineWidth: (e.lineWidth as 1 | 2 | 3 | 4) ?? 1,
+          visible: !e.hidden,
+        });
+      }
+    }
     updateEMAs();
-  }, [config.ema20, config.ema50, config.ema200]);
+  }, [userEMAs]);
 
   useEffect(() => {
     updateRSI();
@@ -1097,40 +1105,17 @@ export function PriceChart({ symbol, timeframe }: Props) {
   function updateEMAs() {
     const c = candlesRef.current;
     if (c.length === 0) return;
-    const cfg = configRef.current;
-    let last20: number | undefined;
-    let last50: number | undefined;
-    let last200: number | undefined;
-
-    if (ema20Ref.current) {
-      const data = ema(c, cfg.ema20);
-      ema20Ref.current.setData(
+    const emas = useChartStore.getState().userEMAs;
+    for (const e of emas) {
+      const series = emaSeriesMapRef.current.get(e.id);
+      if (!series) continue;
+      const data = ema(c, e.period);
+      series.setData(
         data.map((p) => ({ time: p.time as UTCTimestamp, value: p.value })),
       );
-      last20 = data.at(-1)?.value;
-    }
-    if (ema50Ref.current) {
-      const data = ema(c, cfg.ema50);
-      ema50Ref.current.setData(
-        data.map((p) => ({ time: p.time as UTCTimestamp, value: p.value })),
-      );
-      last50 = data.at(-1)?.value;
-    }
-    if (ema200Ref.current) {
-      const data = ema(c, cfg.ema200);
-      ema200Ref.current.setData(
-        data.map((p) => ({ time: p.time as UTCTimestamp, value: p.value })),
-      );
-      last200 = data.at(-1)?.value;
     }
     const lastVol = c.at(-1)?.volume;
-    setLastValues((prev) => ({
-      ...prev,
-      ema20: last20,
-      ema50: last50,
-      ema200: last200,
-      volume: lastVol,
-    }));
+    setLastValues((prev) => ({ ...prev, volume: lastVol }));
   }
 
   function updateRSI() {
@@ -1594,39 +1579,17 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
         {/* Indicator pills for the main pane (fixed position below price) */}
         <div className="mt-1 flex flex-col items-start gap-1">
-          {indicators.ema20 && (
+          {userEMAs.map((e) => (
             <IndicatorPill
-              name={`EMA ${config.ema20}`}
-              value={lastValues.ema20 !== undefined ? formatPrice(lastValues.ema20) : undefined}
-              color={INDICATOR_COLORS.ema20}
-              hidden={hidden.ema20}
-              onToggleHide={() => toggleHidden("ema20")}
-              onSettings={() => setSettingsTarget("ema20")}
-              onRemove={() => removeIndicator("ema20")}
+              key={e.id}
+              name={`EMA ${e.period}`}
+              color={e.color}
+              hidden={e.hidden}
+              onToggleHide={() => toggleUserEMAHidden(e.id)}
+              onSettings={() => setSettingsTarget({ kind: "ema", id: e.id })}
+              onRemove={() => removeUserEMA(e.id)}
             />
-          )}
-          {indicators.ema50 && (
-            <IndicatorPill
-              name={`EMA ${config.ema50}`}
-              value={lastValues.ema50 !== undefined ? formatPrice(lastValues.ema50) : undefined}
-              color={INDICATOR_COLORS.ema50}
-              hidden={hidden.ema50}
-              onToggleHide={() => toggleHidden("ema50")}
-              onSettings={() => setSettingsTarget("ema50")}
-              onRemove={() => removeIndicator("ema50")}
-            />
-          )}
-          {indicators.ema200 && (
-            <IndicatorPill
-              name={`EMA ${config.ema200}`}
-              value={lastValues.ema200 !== undefined ? formatPrice(lastValues.ema200) : undefined}
-              color={INDICATOR_COLORS.ema200}
-              hidden={hidden.ema200}
-              onToggleHide={() => toggleHidden("ema200")}
-              onSettings={() => setSettingsTarget("ema200")}
-              onRemove={() => removeIndicator("ema200")}
-            />
-          )}
+          ))}
           {indicators.volume && (
             <IndicatorPill
               name="Vol"

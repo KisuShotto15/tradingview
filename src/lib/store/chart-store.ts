@@ -5,9 +5,6 @@ import { persist } from "zustand/middleware";
 import type { Timeframe } from "@/lib/binance/types";
 
 export type IndicatorKey =
-  | "ema20"
-  | "ema50"
-  | "ema200"
   | "rsi"
   | "macd"
   | "volume"
@@ -32,9 +29,6 @@ export type DrawingTool =
   | "short";
 
 export interface IndicatorConfig {
-  ema20: number;
-  ema50: number;
-  ema200: number;
   rsi: number;
   macdFast: number;
   macdSlow: number;
@@ -51,9 +45,6 @@ export interface IndicatorConfig {
 }
 
 export const DEFAULT_CONFIG: IndicatorConfig = {
-  ema20: 20,
-  ema50: 50,
-  ema200: 200,
   rsi: 14,
   macdFast: 12,
   macdSlow: 26,
@@ -70,9 +61,6 @@ export const DEFAULT_CONFIG: IndicatorConfig = {
 };
 
 export const INDICATOR_COLORS: Record<IndicatorKey, string> = {
-  ema20: "#ffb74d",
-  ema50: "#2962ff",
-  ema200: "#ab47bc",
   rsi: "#ab47bc",
   macd: "#2962ff",
   volume: "#787b86",
@@ -80,6 +68,26 @@ export const INDICATOR_COLORS: Record<IndicatorKey, string> = {
   squeeze: "#2962ff",
   vumanchu: "#4994ec",
 };
+
+/** A user-added EMA instance. Multiple can coexist. */
+export interface UserEMA {
+  id: string;
+  period: number;
+  color: string;
+  lineWidth: number;
+  hidden: boolean;
+}
+
+const EMA_PALETTE = [
+  "#ffb74d",
+  "#2962ff",
+  "#ab47bc",
+  "#26a69a",
+  "#ef5350",
+  "#42a5f5",
+  "#ec407a",
+  "#ffee58",
+];
 
 export interface ChartColors {
   bg: string;
@@ -119,6 +127,9 @@ export const DEFAULT_WATCHLIST = [
   "MATICUSDT",
 ];
 
+/** Tagged settings target — either a builtin indicator key or an EMA instance id. */
+export type SettingsTarget = IndicatorKey | { kind: "ema"; id: string };
+
 interface ChartState {
   symbol: string;
   timeframe: Timeframe;
@@ -128,6 +139,8 @@ interface ChartState {
   hidden: Record<IndicatorKey, boolean>;
   /** Periods and parameters for each indicator */
   config: IndicatorConfig;
+  /** User-added EMA instances (multi-instance) */
+  userEMAs: UserEMA[];
   watchlist: string[];
 
   /** Chart color customization */
@@ -136,8 +149,8 @@ interface ChartState {
   // Ephemeral UI state (not persisted)
   tool: DrawingTool;
   symbolDialogOpen: boolean;
-  /** Which indicator's settings dialog is open (null = closed) */
-  settingsTarget: IndicatorKey | null;
+  /** Which indicator/EMA's settings dialog is open (null = closed) */
+  settingsTarget: SettingsTarget | null;
   chartSettingsOpen: boolean;
 
   // Actions
@@ -148,12 +161,20 @@ interface ChartState {
   removeIndicator: (key: IndicatorKey) => void;
   toggleHidden: (key: IndicatorKey) => void;
   setConfig: (patch: Partial<IndicatorConfig>) => void;
+  addUserEMA: () => void;
+  removeUserEMA: (id: string) => void;
+  updateUserEMA: (id: string, patch: Partial<UserEMA>) => void;
+  toggleUserEMAHidden: (id: string) => void;
   addToWatchlist: (s: string) => void;
   removeFromWatchlist: (s: string) => void;
   setTool: (t: DrawingTool) => void;
   setSymbolDialogOpen: (v: boolean) => void;
-  setSettingsTarget: (k: IndicatorKey | null) => void;
+  setSettingsTarget: (k: SettingsTarget | null) => void;
   setChartSettingsOpen: (v: boolean) => void;
+}
+
+function randomId(): string {
+  return Math.random().toString(36).slice(2, 10);
 }
 
 export const useChartStore = create<ChartState>()(
@@ -162,9 +183,6 @@ export const useChartStore = create<ChartState>()(
       symbol: "BTCUSDT",
       timeframe: "15m" as Timeframe,
       indicators: {
-        ema20: true,
-        ema50: true,
-        ema200: false,
         rsi: true,
         macd: false,
         volume: true,
@@ -173,9 +191,6 @@ export const useChartStore = create<ChartState>()(
         vumanchu: false,
       },
       hidden: {
-        ema20: false,
-        ema50: false,
-        ema200: false,
         rsi: false,
         macd: false,
         volume: false,
@@ -184,6 +199,10 @@ export const useChartStore = create<ChartState>()(
         vumanchu: false,
       },
       config: { ...DEFAULT_CONFIG },
+      userEMAs: [
+        { id: randomId(), period: 20, color: EMA_PALETTE[0], lineWidth: 1, hidden: false },
+        { id: randomId(), period: 50, color: EMA_PALETTE[1], lineWidth: 1, hidden: false },
+      ],
       watchlist: DEFAULT_WATCHLIST,
       chartColors: { ...DEFAULT_CHART_COLORS },
       tool: "cursor",
@@ -196,7 +215,6 @@ export const useChartStore = create<ChartState>()(
       toggleIndicator: (key) =>
         set((s) => ({
           indicators: { ...s.indicators, [key]: !s.indicators[key] },
-          // When re-adding, ensure not hidden
           hidden: !s.indicators[key]
             ? { ...s.hidden, [key]: false }
             : s.hidden,
@@ -210,6 +228,40 @@ export const useChartStore = create<ChartState>()(
         set((s) => ({ hidden: { ...s.hidden, [key]: !s.hidden[key] } })),
       setConfig: (patch) =>
         set((s) => ({ config: { ...s.config, ...patch } })),
+      addUserEMA: () =>
+        set((s) => {
+          const usedColors = new Set(s.userEMAs.map((e) => e.color));
+          const nextColor =
+            EMA_PALETTE.find((c) => !usedColors.has(c)) ??
+            EMA_PALETTE[s.userEMAs.length % EMA_PALETTE.length];
+          // Suggest a longer period than any existing EMA, or 9 if none
+          const maxPeriod = s.userEMAs.reduce((m, e) => Math.max(m, e.period), 0);
+          const suggested = maxPeriod > 0 ? Math.min(maxPeriod * 2, 500) : 9;
+          return {
+            userEMAs: [
+              ...s.userEMAs,
+              {
+                id: randomId(),
+                period: suggested,
+                color: nextColor,
+                lineWidth: 1,
+                hidden: false,
+              },
+            ],
+          };
+        }),
+      removeUserEMA: (id) =>
+        set((s) => ({ userEMAs: s.userEMAs.filter((e) => e.id !== id) })),
+      updateUserEMA: (id, patch) =>
+        set((s) => ({
+          userEMAs: s.userEMAs.map((e) => (e.id === id ? { ...e, ...patch } : e)),
+        })),
+      toggleUserEMAHidden: (id) =>
+        set((s) => ({
+          userEMAs: s.userEMAs.map((e) =>
+            e.id === id ? { ...e, hidden: !e.hidden } : e,
+          ),
+        })),
       addToWatchlist: (s) =>
         set((state) => ({
           watchlist: state.watchlist.includes(s)
@@ -229,12 +281,14 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: "tv-gratis-chart-state",
+      version: 2,
       partialize: (s) => ({
         symbol: s.symbol,
         timeframe: s.timeframe,
         indicators: s.indicators,
         hidden: s.hidden,
         config: s.config,
+        userEMAs: s.userEMAs,
         watchlist: s.watchlist,
         chartColors: s.chartColors,
       }),

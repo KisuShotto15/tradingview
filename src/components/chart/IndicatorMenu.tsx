@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Check } from "lucide-react";
+import { Activity, Check, Plus } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,9 +21,6 @@ interface Entry {
 }
 
 const ENTRIES: Entry[] = [
-  { key: "ema20", group: "Moving averages", label: (c) => `EMA ${c.ema20}` },
-  { key: "ema50", group: "Moving averages", label: (c) => `EMA ${c.ema50}` },
-  { key: "ema200", group: "Moving averages", label: (c) => `EMA ${c.ema200}` },
   { key: "volume", group: "Volume", label: () => "Volume" },
   { key: "rsi", group: "Oscillators", label: (c) => `RSI (${c.rsi})` },
   {
@@ -48,13 +45,16 @@ export function IndicatorMenu() {
   const indicators = useChartStore((s) => s.indicators);
   const config = useChartStore((s) => s.config);
   const toggle = useChartStore((s) => s.toggleIndicator);
+  const userEMAs = useChartStore((s) => s.userEMAs);
+  const addUserEMA = useChartStore((s) => s.addUserEMA);
 
   const groups = ENTRIES.reduce<Record<string, Entry[]>>((acc, i) => {
     (acc[i.group] ||= []).push(i);
     return acc;
   }, {});
 
-  const activeCount = Object.values(indicators).filter(Boolean).length;
+  const activeCount =
+    Object.values(indicators).filter(Boolean).length + userEMAs.length;
 
   return (
     <DropdownMenu>
@@ -68,9 +68,27 @@ export function IndicatorMenu() {
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64 bg-tv-panel">
-        {Object.entries(groups).map(([group, items], idx) => (
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-tv-text-muted">
+            Moving averages
+          </DropdownMenuLabel>
+          <DropdownMenuItem
+            closeOnClick={false}
+            onClick={() => addUserEMA()}
+            className="flex items-center justify-between text-xs"
+          >
+            <span>EMA — Exponential Moving Average</span>
+            <Plus className="h-3.5 w-3.5 text-tv-blue" />
+          </DropdownMenuItem>
+          {userEMAs.length > 0 && (
+            <div className="px-2 py-1 text-[10px] text-tv-text-muted">
+              {userEMAs.length} EMA{userEMAs.length === 1 ? "" : "s"} on chart
+            </div>
+          )}
+        </DropdownMenuGroup>
+        {Object.entries(groups).map(([group, items]) => (
           <DropdownMenuGroup key={group}>
-            {idx > 0 && <DropdownMenuSeparator />}
+            <DropdownMenuSeparator />
             <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-tv-text-muted">
               {group}
             </DropdownMenuLabel>
