@@ -33,6 +33,7 @@ import { formatPrice, formatVolume } from "@/lib/format";
 import { IndicatorPill } from "./IndicatorPill";
 import { MeasureOverlay } from "./MeasureOverlay";
 import { DrawingsLayer } from "./drawings/DrawingsLayer";
+import { PlacementPreview, MagnetIndicator } from "./PlacementPreview";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { generateId, FIB_LEVELS_DEFAULT } from "@/lib/drawings/types";
@@ -184,6 +185,13 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const [measure, setMeasure] = useState<MeasureState>(INITIAL_MEASURE);
   const [renderTick, setRenderTick] = useState(0);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [previewState, setPreviewState] = useState<{
+    first: { time: number; price: number } | null;
+    extra: Array<{ time: number; price: number }>;
+    cursor: { time: number; price: number } | null;
+  } | null>(null);
+  const [ctrlHeld, setCtrlHeld] = useState(false);
+  const [magnetTarget, setMagnetTarget] = useState<{ time: number; price: number } | null>(null);
   const measureRef = useRef(measure);
   measureRef.current = measure;
 
@@ -335,6 +343,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         const kind = toolRef.current;
         if (!first) {
           firstPointRef.current = { time, price };
+          setPreviewState({ first: { time, price }, extra: [], cursor: { time, price } });
         } else {
           void drawingsApiRef.current.add({
             id: generateId(),
@@ -344,6 +353,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
             b: { time, price },
           } as Parameters<typeof drawingsApiRef.current.add>[0]);
           firstPointRef.current = null;
+          setPreviewState(null);
           setToolRef.current("cursor");
         }
         return;
@@ -356,6 +366,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         const kind = toolRef.current;
         if (!first) {
           firstPointRef.current = { time, price };
+          setPreviewState({ first: { time, price }, extra: [], cursor: { time, price } });
         } else {
           const entry = first.price;
           const target = price;
@@ -372,6 +383,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
             timeB: time,
           } as Parameters<typeof drawingsApiRef.current.add>[0]);
           firstPointRef.current = null;
+          setPreviewState(null);
           setToolRef.current("cursor");
         }
         return;
@@ -383,6 +395,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         const first = firstPointRef.current;
         if (!first) {
           firstPointRef.current = { time, price };
+          setPreviewState({ first: { time, price }, extra: [], cursor: { time, price } });
         } else {
           void drawingsApiRef.current.add({
             id: generateId(),
@@ -394,6 +407,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
             timeB: time,
           });
           firstPointRef.current = null;
+          setPreviewState(null);
           setToolRef.current("cursor");
         }
         return;
@@ -405,6 +419,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         const first = firstPointRef.current;
         if (!first) {
           firstPointRef.current = { time, price };
+          setPreviewState({ first: { time, price }, extra: [], cursor: { time, price } });
         } else {
           void drawingsApiRef.current.add({
             id: generateId(),
@@ -414,6 +429,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
             timeB: time,
           });
           firstPointRef.current = null;
+          setPreviewState(null);
           setToolRef.current("cursor");
         }
         return;
@@ -425,6 +441,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         const first = firstPointRef.current;
         if (!first) {
           firstPointRef.current = { time, price };
+          setPreviewState({ first: { time, price }, extra: [], cursor: { time, price } });
         } else {
           void drawingsApiRef.current.add({
             id: generateId(),
@@ -435,6 +452,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
             levels: [...FIB_LEVELS_DEFAULT],
           });
           firstPointRef.current = null;
+          setPreviewState(null);
           setToolRef.current("cursor");
         }
         return;
@@ -455,7 +473,16 @@ export function PriceChart({ symbol, timeframe }: Props) {
             c,
           });
           placementPointsRef.current = [];
+          setPreviewState(null);
           setToolRef.current("cursor");
+        } else {
+          // Update preview with the new accumulated point
+          const pts = placementPointsRef.current;
+          setPreviewState({
+            first: pts[0] ?? null,
+            extra: pts.slice(1),
+            cursor: { time, price },
+          });
         }
         return;
       }
@@ -488,20 +515,54 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
     // Crosshair handler
     chart.subscribeCrosshairMove((param) => {
+      // Compute the cursor's (time, price) — used by placement preview + magnet
+      let cursorTime: number | null = null;
+      let cursorPrice: number | null = null;
+      if (param.point && param.time && candleSeriesRef.current) {
+        const p = candleSeriesRef.current.coordinateToPrice(param.point.y);
+        if (p !== null && isFinite(p as number)) {
+          cursorTime = Number(param.time);
+          cursorPrice = p as number;
+        }
+      }
+
+      // Magnet target: when Ctrl is held + tool active + cursor over chart
+      const t = toolRef.current;
+      const tracksMagnet =
+        t !== "cursor" &&
+        t !== "eraser" &&
+        cursorTime !== null &&
+        cursorPrice !== null;
+      if (param.sourceEvent?.ctrlKey && tracksMagnet) {
+        const snapped = snapToOHLC(cursorPrice!, cursorTime!, candlesRef.current);
+        setMagnetTarget({ time: cursorTime!, price: snapped ?? cursorPrice! });
+      } else {
+        setMagnetTarget((prev) => (prev === null ? prev : null));
+      }
+
+      // Measure preview
       if (
         toolRef.current === "measure" &&
         measureRef.current.phase === "placing" &&
-        param.point &&
-        param.time &&
-        candleSeriesRef.current
+        cursorTime !== null &&
+        cursorPrice !== null
       ) {
-        const price = candleSeriesRef.current.coordinateToPrice(param.point.y);
-        if (price !== null && isFinite(price)) {
-          const time = Number(param.time);
-          setMeasure((prev) =>
-            prev.phase === "placing" ? { ...prev, b: { time, price } } : prev,
-          );
+        setMeasure((prev) =>
+          prev.phase === "placing"
+            ? { ...prev, b: { time: cursorTime!, price: cursorPrice! } }
+            : prev,
+        );
+      }
+
+      // Drawing-tool placement preview (follow cursor between clicks)
+      if (cursorTime !== null && cursorPrice !== null) {
+        // Apply snap to preview cursor if Ctrl held
+        let pc: { time: number; price: number } = { time: cursorTime, price: cursorPrice };
+        if (param.sourceEvent?.ctrlKey) {
+          const snapped = snapToOHLC(cursorPrice, cursorTime, candlesRef.current);
+          if (snapped !== null) pc = { time: cursorTime, price: snapped };
         }
+        setPreviewState((prev) => (prev ? { ...prev, cursor: pc } : prev));
       }
 
       if (!param.time || !candleSeriesRef.current) {
@@ -1012,7 +1073,26 @@ export function PriceChart({ symbol, timeframe }: Props) {
     // Reset multi-click placement when switching tools
     firstPointRef.current = null;
     placementPointsRef.current = [];
+    setPreviewState(null);
   }, [tool]);
+
+  // Track Ctrl key globally for magnet visual + apply snap to preview
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Control" || e.key === "Meta") {
+        setCtrlHeld(e.type === "keydown");
+        if (e.type === "keyup") {
+          setMagnetTarget(null);
+        }
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKey);
+    };
+  }, []);
 
   function updateEMAs() {
     const c = candlesRef.current;
@@ -1433,6 +1513,27 @@ export function PriceChart({ symbol, timeframe }: Props) {
         height={containerSize.height}
         renderTick={renderTick}
       />
+      {previewState && (
+        <PlacementPreview
+          tool={tool}
+          first={previewState.first}
+          extra={previewState.extra}
+          cursor={previewState.cursor}
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          width={containerSize.width}
+          height={containerSize.height}
+        />
+      )}
+      {ctrlHeld && magnetTarget && (
+        <MagnetIndicator
+          target={magnetTarget}
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          width={containerSize.width}
+          height={containerSize.height}
+        />
+      )}
       {measureRender}
 
       {/* Top-left of main pane: symbol info + OHLC + Volume pill + EMA pills */}
