@@ -77,6 +77,17 @@ const TV_COLORS = {
   grid: "#1e222d",
 };
 
+function snapToOHLC(price: number, time: number, candles: Candle[]): number | null {
+  if (candles.length === 0) return null;
+  const candle = candles.reduce((best, c) =>
+    Math.abs(c.time - time) < Math.abs(best.time - time) ? c : best,
+  );
+  const levels = [candle.open, candle.high, candle.low, candle.close];
+  return levels.reduce((closest, level) =>
+    Math.abs(level - price) < Math.abs(closest - price) ? level : closest,
+  );
+}
+
 interface HoverInfo {
   o: number;
   h: number;
@@ -260,8 +271,16 @@ export function PriceChart({ symbol, timeframe }: Props) {
     // Click handler — drawing tools
     chart.subscribeClick((param) => {
       if (!param.point || !candleSeriesRef.current) return;
-      const price = candleSeriesRef.current.coordinateToPrice(param.point.y);
-      if (price === null || !isFinite(price)) return;
+      const rawPrice = candleSeriesRef.current.coordinateToPrice(param.point.y);
+      if (rawPrice === null || !isFinite(rawPrice as number)) return;
+      let price: number = rawPrice as number;
+
+      // Magnet: Ctrl held → snap price to nearest OHLC of the closest candle
+      if (param.sourceEvent?.ctrlKey && param.time) {
+        const t = Number(param.time);
+        const snapped = snapToOHLC(price, t, candlesRef.current);
+        if (snapped !== null) price = snapped;
+      }
 
       // Cursor click on empty chart area → deselect any selected drawing
       if (toolRef.current === "cursor") {
