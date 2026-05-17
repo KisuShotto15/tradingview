@@ -26,7 +26,7 @@ import { MeasureOverlay } from "./MeasureOverlay";
 import { DrawingsLayer } from "./drawings/DrawingsLayer";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
-import { generateId } from "@/lib/drawings/types";
+import { generateId, FIB_LEVELS_DEFAULT } from "@/lib/drawings/types";
 
 interface MeasurePoint {
   time: number;
@@ -288,6 +288,27 @@ export function PriceChart({ symbol, timeframe }: Props) {
             a: first,
             b: { time, price },
           } as Parameters<typeof drawingsApiRef.current.add>[0]);
+          firstPointRef.current = null;
+          setToolRef.current("cursor");
+        }
+        return;
+      }
+
+      if (toolRef.current === "fib-retracement") {
+        if (!param.time) return;
+        const time = Number(param.time);
+        const first = firstPointRef.current;
+        if (!first) {
+          firstPointRef.current = { time, price };
+        } else {
+          void drawingsApiRef.current.add({
+            id: generateId(),
+            kind: "fib-retracement",
+            symbol: symbolRef.current,
+            a: first,
+            b: { time, price },
+            levels: [...FIB_LEVELS_DEFAULT],
+          });
           firstPointRef.current = null;
           setToolRef.current("cursor");
         }

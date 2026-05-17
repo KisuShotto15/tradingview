@@ -10,6 +10,7 @@ import { HRayDraw } from "./HRayDraw";
 import { TrendLineDraw } from "./TrendLineDraw";
 import { RayDraw } from "./RayDraw";
 import { ParallelChannelDraw } from "./ParallelChannelDraw";
+import { FibRetracementDraw } from "./FibRetracementDraw";
 
 interface Props {
   symbol: string;
@@ -164,6 +165,28 @@ function renderDrawing(args: RenderArgs) {
           by={by}
           cx={cx}
           cy={cy}
+          selected={selected}
+          onSelect={onSelect}
+          chart={chart}
+          candleSeries={candleSeries}
+          container={container}
+        />
+      );
+    }
+    case "fib-retracement": {
+      const ax = chart.timeScale().timeToCoordinate(d.a.time as UTCTimestamp);
+      const ay = candleSeries.priceToCoordinate(d.a.price);
+      const bx = chart.timeScale().timeToCoordinate(d.b.time as UTCTimestamp);
+      const by = candleSeries.priceToCoordinate(d.b.price);
+      if (ax === null || ay === null || bx === null || by === null) return null;
+      return (
+        <FibRetracementDraw
+          key={d.id}
+          drawing={d}
+          ax={ax}
+          ay={ay}
+          bx={bx}
+          by={by}
           selected={selected}
           onSelect={onSelect}
           chart={chart}

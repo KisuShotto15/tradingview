@@ -6,6 +6,7 @@ import {
   GripVertical,
   Layers3,
   MoveRight,
+  Percent,
   Ruler,
   Slash,
   Trash2,
@@ -63,6 +64,12 @@ const TOOLS: ToolDef[] = [
     icon: Layers3,
     label: "Parallel channel",
     hint: "Click A, then B (baseline), then C (parallel offset)",
+  },
+  {
+    key: "fib-retracement",
+    icon: Percent,
+    label: "Fib retracement",
+    hint: "Click swing high, then swing low (or vice versa)",
   },
   {
     key: "measure",

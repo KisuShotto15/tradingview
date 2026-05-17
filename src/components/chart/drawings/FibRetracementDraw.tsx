@@ -1,0 +1,130 @@
+"use client";
+
+import { useRef } from "react";
+import type { IChartApi, ISeriesApi } from "lightweight-charts";
+import type { FibRetracementDrawing, Point } from "@/lib/drawings/types";
+import { useDrawingsStore } from "@/lib/store/drawings-store";
+import { DrawHandle } from "./DrawHandle";
+import { useDragPoint } from "./use-drag-point";
+import { useDrawings } from "@/lib/supabase/use-drawings";
+import { formatPrice } from "@/lib/format";
+
+interface Props {
+  drawing: FibRetracementDrawing;
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
+  selected: boolean;
+  onSelect: () => void;
+  chart: IChartApi | null;
+  candleSeries: ISeriesApi<"Candlestick"> | null;
+  container: HTMLElement | null;
+}
+
+const LEVEL_COLORS: Record<string, string> = {
+  "0": "#787b86",
+  "0.236": "#ef5350",
+  "0.382": "#ffb74d",
+  "0.5": "#26a69a",
+  "0.618": "#2962ff",
+  "0.786": "#ab47bc",
+  "1": "#787b86",
+};
+
+export function FibRetracementDraw({
+  drawing,
+  ax,
+  ay,
+  bx,
+  by,
+  selected,
+  onSelect,
+  chart,
+  candleSeries,
+  container,
+}: Props) {
+  const { updateLive, commit } = useDrawings();
+  const snapshotRef = useRef<FibRetracementDrawing | null>(null);
+
+  function snap() {
+    const current = useDrawingsStore.getState().drawings.find((d) => d.id === drawing.id);
+    if (current && current.kind === "fib-retracement") snapshotRef.current = current;
+  }
+  function commitEnd() {
+    if (snapshotRef.current) void commit(drawing.id, snapshotRef.current);
+  }
+
+  const dragA = useDragPoint(chart, candleSeries, container, {
+    onStart: snap,
+    onMove: (pt: Point) => updateLive(drawing.id, { a: pt } as Partial<FibRetracementDrawing>),
+    onEnd: commitEnd,
+  });
+  const dragB = useDragPoint(chart, candleSeries, container, {
+    onStart: snap,
+    onMove: (pt: Point) => updateLive(drawing.id, { b: pt } as Partial<FibRetracementDrawing>),
+    onEnd: commitEnd,
+  });
+
+  const left = Math.min(ax, bx);
+  const right = Math.max(ax, bx);
+  const startPrice = drawing.a.price;
+  const endPrice = drawing.b.price;
+  const range = endPrice - startPrice;
+
+  return (
+    <g>
+      {/* Background rectangle (clickable) */}
+      <rect
+        x={left}
+        y={Math.min(ay, by)}
+        width={right - left}
+        height={Math.abs(by - ay)}
+        fill="transparent"
+        style={{ pointerEvents: "all", cursor: "pointer" }}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          onSelect();
+        }}
+      />
+      {drawing.levels.map((level) => {
+        const price = startPrice + range * level;
+        const y = candleSeries?.priceToCoordinate(price) ?? null;
+        if (y === null) return null;
+        const label = level === 0 ? "0" : level === 1 ? "1" : String(level);
+        const color = LEVEL_COLORS[label] ?? "#787b86";
+        return (
+          <g key={level}>
+            <line
+              x1={left}
+              x2={right}
+              y1={y}
+              y2={y}
+              stroke={color}
+              strokeWidth={1}
+              strokeDasharray={level === 0 || level === 1 ? undefined : "3,3"}
+              opacity={selected ? 1 : 0.85}
+              style={{ pointerEvents: "none" }}
+            />
+            <text
+              x={left + 4}
+              y={y - 3}
+              fill={color}
+              fontSize={10}
+              fontFamily="var(--font-mono), monospace"
+              style={{ pointerEvents: "none" }}
+            >
+              {`${(level * 100).toFixed(1)}%  ${formatPrice(price)}`}
+            </text>
+          </g>
+        );
+      })}
+      {selected && (
+        <>
+          <DrawHandle x={ax} y={ay} color="#2962ff" selected onMouseDown={dragA} />
+          <DrawHandle x={bx} y={by} color="#2962ff" selected onMouseDown={dragB} />
+        </>
+      )}
+    </g>
+  );
+}
