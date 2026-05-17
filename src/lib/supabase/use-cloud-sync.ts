@@ -7,7 +7,6 @@ import {
   saveChartSettings,
   loadWatchlist,
   saveWatchlist,
-  loadPriceLines,
 } from "./user-data";
 import { useAuth } from "./auth-context";
 
@@ -26,24 +25,21 @@ export function useCloudSync() {
 
   const setSymbol = useChartStore((s) => s.setSymbol);
   const setTimeframe = useChartStore((s) => s.setTimeframe);
-  const setCloudPriceLines = useChartStore((s) => s.setCloudPriceLines);
 
-  // Carga inicial desde la nube cuando el usuario se autentica
+  // Initial cloud load after sign-in
   useEffect(() => {
     if (!user || initializedRef.current) return;
     initializedRef.current = true;
 
     async function init() {
-      const [settings, wl, pls] = await Promise.all([
+      const [settings, wl] = await Promise.all([
         loadChartSettings(),
         loadWatchlist(),
-        loadPriceLines(),
       ]);
 
       if (settings) {
         setSymbol(settings.symbol);
         setTimeframe(settings.timeframe);
-        // Aplicar indicadores y config desde la nube via store
         useChartStore.setState({
           indicators: settings.indicators,
           hidden: settings.hidden,
@@ -54,23 +50,19 @@ export function useCloudSync() {
       if (wl) {
         useChartStore.setState({ watchlist: wl });
       }
-
-      if (pls.length > 0) {
-        setCloudPriceLines(pls);
-      }
     }
 
     init();
-  }, [user]);
+  }, [user, setSymbol, setTimeframe]);
 
-  // Reset cuando el usuario cierra sesión
+  // Reset on sign-out
   useEffect(() => {
     if (!user) {
       initializedRef.current = false;
     }
   }, [user]);
 
-  // Sync settings con debounce
+  // Debounced settings sync
   const settingsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!user || !initializedRef.current) return;
@@ -83,7 +75,7 @@ export function useCloudSync() {
     };
   }, [user, symbol, timeframe, indicators, hidden, config]);
 
-  // Sync watchlist con debounce
+  // Debounced watchlist sync
   const wlTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!user || !initializedRef.current) return;

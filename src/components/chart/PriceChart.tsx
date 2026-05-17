@@ -9,7 +9,6 @@ import {
   CrosshairMode,
   type IChartApi,
   type ISeriesApi,
-  type IPriceLine,
   type UTCTimestamp,
 } from "lightweight-charts";
 import { fetchKlines } from "@/lib/binance/rest";
@@ -24,7 +23,9 @@ import {
 import { formatPrice, formatVolume } from "@/lib/format";
 import { IndicatorPill } from "./IndicatorPill";
 import { MeasureOverlay } from "./MeasureOverlay";
-import { usePriceLines } from "@/lib/supabase/use-price-lines";
+import { DrawingsLayer } from "./drawings/DrawingsLayer";
+import { useDrawings } from "@/lib/supabase/use-drawings";
+import { generateId } from "@/lib/drawings/types";
 
 interface MeasurePoint {
   time: number;
@@ -107,23 +108,24 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const macdSignalRef = useRef<ISeriesApi<"Line"> | null>(null);
   const macdHistRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const candlesRef = useRef<Candle[]>([]);
-  const priceLinesMapRef = useRef<Map<string, IPriceLine>>(new Map());
 
   const indicators = useChartStore((s) => s.indicators);
   const hidden = useChartStore((s) => s.hidden);
   const config = useChartStore((s) => s.config);
   const tool = useChartStore((s) => s.tool);
-  const priceLines = useChartStore((s) => s.priceLines);
+  const setTool = useChartStore((s) => s.setTool);
   const removeIndicator = useChartStore((s) => s.removeIndicator);
   const toggleHidden = useChartStore((s) => s.toggleHidden);
   const setSettingsTarget = useChartStore((s) => s.setSettingsTarget);
-  const { addLine: addPriceLine, clearLines: clearPriceLines } = usePriceLines();
+  const drawingsApi = useDrawings();
 
   // Refs to avoid recreating subscribeClick on every tool change
   const toolRef = useRef(tool);
   toolRef.current = tool;
-  const addPriceLineRef = useRef(addPriceLine);
-  addPriceLineRef.current = addPriceLine;
+  const drawingsApiRef = useRef(drawingsApi);
+  drawingsApiRef.current = drawingsApi;
+  const setToolRef = useRef(setTool);
+  setToolRef.current = setTool;
   const symbolRef = useRef(symbol);
   symbolRef.current = symbol;
   const configRef = useRef(config);
@@ -135,6 +137,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const [paneOffsets, setPaneOffsets] = useState<PaneOffset[]>([]);
   const [measure, setMeasure] = useState<MeasureState>(INITIAL_MEASURE);
   const [renderTick, setRenderTick] = useState(0);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const measureRef = useRef(measure);
   measureRef.current = measure;
 
@@ -220,14 +223,20 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
     chartRef.current = chart;
 
-    // Click handler — add horizontal price line when hline tool is active
+    // Click handler — drawing tools
     chart.subscribeClick((param) => {
       if (!param.point || !candleSeriesRef.current) return;
       const price = candleSeriesRef.current.coordinateToPrice(param.point.y);
       if (price === null || !isFinite(price)) return;
 
       if (toolRef.current === "hline") {
-        addPriceLineRef.current(price, symbolRef.current);
+        void drawingsApiRef.current.add({
+          id: generateId(),
+          kind: "hline",
+          symbol: symbolRef.current,
+          price,
+        });
+        setToolRef.current("cursor");
         return;
       }
 
@@ -305,11 +314,15 @@ export function PriceChart({ symbol, timeframe }: Props) {
     chart.timeScale().subscribeVisibleLogicalRangeChange(logicalRangeHandler);
 
     // ResizeObserver — recompute pane offsets when chart container resizes
-    const ro = new ResizeObserver(() => {
+    const ro = new ResizeObserver((entries) => {
       requestAnimationFrame(() => recomputePaneOffsets());
+      const cr = entries[0]?.contentRect;
+      if (cr) setContainerSize({ width: cr.width, height: cr.height });
     });
     ro.observe(containerRef.current);
     recomputePaneOffsets();
+    const initRect = containerRef.current.getBoundingClientRect();
+    setContainerSize({ width: initRect.width, height: initRect.height });
 
     return () => {
       chart.timeScale().unsubscribeVisibleTimeRangeChange(tsRangeHandler);
@@ -319,7 +332,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
       chartRef.current = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
-      priceLinesMapRef.current.clear();
       ema20Ref.current = null;
       ema50Ref.current = null;
       ema200Ref.current = null;
@@ -496,37 +508,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
   useEffect(() => {
     updateMACD();
   }, [config.macdFast, config.macdSlow, config.macdSignal]);
-
-  // Sync price lines from store to the candle series
-  useEffect(() => {
-    const series = candleSeriesRef.current;
-    if (!series) return;
-    const map = priceLinesMapRef.current;
-    const linesForThisSymbol = priceLines.filter((p) => p.symbol === symbol);
-    const activeIds = new Set(linesForThisSymbol.map((p) => p.id));
-
-    for (const [id, apiLine] of map.entries()) {
-      if (!activeIds.has(id)) {
-        try {
-          series.removePriceLine(apiLine);
-        } catch {}
-        map.delete(id);
-      }
-    }
-    for (const pl of linesForThisSymbol) {
-      if (!map.has(pl.id)) {
-        const apiLine = series.createPriceLine({
-          price: pl.price,
-          color: TV_COLORS.blue,
-          lineWidth: 1,
-          lineStyle: 2,
-          axisLabelVisible: true,
-          title: "",
-        });
-        map.set(pl.id, apiLine);
-      }
-    }
-  }, [priceLines, symbol]);
 
   // Cursor style when drawing tools are active + reset measure on tool change
   useEffect(() => {
@@ -784,6 +765,14 @@ export function PriceChart({ symbol, timeframe }: Props) {
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" />
+      <DrawingsLayer
+        symbol={symbol}
+        chart={chartRef.current}
+        candleSeries={candleSeriesRef.current}
+        width={containerSize.width}
+        height={containerSize.height}
+        renderTick={renderTick}
+      />
       {measureRender}
 
       {/* Top-left of main pane: symbol info + OHLC + Volume pill + EMA pills */}

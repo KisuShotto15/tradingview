@@ -12,13 +12,21 @@ export type IndicatorKey =
   | "macd"
   | "volume";
 
-export type DrawingTool = "cursor" | "hline" | "measure" | "eraser";
-
-export interface PriceLine {
-  id: string;
-  symbol: string;
-  price: number;
-}
+export type DrawingTool =
+  | "cursor"
+  | "measure"
+  | "eraser"
+  | "hline"
+  | "vline"
+  | "trendline"
+  | "ray"
+  | "hray"
+  | "parallel-channel"
+  | "fib-retracement"
+  | "price-range"
+  | "date-range"
+  | "long"
+  | "short";
 
 export interface IndicatorConfig {
   ema20: number;
@@ -75,7 +83,6 @@ interface ChartState {
 
   // Ephemeral UI state (not persisted)
   tool: DrawingTool;
-  priceLines: PriceLine[];
   symbolDialogOpen: boolean;
   /** Which indicator's settings dialog is open (null = closed) */
   settingsTarget: IndicatorKey | null;
@@ -90,11 +97,6 @@ interface ChartState {
   addToWatchlist: (s: string) => void;
   removeFromWatchlist: (s: string) => void;
   setTool: (t: DrawingTool) => void;
-  addPriceLine: (price: number, symbol: string) => void;
-  addPriceLineById: (id: string, price: number, symbol: string) => void;
-  removePriceLine: (id: string) => void;
-  clearPriceLines: (symbol?: string) => void;
-  setCloudPriceLines: (lines: PriceLine[]) => void;
   setSymbolDialogOpen: (v: boolean) => void;
   setSettingsTarget: (k: IndicatorKey | null) => void;
 }
@@ -123,7 +125,6 @@ export const useChartStore = create<ChartState>()(
       config: { ...DEFAULT_CONFIG },
       watchlist: DEFAULT_WATCHLIST,
       tool: "cursor",
-      priceLines: [],
       symbolDialogOpen: false,
       settingsTarget: null,
 
@@ -157,35 +158,6 @@ export const useChartStore = create<ChartState>()(
           watchlist: state.watchlist.filter((x) => x !== s),
         })),
       setTool: (tool) => set({ tool }),
-      addPriceLine: (price, symbol) =>
-        set((state) => ({
-          priceLines: [
-            ...state.priceLines,
-            {
-              id:
-                typeof crypto !== "undefined" && "randomUUID" in crypto
-                  ? crypto.randomUUID()
-                  : `${Date.now()}-${Math.random()}`,
-              symbol,
-              price,
-            },
-          ],
-        })),
-      addPriceLineById: (id, price, symbol) =>
-        set((state) => ({
-          priceLines: [...state.priceLines, { id, symbol, price }],
-        })),
-      removePriceLine: (id) =>
-        set((state) => ({
-          priceLines: state.priceLines.filter((p) => p.id !== id),
-        })),
-      clearPriceLines: (symbol) =>
-        set((state) => ({
-          priceLines: symbol
-            ? state.priceLines.filter((p) => p.symbol !== symbol)
-            : [],
-        })),
-      setCloudPriceLines: (lines) => set({ priceLines: lines }),
       setSymbolDialogOpen: (symbolDialogOpen) => set({ symbolDialogOpen }),
       setSettingsTarget: (settingsTarget) => set({ settingsTarget }),
     }),

@@ -3,7 +3,7 @@
 import { MousePointer2, Minus, Ruler, Trash2, Lock } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useChartStore, type DrawingTool } from "@/lib/store/chart-store";
-import { usePriceLines } from "@/lib/supabase/use-price-lines";
+import { useDrawings } from "@/lib/supabase/use-drawings";
 import { cn } from "@/lib/utils";
 
 interface ToolDef {
@@ -39,7 +39,7 @@ export function LeftSidebar() {
   const tool = useChartStore((s) => s.tool);
   const setTool = useChartStore((s) => s.setTool);
   const symbol = useChartStore((s) => s.symbol);
-  const { clearLines: clearPriceLines } = usePriceLines();
+  const { clear: clearDrawings } = useDrawings();
 
   return (
     <aside className="flex w-11 flex-col items-center gap-0.5 border-r border-tv-border bg-tv-panel py-1.5">
@@ -72,7 +72,7 @@ export function LeftSidebar() {
 
       <Tooltip>
         <TooltipTrigger
-          onClick={() => void clearPriceLines(symbol)}
+          onClick={() => void clearDrawings(symbol)}
           aria-label="Borrar dibujos"
           className="flex h-8 w-8 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-red"
         >
