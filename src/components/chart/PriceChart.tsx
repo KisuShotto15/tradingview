@@ -65,17 +65,17 @@ interface Props {
 }
 
 const TV_COLORS = {
-  bg: "#131722",
-  panel: "#1e222d",
-  border: "#2a2e39",
-  text: "#d1d4dc",
-  textMuted: "#787b86",
+  bg: "#000000",
+  panel: "#0a0a0a",
+  border: "#1a1a1a",
+  text: "#e6e6e6",
+  textMuted: "#8a8a8a",
   green: "#26a69a",
   red: "#ef5350",
   blue: "#2962ff",
   yellow: "#ffb74d",
   purple: "#ab47bc",
-  grid: "#1e222d",
+  grid: "#0e0e0e",
 };
 
 function snapToOHLC(price: number, time: number, candles: Candle[]): number | null {

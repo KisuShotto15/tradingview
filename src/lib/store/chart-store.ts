@@ -96,8 +96,8 @@ export interface ChartColors {
 }
 
 export const DEFAULT_CHART_COLORS: ChartColors = {
-  bg: "#131722",
-  gridLines: "#1e222d",
+  bg: "#000000",
+  gridLines: "#0e0e0e",
   bodyUp: "#26a69a",
   bodyDown: "#ef5350",
   borderUp: "#26a69a",
