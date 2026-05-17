@@ -294,6 +294,48 @@ export function PriceChart({ symbol, timeframe }: Props) {
         return;
       }
 
+      if (toolRef.current === "price-range") {
+        if (!param.time) return;
+        const time = Number(param.time);
+        const first = firstPointRef.current;
+        if (!first) {
+          firstPointRef.current = { time, price };
+        } else {
+          void drawingsApiRef.current.add({
+            id: generateId(),
+            kind: "price-range",
+            symbol: symbolRef.current,
+            priceA: first.price,
+            priceB: price,
+            timeA: first.time,
+            timeB: time,
+          });
+          firstPointRef.current = null;
+          setToolRef.current("cursor");
+        }
+        return;
+      }
+
+      if (toolRef.current === "date-range") {
+        if (!param.time) return;
+        const time = Number(param.time);
+        const first = firstPointRef.current;
+        if (!first) {
+          firstPointRef.current = { time, price };
+        } else {
+          void drawingsApiRef.current.add({
+            id: generateId(),
+            kind: "date-range",
+            symbol: symbolRef.current,
+            timeA: first.time,
+            timeB: time,
+          });
+          firstPointRef.current = null;
+          setToolRef.current("cursor");
+        }
+        return;
+      }
+
       if (toolRef.current === "fib-retracement") {
         if (!param.time) return;
         const time = Number(param.time);

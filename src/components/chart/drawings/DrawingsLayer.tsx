@@ -11,6 +11,8 @@ import { TrendLineDraw } from "./TrendLineDraw";
 import { RayDraw } from "./RayDraw";
 import { ParallelChannelDraw } from "./ParallelChannelDraw";
 import { FibRetracementDraw } from "./FibRetracementDraw";
+import { PriceRangeDraw } from "./PriceRangeDraw";
+import { DateRangeDraw } from "./DateRangeDraw";
 
 interface Props {
   symbol: string;
@@ -165,6 +167,47 @@ function renderDrawing(args: RenderArgs) {
           by={by}
           cx={cx}
           cy={cy}
+          selected={selected}
+          onSelect={onSelect}
+          chart={chart}
+          candleSeries={candleSeries}
+          container={container}
+        />
+      );
+    }
+    case "price-range": {
+      const xA = chart.timeScale().timeToCoordinate(d.timeA as UTCTimestamp);
+      const xB = chart.timeScale().timeToCoordinate(d.timeB as UTCTimestamp);
+      const yA = candleSeries.priceToCoordinate(d.priceA);
+      const yB = candleSeries.priceToCoordinate(d.priceB);
+      if (xA === null || xB === null || yA === null || yB === null) return null;
+      return (
+        <PriceRangeDraw
+          key={d.id}
+          drawing={d}
+          xA={xA}
+          xB={xB}
+          yA={yA}
+          yB={yB}
+          selected={selected}
+          onSelect={onSelect}
+          chart={chart}
+          candleSeries={candleSeries}
+          container={container}
+        />
+      );
+    }
+    case "date-range": {
+      const xA = chart.timeScale().timeToCoordinate(d.timeA as UTCTimestamp);
+      const xB = chart.timeScale().timeToCoordinate(d.timeB as UTCTimestamp);
+      if (xA === null || xB === null) return null;
+      return (
+        <DateRangeDraw
+          key={d.id}
+          drawing={d}
+          xA={xA}
+          xB={xB}
+          height={height}
           selected={selected}
           onSelect={onSelect}
           chart={chart}

@@ -3,10 +3,12 @@
 import {
   MousePointer2,
   Minus,
+  CalendarRange,
   GripVertical,
   Layers3,
   MoveRight,
   Percent,
+  RectangleHorizontal,
   Ruler,
   Slash,
   Trash2,
@@ -70,6 +72,18 @@ const TOOLS: ToolDef[] = [
     icon: Percent,
     label: "Fib retracement",
     hint: "Click swing high, then swing low (or vice versa)",
+  },
+  {
+    key: "price-range",
+    icon: RectangleHorizontal,
+    label: "Price range",
+    hint: "Click two prices to measure absolute & % range",
+  },
+  {
+    key: "date-range",
+    icon: CalendarRange,
+    label: "Date range",
+    hint: "Click two timestamps to measure duration",
   },
   {
     key: "measure",
