@@ -674,6 +674,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
     updateMACD();
   }, [config.macdFast, config.macdSlow, config.macdSignal]);
 
+  // Reset selection when symbol changes
+  useEffect(() => {
+    useDrawingsStore.getState().setSelected(null);
+  }, [symbol]);
+
   // Cursor style when drawing tools are active + reset measure on tool change
   useEffect(() => {
     if (containerRef.current) {

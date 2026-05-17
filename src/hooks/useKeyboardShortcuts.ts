@@ -11,12 +11,13 @@ import { useDrawings } from "@/lib/supabase/use-drawings";
  * - Esc: cancel placement → reset tool to cursor → deselect drawing
  * - Ctrl+Z / Cmd+Z: undo
  * - Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y: redo
+ * - Del / Backspace: delete selected drawing
  */
 export function useKeyboardShortcuts() {
   const setTool = useChartStore((s) => s.setTool);
   const resetPlacement = useDrawingsStore((s) => s.resetPlacement);
   const setSelected = useDrawingsStore((s) => s.setSelected);
-  const { undo, redo } = useDrawings();
+  const { undo, redo, remove } = useDrawings();
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -46,6 +47,15 @@ export function useKeyboardShortcuts() {
         return;
       }
 
+      if (e.key === "Delete" || e.key === "Backspace") {
+        const { selectedId } = useDrawingsStore.getState();
+        if (selectedId) {
+          e.preventDefault();
+          void remove(selectedId);
+        }
+        return;
+      }
+
       if (e.key === "Escape") {
         const { placement, selectedId } = useDrawingsStore.getState();
         const { tool } = useChartStore.getState();
@@ -67,5 +77,5 @@ export function useKeyboardShortcuts() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [setTool, resetPlacement, setSelected, undo, redo]);
+  }, [setTool, resetPlacement, setSelected, undo, redo, remove]);
 }
