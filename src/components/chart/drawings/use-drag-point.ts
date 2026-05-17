@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback } from "react";
-import type { IChartApi, ISeriesApi, UTCTimestamp } from "lightweight-charts";
+import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { Point } from "@/lib/drawings/types";
+import { useChartStore } from "@/lib/store/chart-store";
+import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
+import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
 
 interface DragHandlers {
   onStart?: () => void;
@@ -13,6 +16,7 @@ interface DragHandlers {
 /**
  * Returns a starter that begins dragging on mouse down. While dragging,
  * converts pixel coords back to (time, price) and calls onMove.
+ * Supports timestamps past the last candle via xToTime extrapolation.
  */
 export function useDragPoint(
   chart: IChartApi | null,
@@ -32,10 +36,12 @@ export function useDragPoint(
         const rect = container!.getBoundingClientRect();
         const x = clientX - rect.left;
         const y = clientY - rect.top;
-        const time = chart!.timeScale().coordinateToTime(x);
         const price = candleSeries!.coordinateToPrice(y);
-        if (time === null || price === null) return null;
-        return { time: Number(time as UTCTimestamp), price };
+        if (price === null) return null;
+        const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
+        const time = xToTime(chart!, x, globalCandlesRef.current, intervalSec);
+        if (time === null) return null;
+        return { time, price };
       }
 
       function onMove(ev: MouseEvent) {

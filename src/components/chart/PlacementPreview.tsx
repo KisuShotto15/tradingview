@@ -23,7 +23,8 @@ interface Props {
   height: number;
 }
 
-const PREVIEW_STROKE = "#2962ff";
+const PREVIEW_STROKE = "#ffffff";
+const PREVIEW_HANDLE = "#2962ff";
 const PREVIEW_DASH = "5 4";
 
 /** Renders a thin dashed preview of the drawing being placed. */
@@ -62,6 +63,7 @@ export function PlacementPreview({
         className="pointer-events-none absolute inset-0"
         style={{ width, height }}
       >
+        {/* Solid bright line so it's clearly visible against the chart */}
         <line
           x1={aX}
           y1={aY}
@@ -69,10 +71,11 @@ export function PlacementPreview({
           y2={bY}
           stroke={PREVIEW_STROKE}
           strokeWidth={1.5}
-          strokeDasharray={PREVIEW_DASH}
         />
-        <circle cx={aX} cy={aY} r={3} fill={PREVIEW_STROKE} />
-        <circle cx={bX} cy={bY} r={3} fill={PREVIEW_STROKE} fillOpacity={0.5} />
+        {/* Anchor at first click — filled blue circle with white outline */}
+        <circle cx={aX} cy={aY} r={5} fill={PREVIEW_HANDLE} stroke="#ffffff" strokeWidth={1.5} />
+        {/* Cursor end — hollow */}
+        <circle cx={bX} cy={bY} r={4} fill="none" stroke={PREVIEW_HANDLE} strokeWidth={1.5} />
       </svg>
     );
   }

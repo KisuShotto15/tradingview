@@ -42,6 +42,7 @@ import { MeasureOverlay } from "./MeasureOverlay";
 import { DrawingsLayer } from "./drawings/DrawingsLayer";
 import { PlacementPreview, MagnetIndicator } from "./PlacementPreview";
 import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
+import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { generateId, FIB_LEVELS_DEFAULT } from "@/lib/drawings/types";
@@ -1146,6 +1147,40 @@ export function PriceChart({ symbol, timeframe }: Props) {
     };
   }, []);
 
+  // Direct mousemove listener on the chart container — drives the placement
+  // preview reliably (subscribeCrosshairMove can be flaky in edge cases).
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !chartRef.current || !candleSeriesRef.current) return;
+    function onMove(e: MouseEvent) {
+      if (!container || !chartRef.current || !candleSeriesRef.current) return;
+      // Only do work when there's an active placement
+      if (!firstPointRef.current && placementPointsRef.current.length === 0) return;
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const rawPrice = candleSeriesRef.current.coordinateToPrice(y);
+      if (rawPrice === null || !isFinite(rawPrice as number)) return;
+      const intervalSec = timeframeToSeconds(
+        useChartStore.getState().timeframe,
+      );
+      const t = xToTime(chartRef.current, x, candlesRef.current, intervalSec);
+      if (t === null) return;
+      let price = rawPrice as number;
+      let time = t;
+      if (e.ctrlKey || e.metaKey) {
+        const snapped = snapToOHLC(price, time, candlesRef.current);
+        if (snapped !== null) price = snapped;
+        setMagnetTarget({ time, price });
+      }
+      setPreviewState((prev) => (prev ? { ...prev, cursor: { time, price } } : prev));
+    }
+    container.addEventListener("mousemove", onMove);
+    return () => {
+      container.removeEventListener("mousemove", onMove);
+    };
+  }, []);
+
   function updateEMAs() {
     const c = candlesRef.current;
     if (c.length === 0) return;
@@ -1387,6 +1422,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           : await fetchKlines(symbol, timeframe, 1000);
         if (cancelled) return;
         candlesRef.current = klines;
+        globalCandlesRef.current = klines;
         if (candleSeriesRef.current) {
           candleSeriesRef.current.setData(
             klines.map((k) => ({
