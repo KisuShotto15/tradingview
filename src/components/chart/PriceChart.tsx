@@ -24,6 +24,7 @@ import {
 import { formatPrice, formatVolume } from "@/lib/format";
 import { IndicatorPill } from "./IndicatorPill";
 import { MeasureOverlay } from "./MeasureOverlay";
+import { usePriceLines } from "@/lib/supabase/use-price-lines";
 
 interface MeasurePoint {
   time: number;
@@ -113,10 +114,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const config = useChartStore((s) => s.config);
   const tool = useChartStore((s) => s.tool);
   const priceLines = useChartStore((s) => s.priceLines);
-  const addPriceLine = useChartStore((s) => s.addPriceLine);
   const removeIndicator = useChartStore((s) => s.removeIndicator);
   const toggleHidden = useChartStore((s) => s.toggleHidden);
   const setSettingsTarget = useChartStore((s) => s.setSettingsTarget);
+  const { addLine: addPriceLine, clearLines: clearPriceLines } = usePriceLines();
 
   // Refs to avoid recreating subscribeClick on every tool change
   const toolRef = useRef(tool);

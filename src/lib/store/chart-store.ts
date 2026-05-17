@@ -91,7 +91,10 @@ interface ChartState {
   removeFromWatchlist: (s: string) => void;
   setTool: (t: DrawingTool) => void;
   addPriceLine: (price: number, symbol: string) => void;
+  addPriceLineById: (id: string, price: number, symbol: string) => void;
+  removePriceLine: (id: string) => void;
   clearPriceLines: (symbol?: string) => void;
+  setCloudPriceLines: (lines: PriceLine[]) => void;
   setSymbolDialogOpen: (v: boolean) => void;
   setSettingsTarget: (k: IndicatorKey | null) => void;
 }
@@ -168,12 +171,21 @@ export const useChartStore = create<ChartState>()(
             },
           ],
         })),
+      addPriceLineById: (id, price, symbol) =>
+        set((state) => ({
+          priceLines: [...state.priceLines, { id, symbol, price }],
+        })),
+      removePriceLine: (id) =>
+        set((state) => ({
+          priceLines: state.priceLines.filter((p) => p.id !== id),
+        })),
       clearPriceLines: (symbol) =>
         set((state) => ({
           priceLines: symbol
             ? state.priceLines.filter((p) => p.symbol !== symbol)
             : [],
         })),
+      setCloudPriceLines: (lines) => set({ priceLines: lines }),
       setSymbolDialogOpen: (symbolDialogOpen) => set({ symbolDialogOpen }),
       setSettingsTarget: (settingsTarget) => set({ settingsTarget }),
     }),
