@@ -818,9 +818,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
     let idx = 1;
     for (const k of order) {
       const target = indicatorOverlays[k];
-      if (target && target !== "own" && indicators[target] && assigned[target] !== undefined) {
-        // Share the target's pane — no extra pane consumed
-        assigned[k] = assigned[target];
+      if (target && target !== "own" && indicators[target]) {
+        // Share target's pane. If target not yet computed (comes later in order),
+        // fall back to current idx — the target will land on the same idx.
+        assigned[k] = assigned[target] ?? idx;
       } else {
         assigned[k] = idx;
         if (indicators[k]) idx++;
@@ -2137,31 +2138,43 @@ export function PriceChart({ symbol, timeframe }: Props) {
                   style={{ top: offset.top + 6, left: 12 }}
                   className="pointer-events-none absolute z-10 flex flex-col items-start gap-1"
                 >
-                  {[p, ...guests].map((entry) => (
-                    <div key={entry.key} className="pointer-events-auto flex items-center gap-0.5">
-                      {/* Drag handle — only this element is draggable so pill buttons stay functional */}
-                      <div
-                        className="cursor-grab select-none px-0.5 text-xs text-white/30 hover:text-white/60 active:cursor-grabbing"
-                        draggable
-                        onDragStart={(e) => {
-                          setDragKey(entry.key);
-                          e.dataTransfer.effectAllowed = "move";
-                        }}
-                        onDragEnd={() => setDragKey(null)}
-                      >
-                        ⠿
+                  {[p, ...guests].map((entry) => {
+                    const isGuest = indicatorOverlays[entry.key] && indicatorOverlays[entry.key] !== "own";
+                    return (
+                      <div key={entry.key} className="pointer-events-auto flex items-center gap-0.5">
+                        {/* Drag handle — only this element is draggable so pill buttons stay functional */}
+                        <div
+                          className="cursor-grab select-none px-0.5 text-xs text-white/30 hover:text-white/60 active:cursor-grabbing"
+                          draggable
+                          onDragStart={(e) => {
+                            setDragKey(entry.key);
+                            e.dataTransfer.effectAllowed = "move";
+                          }}
+                          onDragEnd={() => setDragKey(null)}
+                        >
+                          ⠿
+                        </div>
+                        {isGuest && (
+                          <button
+                            title="Detach to own pane"
+                            className="flex h-5 w-5 items-center justify-center rounded text-[10px] text-white/40 hover:bg-white/10 hover:text-white/80"
+                            onClick={() => setIndicatorOverlay(entry.key, "own")}
+                          >
+                            ⊞
+                          </button>
+                        )}
+                        <IndicatorPill
+                          name={entry.name}
+                          value={entry.value}
+                          color={INDICATOR_COLORS[entry.key]}
+                          hidden={hidden[entry.key]}
+                          onToggleHide={() => toggleHidden(entry.key)}
+                          onSettings={() => setSettingsTarget(entry.key)}
+                          onRemove={() => removeIndicator(entry.key)}
+                        />
                       </div>
-                      <IndicatorPill
-                        name={entry.name}
-                        value={entry.value}
-                        color={INDICATOR_COLORS[entry.key]}
-                        hidden={hidden[entry.key]}
-                        onToggleHide={() => toggleHidden(entry.key)}
-                        onSettings={() => setSettingsTarget(entry.key)}
-                        onRemove={() => removeIndicator(entry.key)}
-                      />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               );
             })}
