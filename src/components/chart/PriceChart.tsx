@@ -134,8 +134,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const adxMinusDIRef = useRef<ISeriesApi<"Line"> | null>(null);
   // Squeeze Momentum pane
   const squeezeHistRef = useRef<ISeriesApi<"Histogram"> | null>(null);
-  /** Outline line drawn on top of the histogram (only in area mode) */
-  const squeezeOutlineRef = useRef<ISeriesApi<"Line"> | null>(null);
   const squeezeDotsRef = useRef<ISeriesApi<"Line"> | null>(null);
   const squeezeDotsMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   // VuManChu pane
@@ -874,10 +872,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
       try { chartRef.current.removeSeries(squeezeHistRef.current); } catch {}
       squeezeHistRef.current = null;
     }
-    if (squeezeOutlineRef.current) {
-      try { chartRef.current.removeSeries(squeezeOutlineRef.current); } catch {}
-      squeezeOutlineRef.current = null;
-    }
     if (squeezeDotsRef.current) {
       try { chartRef.current.removeSeries(squeezeDotsRef.current); } catch {}
       squeezeDotsRef.current = null;
@@ -893,20 +887,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
         { priceLineVisible: false, lastValueVisible: false },
         paneIndex,
       );
-      if (sqStyle.plotStyle === "area") {
-        // Add a smoothing LineSeries on top so the top edge looks like a
-        // continuous curve instead of stepped bar tops.
-        squeezeOutlineRef.current = chartRef.current.addSeries(
-          LineSeries,
-          {
-            color: "#ffffff",
-            lineWidth: 1,
-            priceLineVisible: false,
-            lastValueVisible: false,
-          },
-          paneIndex,
-        );
-      }
       squeezeDotsRef.current = chartRef.current.addSeries(
         LineSeries,
         {
@@ -926,7 +906,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
     requestAnimationFrame(() => recomputePaneOffsets());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicators.squeeze, indicators.rsi, indicators.macd, indicators.adx, indicatorOverlays, squeezeStyle.plotStyle]);
+  }, [indicators.squeeze, indicators.rsi, indicators.macd, indicators.adx, indicatorOverlays]);
 
   // ── VuManChu Cipher B pane ───────────────────────────────────────────────
   useEffect(() => {
@@ -1400,19 +1380,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
     });
     // Publish pts to React state so SqueezeOverlay can render them.
     setSqueezePts(pts);
-    // Outline line for area mode (drawn on top of overlay)
-    if (squeezeOutlineRef.current) {
-      squeezeOutlineRef.current.setData(
-        pts.map((p) => ({
-          time: p.time as UTCTimestamp,
-          value: p.momentum,
-        })),
-      );
-      squeezeOutlineRef.current.applyOptions({
-        visible: style.showMomentum && indicators.squeeze,
-      });
-    }
-    // Reference COLORS to avoid unused-var warning
     void COLORS;
     // Zero-line dots: invisible line at 0 + colored markers for squeeze state
     squeezeDotsRef.current?.setData(

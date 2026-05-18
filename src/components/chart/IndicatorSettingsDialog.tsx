@@ -498,21 +498,6 @@ function SqueezeStyleSection() {
 
   return (
     <div className="flex flex-col gap-2">
-      <SectionLabel>Plot style</SectionLabel>
-      <label className="flex items-center justify-between gap-2">
-        <span className="text-xs text-tv-text">Mode</span>
-        <select
-          value={draft.plotStyle}
-          onChange={(e) =>
-            commit({ plotStyle: e.target.value as "histogram" | "area" })
-          }
-          className="rounded border border-tv-border bg-tv-bg px-2 py-1 text-xs"
-        >
-          <option value="histogram">Histogram (4 colors)</option>
-          <option value="area">Area (smooth fill)</option>
-        </select>
-      </label>
-
       <SectionLabel>Style — Colors (per-bar, Pine 4-color)</SectionLabel>
       <ColorPick
         label="Color 0 — increasing positive"

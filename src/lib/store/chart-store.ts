@@ -128,8 +128,6 @@ export interface SqueezeStyle {
   /** Visibility toggles */
   showMomentum: boolean;
   showSqueezeDots: boolean;
-  /** Plot style: bars (histogram with gap) or area (touching bars + outline) */
-  plotStyle: "histogram" | "area";
 }
 
 export const DEFAULT_SQUEEZE_STYLE: SqueezeStyle = {
@@ -142,7 +140,6 @@ export const DEFAULT_SQUEEZE_STYLE: SqueezeStyle = {
   noSqueeze: "#2962ff",
   showMomentum: true,
   showSqueezeDots: true,
-  plotStyle: "histogram",
 };
 
 export const DEFAULT_WATCHLIST = [

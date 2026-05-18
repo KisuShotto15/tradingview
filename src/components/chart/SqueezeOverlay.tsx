@@ -11,45 +11,36 @@ interface Props {
   pts: SqueezePoint[];
   colorMap: Record<SqueezeColor, string>;
   visible: boolean;
-  /** Vertical offset (px) of the squeeze pane within the chart container */
   paneTop: number;
-  /** Height of the squeeze pane */
   paneHeight: number;
 }
 
+type Pt = { x: number; y: number };
+
 /**
- * Catmull-Rom spline through bar-center tops, closed back to baseline.
- * hw = half bar width — baseline extends to left/right edges so adjacent
- * segments share the same boundary with no gap between them.
+ * Draws a filled area through [startPt, ...barCenters, endPt] using
+ * horizontal-tangent cubic bezier (no Catmull-Rom overshoot).
+ * The shape closes back along the baseline (y = yBase).
  */
-function smoothArea(pts: { x: number; y: number }[], yBase: number, hw: number): string {
-  const n = pts.length;
+function buildPath(topPts: Pt[], yBase: number): string {
+  const n = topPts.length;
   if (n === 0) return "";
 
-  const x0 = pts[0].x - hw;
-  const xN = pts[n - 1].x + hw;
+  const start = topPts[0];
+  const end = topPts[n - 1];
 
-  if (n === 1) {
-    return `M ${x0},${yBase} L ${pts[0].x},${pts[0].y} L ${xN},${yBase} Z`;
-  }
-
-  let d = `M ${x0},${yBase} L ${pts[0].x},${pts[0].y} `;
+  let d = `M ${start.x.toFixed(2)},${yBase.toFixed(2)} `;
+  d += `L ${start.x.toFixed(2)},${start.y.toFixed(2)} `;
 
   for (let i = 0; i < n - 1; i++) {
-    const p0 = pts[Math.max(i - 1, 0)];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[Math.min(i + 2, n - 1)];
-
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
-
-    d += `C ${cp1x.toFixed(2)},${cp1y.toFixed(2)} ${cp2x.toFixed(2)},${cp2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)} `;
+    const p1 = topPts[i];
+    const p2 = topPts[i + 1];
+    const mx = ((p1.x + p2.x) / 2).toFixed(2);
+    // Horizontal tangents at both endpoints → no overshoot
+    d += `C ${mx},${p1.y.toFixed(2)} ${mx},${p2.y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)} `;
   }
 
-  d += `L ${xN},${yBase} Z`;
+  d += `L ${end.x.toFixed(2)},${yBase.toFixed(2)} Z`;
   return d;
 }
 
@@ -67,33 +58,43 @@ export function SqueezeOverlay({
   if (!chart || !squeezeSeries || !visible || pts.length === 0) return null;
 
   const ts = chart.timeScale();
-  const yBase = squeezeSeries.priceToCoordinate(0);
-  if (yBase === null) return null;
-
-  // Resolve pixel coords once
-  type Bar = { x: number; y: number; color: SqueezeColor };
-  const bars: Bar[] = [];
-  for (const p of pts) {
-    const x = ts.timeToCoordinate(p.time as UTCTimestamp);
-    const y = squeezeSeries.priceToCoordinate(p.momentum);
-    if (x === null || y === null) continue;
-    bars.push({ x, y, color: p.color });
-  }
-  if (bars.length === 0) return null;
+  const yBaseRaw = squeezeSeries.priceToCoordinate(0);
+  if (yBaseRaw === null) return null;
+  const yBase: number = yBaseRaw;
 
   const opts = ts.options() as { barSpacing?: number };
   const hw = Math.max((opts.barSpacing ?? 6) / 2, 0.5);
 
-  // Group consecutive same-color bars into segments
+  // Resolve pixel coords
+  type Bar = { x: number; y: number; color: SqueezeColor };
+  const bars: Bar[] = [];
+  for (const p of pts) {
+    const x = ts.timeToCoordinate(p.time as UTCTimestamp);
+    const yRaw = squeezeSeries.priceToCoordinate(p.momentum);
+    if (x === null || yRaw === null) continue;
+    bars.push({ x, y: yRaw as number, color: p.color });
+  }
+  if (bars.length === 0) return null;
+
+  // Group consecutive same-color bars
   type Segment = { color: SqueezeColor; bars: Bar[] };
   const segments: Segment[] = [];
   for (const b of bars) {
     const last = segments[segments.length - 1];
-    if (last && last.color === b.color) {
-      last.bars.push(b);
-    } else {
-      segments.push({ color: b.color, bars: [b] });
+    if (last && last.color === b.color) last.bars.push(b);
+    else segments.push({ color: b.color, bars: [b] });
+  }
+
+  // Compute shared boundary point between segment[si] and segment[si+1].
+  // Same-sign → midpoint; opposite sign → zero crossing.
+  function boundary(a: Bar, b: Bar): Pt {
+    const sameSign = (a.y - yBase) * (b.y - yBase) >= 0;
+    if (sameSign) {
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     }
+    // Linear interpolation to find zero crossing
+    const t = (yBase - a.y) / (b.y - a.y);
+    return { x: a.x + t * (b.x - a.x), y: yBase };
   }
 
   void width;
@@ -114,14 +115,27 @@ export function SqueezeOverlay({
       <g clipPath={`url(#${clipId})`}>
         {segments.map((seg, si) => {
           if (seg.bars.length === 0) return null;
-          const d = smoothArea(seg.bars, yBase, hw);
+
+          const firstBar = seg.bars[0];
+          const lastBar = seg.bars[seg.bars.length - 1];
+
+          // startPt: shared with previous segment, or left edge at baseline
+          const prevLastBar = si > 0 ? segments[si - 1].bars[segments[si - 1].bars.length - 1] : null;
+          const startPt: Pt = prevLastBar
+            ? boundary(prevLastBar, firstBar)
+            : { x: firstBar.x - hw, y: yBase };
+
+          // endPt: shared with next segment, or right edge at baseline
+          const nextFirstBar = si < segments.length - 1 ? segments[si + 1].bars[0] : null;
+          const endPt: Pt = nextFirstBar
+            ? boundary(lastBar, nextFirstBar)
+            : { x: lastBar.x + hw, y: yBase };
+
+          const topPts: Pt[] = [startPt, ...seg.bars, endPt];
+          const d = buildPath(topPts, yBase);
+
           return (
-            <path
-              key={si}
-              d={d}
-              fill={colorMap[seg.color]}
-              stroke="none"
-            />
+            <path key={si} d={d} fill={colorMap[seg.color]} stroke="none" />
           );
         })}
       </g>
