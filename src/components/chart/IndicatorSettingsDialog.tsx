@@ -228,37 +228,46 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
   return (
     <div className="flex flex-col gap-3">
       {target === "rsi" && (
-        <Field
-          label="Period"
-          value={draft.rsi}
-          onChange={(n) => setDraft((d) => ({ ...d, rsi: n }))}
-        />
+        <>
+          <Field
+            label="Period"
+            value={draft.rsi}
+            onChange={(n) => setDraft((d) => ({ ...d, rsi: n }))}
+          />
+          <OverlaySection target="rsi" />
+        </>
       )}
       {target === "macd" && (
-        <div className="grid grid-cols-3 gap-2">
-          <Field
-            label="Fast"
-            value={draft.macdFast}
-            onChange={(n) => setDraft((d) => ({ ...d, macdFast: n }))}
-          />
-          <Field
-            label="Slow"
-            value={draft.macdSlow}
-            onChange={(n) => setDraft((d) => ({ ...d, macdSlow: n }))}
-          />
-          <Field
-            label="Signal"
-            value={draft.macdSignal}
-            onChange={(n) => setDraft((d) => ({ ...d, macdSignal: n }))}
-          />
-        </div>
+        <>
+          <div className="grid grid-cols-3 gap-2">
+            <Field
+              label="Fast"
+              value={draft.macdFast}
+              onChange={(n) => setDraft((d) => ({ ...d, macdFast: n }))}
+            />
+            <Field
+              label="Slow"
+              value={draft.macdSlow}
+              onChange={(n) => setDraft((d) => ({ ...d, macdSlow: n }))}
+            />
+            <Field
+              label="Signal"
+              value={draft.macdSignal}
+              onChange={(n) => setDraft((d) => ({ ...d, macdSignal: n }))}
+            />
+          </div>
+          <OverlaySection target="macd" />
+        </>
       )}
       {target === "adx" && (
-        <Field
-          label="Period"
-          value={draft.adx}
-          onChange={(n) => setDraft((d) => ({ ...d, adx: n }))}
-        />
+        <>
+          <Field
+            label="Period"
+            value={draft.adx}
+            onChange={(n) => setDraft((d) => ({ ...d, adx: n }))}
+          />
+          <OverlaySection target="adx" />
+        </>
       )}
       {target === "squeeze" && (
         <>
@@ -286,6 +295,7 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
             />
           </div>
           <SqueezeStyleSection />
+          <OverlaySection target="squeeze" />
         </>
       )}
       {target === "volume" && (
@@ -422,6 +432,52 @@ function Toggle({
         className="h-4 w-4 cursor-pointer accent-tv-blue"
       />
     </label>
+  );
+}
+
+const OVERLAY_OPTIONS: { value: IndicatorKey | "own"; label: string }[] = [
+  { value: "own", label: "Own pane" },
+  { value: "rsi", label: "RSI pane" },
+  { value: "macd", label: "MACD pane" },
+  { value: "adx", label: "ADX pane" },
+  { value: "squeeze", label: "Squeeze pane" },
+  { value: "vumanchu", label: "VuManChu pane" },
+];
+
+function OverlaySection({ target }: { target: IndicatorKey }) {
+  const overlays = useChartStore((s) => s.indicatorOverlays);
+  const setIndicatorOverlay = useChartStore((s) => s.setIndicatorOverlay);
+  const indicators = useChartStore((s) => s.indicators);
+  const current = overlays[target] ?? "own";
+
+  return (
+    <div className="flex flex-col gap-2">
+      <SectionLabel>Pane</SectionLabel>
+      <label className="flex items-center justify-between gap-3">
+        <span className="text-xs text-tv-text">Overlay on</span>
+        <select
+          value={current}
+          onChange={(e) =>
+            setIndicatorOverlay(target, e.target.value as IndicatorKey | "own")
+          }
+          className="rounded border border-tv-border bg-tv-bg px-2 py-1 text-xs"
+        >
+          {OVERLAY_OPTIONS.filter(
+            (o) =>
+              o.value === "own" ||
+              (o.value !== target && indicators[o.value as IndicatorKey]),
+          ).map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="text-[10px] text-tv-text-muted">
+        Place this indicator on top of another indicator&apos;s pane instead of
+        its own.
+      </p>
+    </div>
   );
 }
 

@@ -186,6 +186,11 @@ interface ChartState {
   logScale: boolean;
   /** How many recent bars to show when (re)loading a chart */
   visibleBars: number;
+  /**
+   * Maps an indicator to the indicator whose pane it shares ("own" = its own
+   * pane). E.g. { adx: "squeeze" } overlays ADX on the Squeeze pane.
+   */
+  indicatorOverlays: Partial<Record<IndicatorKey, IndicatorKey | "own">>;
   /** User watchlists with sections/labels */
   watchlists: Watchlist[];
   activeWatchlistId: string;
@@ -215,6 +220,7 @@ interface ChartState {
   setSqueezeStyle: (patch: Partial<SqueezeStyle>) => void;
   setLogScale: (v: boolean) => void;
   setVisibleBars: (n: number) => void;
+  setIndicatorOverlay: (key: IndicatorKey, target: IndicatorKey | "own") => void;
   createWatchlist: (name: string) => string;
   renameWatchlist: (id: string, name: string) => void;
   deleteWatchlist: (id: string) => void;
@@ -284,6 +290,7 @@ export const useChartStore = create<ChartState>()(
       squeezeStyle: { ...DEFAULT_SQUEEZE_STYLE },
       logScale: false,
       visibleBars: 150,
+      indicatorOverlays: {},
       ...initialWatchlists(),
       chartColors: { ...DEFAULT_CHART_COLORS },
       tool: "cursor",
@@ -347,6 +354,10 @@ export const useChartStore = create<ChartState>()(
         set((s) => ({ squeezeStyle: { ...s.squeezeStyle, ...patch } })),
       setLogScale: (logScale) => set({ logScale }),
       setVisibleBars: (visibleBars) => set({ visibleBars }),
+      setIndicatorOverlay: (key, target) =>
+        set((s) => ({
+          indicatorOverlays: { ...s.indicatorOverlays, [key]: target },
+        })),
       createWatchlist: (name) => {
         const id = randomId();
         set((state) => ({
@@ -484,6 +495,7 @@ export const useChartStore = create<ChartState>()(
         squeezeStyle: s.squeezeStyle,
         logScale: s.logScale,
         visibleBars: s.visibleBars,
+        indicatorOverlays: s.indicatorOverlays,
         watchlists: s.watchlists,
         activeWatchlistId: s.activeWatchlistId,
         chartColors: s.chartColors,

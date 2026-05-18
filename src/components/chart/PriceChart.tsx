@@ -155,6 +155,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const removeUserEMA = useChartStore((s) => s.removeUserEMA);
   const toggleUserEMAHidden = useChartStore((s) => s.toggleUserEMAHidden);
   const squeezeStyle = useChartStore((s) => s.squeezeStyle);
+  const indicatorOverlays = useChartStore((s) => s.indicatorOverlays);
   const logScale = useChartStore((s) => s.logScale);
   const chartColors = useChartStore((s) => s.chartColors);
   chartColorsRef.current = chartColors;
@@ -788,18 +789,38 @@ export function PriceChart({ symbol, timeframe }: Props) {
    */
   function panelIndexFor(key: "rsi" | "macd" | "adx" | "squeeze" | "vumanchu"): number {
     const order: Array<typeof key> = ["rsi", "macd", "adx", "squeeze", "vumanchu"];
+    const assigned: Record<string, number> = {};
     let idx = 1;
     for (const k of order) {
-      if (k === key) return idx;
-      if (indicators[k]) idx++;
+      const target = indicatorOverlays[k];
+      if (target && target !== "own" && indicators[target] && assigned[target] !== undefined) {
+        // Share the target's pane — no extra pane consumed
+        assigned[k] = assigned[target];
+      } else {
+        assigned[k] = idx;
+        if (indicators[k]) idx++;
+      }
     }
-    return idx;
+    return assigned[key];
   }
 
   // ── ADX pane ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!chartRef.current) return;
-    if (indicators.adx && !adxRef.current) {
+    // Always teardown first so changes to pane assignment (overlays) take effect
+    if (adxRef.current) {
+      try { chartRef.current.removeSeries(adxRef.current); } catch {}
+      adxRef.current = null;
+    }
+    if (adxPlusDIRef.current) {
+      try { chartRef.current.removeSeries(adxPlusDIRef.current); } catch {}
+      adxPlusDIRef.current = null;
+    }
+    if (adxMinusDIRef.current) {
+      try { chartRef.current.removeSeries(adxMinusDIRef.current); } catch {}
+      adxMinusDIRef.current = null;
+    }
+    if (indicators.adx) {
       const paneIndex = panelIndexFor("adx");
       adxRef.current = chartRef.current.addSeries(
         LineSeries,
@@ -821,17 +842,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
         chartRef.current.panes()[0]?.setStretchFactor(3);
       } catch {}
       updateADX();
-    } else if (!indicators.adx && adxRef.current && chartRef.current) {
-      if (adxRef.current) chartRef.current.removeSeries(adxRef.current);
-      if (adxPlusDIRef.current) chartRef.current.removeSeries(adxPlusDIRef.current);
-      if (adxMinusDIRef.current) chartRef.current.removeSeries(adxMinusDIRef.current);
-      adxRef.current = null;
-      adxPlusDIRef.current = null;
-      adxMinusDIRef.current = null;
     }
     requestAnimationFrame(() => recomputePaneOffsets());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicators.adx, indicators.rsi, indicators.macd]);
+  }, [indicators.adx, indicators.rsi, indicators.macd, indicatorOverlays]);
 
   // ── Squeeze Momentum pane ────────────────────────────────────────────────
   useEffect(() => {
@@ -1610,8 +1624,38 @@ export function PriceChart({ symbol, timeframe }: Props) {
   void isShown;
 
   // Determine which pane each indicator lives in (based on current layout)
-  const rsiPaneIdx = 1;
-  const macdPaneIdx = indicators.rsi ? 2 : 1;
+  // Order: RSI > MACD > ADX > Squeeze > VuManChu. Overlaid indicators reuse
+  // the target's index instead of taking their own.
+  const indicatorPaneIdx: Record<
+    "rsi" | "macd" | "adx" | "squeeze" | "vumanchu",
+    number
+  > = (() => {
+    const order: Array<"rsi" | "macd" | "adx" | "squeeze" | "vumanchu"> = [
+      "rsi",
+      "macd",
+      "adx",
+      "squeeze",
+      "vumanchu",
+    ];
+    const out: Record<string, number> = {};
+    let idx = 1;
+    for (const k of order) {
+      const target = indicatorOverlays[k];
+      if (target && target !== "own" && indicators[target]) {
+        // Shares the target's pane (computed earlier in the loop)
+        out[k] = out[target] ?? idx;
+      } else {
+        out[k] = idx;
+        if (indicators[k]) idx++;
+      }
+    }
+    return out as Record<"rsi" | "macd" | "adx" | "squeeze" | "vumanchu", number>;
+  })();
+  const rsiPaneIdx = indicatorPaneIdx.rsi;
+  const macdPaneIdx = indicatorPaneIdx.macd;
+  const adxPaneIdx = indicatorPaneIdx.adx;
+  const squeezePaneIdx = indicatorPaneIdx.squeeze;
+  const vumanchuPaneIdx = indicatorPaneIdx.vumanchu;
 
   let measureRender: React.ReactNode = null;
   if (
@@ -1839,6 +1883,68 @@ export function PriceChart({ symbol, timeframe }: Props) {
             onToggleHide={() => toggleHidden("macd")}
             onSettings={() => setSettingsTarget("macd")}
             onRemove={() => removeIndicator("macd")}
+          />
+        </div>
+      )}
+
+      {/* ADX pane label */}
+      {indicators.adx && paneOffsets[adxPaneIdx] && (
+        <div
+          style={{ top: paneOffsets[adxPaneIdx].top + 6, left: 12 }}
+          className="pointer-events-none absolute z-10 flex flex-col items-start gap-1"
+        >
+          <IndicatorPill
+            name={`ADX ${config.adx}`}
+            color={INDICATOR_COLORS.adx}
+            hidden={hidden.adx}
+            onToggleHide={() => toggleHidden("adx")}
+            onSettings={() => setSettingsTarget("adx")}
+            onRemove={() => removeIndicator("adx")}
+          />
+        </div>
+      )}
+
+      {/* Squeeze Momentum pane label */}
+      {indicators.squeeze && paneOffsets[squeezePaneIdx] && (
+        <div
+          style={{ top: paneOffsets[squeezePaneIdx].top + 6, left: 12 }}
+          className="pointer-events-none absolute z-10 flex flex-col items-start gap-1"
+        >
+          <IndicatorPill
+            name="Squeeze Momentum"
+            color={INDICATOR_COLORS.squeeze}
+            hidden={hidden.squeeze}
+            onToggleHide={() => toggleHidden("squeeze")}
+            onSettings={() => setSettingsTarget("squeeze")}
+            onRemove={() => removeIndicator("squeeze")}
+          />
+          {/* If ADX is overlaid on this pane, show its pill too */}
+          {indicators.adx && indicatorOverlays.adx === "squeeze" && (
+            <IndicatorPill
+              name={`ADX ${config.adx}`}
+              color={INDICATOR_COLORS.adx}
+              hidden={hidden.adx}
+              onToggleHide={() => toggleHidden("adx")}
+              onSettings={() => setSettingsTarget("adx")}
+              onRemove={() => removeIndicator("adx")}
+            />
+          )}
+        </div>
+      )}
+
+      {/* VuManChu pane label */}
+      {indicators.vumanchu && paneOffsets[vumanchuPaneIdx] && (
+        <div
+          style={{ top: paneOffsets[vumanchuPaneIdx].top + 6, left: 12 }}
+          className="pointer-events-none absolute z-10 flex flex-col items-start gap-1"
+        >
+          <IndicatorPill
+            name="VuManChu Cipher B"
+            color={INDICATOR_COLORS.vumanchu}
+            hidden={hidden.vumanchu}
+            onToggleHide={() => toggleHidden("vumanchu")}
+            onSettings={() => setSettingsTarget("vumanchu")}
+            onRemove={() => removeIndicator("vumanchu")}
           />
         </div>
       )}

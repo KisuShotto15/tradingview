@@ -132,7 +132,7 @@ export function LeftSidebar() {
   }
 
   return (
-    <aside className="flex w-11 flex-col items-center gap-0.5 border-r border-tv-border bg-tv-panel py-1.5">
+    <aside className="flex w-14 flex-col items-center gap-1 border-r border-tv-border bg-tv-panel py-2">
       {TOOL_GROUPS.map((group, gi) => {
         if (!group.label) {
           // Cursor (no category)
@@ -155,13 +155,13 @@ export function LeftSidebar() {
                 onClick={() => setTool(activeTool.key)}
                 aria-label={activeTool.label}
                 className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-tv-panel-hover",
+                  "flex h-10 w-10 items-center justify-center rounded transition-colors hover:bg-tv-panel-hover",
                   groupHasActive
                     ? "bg-tv-blue/15 text-tv-blue"
                     : "text-tv-text-muted hover:text-tv-text",
                 )}
               >
-                <ActiveIcon className="h-4 w-4" />
+                <ActiveIcon className="h-5 w-5" />
               </TooltipTrigger>
               <TooltipContent side="right" className="text-xs">
                 <div className="font-medium">{activeTool.label}</div>
@@ -201,7 +201,7 @@ export function LeftSidebar() {
                         isActive && "bg-tv-blue/15 text-tv-blue",
                       )}
                     >
-                      <Icon className="h-3.5 w-3.5" />
+                      <Icon className="h-4 w-4" />
                       <span>{t.label}</span>
                     </DropdownMenuItem>
                   );
@@ -221,13 +221,13 @@ export function LeftSidebar() {
             disabled={!canAlert}
             aria-label="Toggle alert"
             className={cn(
-              "flex h-8 w-8 items-center justify-center rounded transition-colors",
+              "flex h-10 w-10 items-center justify-center rounded transition-colors",
               !canAlert && "cursor-not-allowed opacity-30",
               canAlert && alertOn && "bg-tv-yellow/15 text-tv-yellow",
               canAlert && !alertOn && "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
             )}
           >
-            {alertOn ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+            {alertOn ? <Bell className="h-5 w-5" /> : <BellOff className="h-5 w-5" />}
           </TooltipTrigger>
           <TooltipContent side="right" className="text-xs">
             <div className="font-medium">
@@ -245,9 +245,9 @@ export function LeftSidebar() {
           <TooltipTrigger
             onClick={() => void clearDrawings(symbol)}
             aria-label="Clear drawings"
-            className="flex h-8 w-8 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-red"
+            className="flex h-10 w-10 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-red"
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 className="h-5 w-5" />
           </TooltipTrigger>
           <TooltipContent side="right" className="text-xs">
             <div className="font-medium">Clear drawings</div>
@@ -274,13 +274,13 @@ function renderSimpleTool(
         onClick={onClick}
         aria-label={t.label}
         className={cn(
-          "flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-tv-panel-hover",
+          "flex h-10 w-10 items-center justify-center rounded transition-colors hover:bg-tv-panel-hover",
           active
             ? "bg-tv-blue/15 text-tv-blue"
             : "text-tv-text-muted hover:text-tv-text",
         )}
       >
-        <Icon className="h-4 w-4" />
+        <Icon className="h-5 w-5" />
       </TooltipTrigger>
       <TooltipContent side="right" className="text-xs">
         <div className="font-medium">{t.label}</div>

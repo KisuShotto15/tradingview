@@ -111,17 +111,4 @@ Para 1000 velas y panes múltiples el costo es despreciable.
 - ❌ Alertas server-side (siguiente video de la serie)
 - ❌ Trading real (bot con API privada — video 4)
 
-## 📺 Serie de videos
-
-Este repo es la base de la serie **"TradingView Gratis"**:
-
-1. ✅ **Video 1 — Base**: lo que ves acá
-2. 🔜 **Video 2 — Alertas**: Supabase + Telegram bot
-3. 🔜 **Video 3 — Indicadores AI**: SuperTrend, Ichimoku, custom con Claude
-4. 🔜 **Video 4 — Bot que opera**: API privada Binance + ejecución
-
-## 📄 Licencia
-
-MIT — usalo, forkealo, monetizalo, lo que quieras.
-
 `lightweight-charts` es Apache 2.0 con atribución a TradingView — la atribución vive en el footer/UI por requerimiento de la licencia.
