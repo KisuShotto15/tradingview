@@ -302,6 +302,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           kind: "hline",
           symbol: symbolRef.current,
           price,
+          ...(useChartStore.getState().toolDefaults["hline"] ?? {}),
         });
         setToolRef.current("cursor");
         return;
@@ -314,6 +315,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           kind: "vline",
           symbol: symbolRef.current,
           time: resolvedTime,
+          ...(useChartStore.getState().toolDefaults["vline"] ?? {}),
         });
         setToolRef.current("cursor");
         return;
@@ -326,6 +328,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           kind: "hray",
           symbol: symbolRef.current,
           anchor: { time: resolvedTime, price },
+          ...(useChartStore.getState().toolDefaults["hray"] ?? {}),
         });
         setToolRef.current("cursor");
         return;
@@ -346,6 +349,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
             symbol: symbolRef.current,
             a: first,
             b: { time, price },
+            ...(useChartStore.getState().toolDefaults[kind] ?? {}),
           } as Parameters<typeof drawingsApiRef.current.add>[0]);
           firstPointRef.current = null;
           setPreviewState(null);
@@ -357,30 +361,32 @@ export function PriceChart({ symbol, timeframe }: Props) {
       if (toolRef.current === "long" || toolRef.current === "short") {
         if (resolvedTime === null) return;
         const time = resolvedTime;
-        const first = firstPointRef.current;
         const kind = toolRef.current;
-        if (!first) {
-          firstPointRef.current = { time, price };
-          setPreviewState({ first: { time, price }, extra: [], cursor: { time, price } });
-        } else {
-          const entry = first.price;
-          const target = price;
-          // Default stop: same absolute distance from entry as target, opposite side
-          const stop = entry - (target - entry);
-          void drawingsApiRef.current.add({
-            id: generateId(),
-            kind,
-            symbol: symbolRef.current,
-            entry,
-            stop,
-            target,
-            timeA: first.time,
-            timeB: time,
-          } as Parameters<typeof drawingsApiRef.current.add>[0]);
-          firstPointRef.current = null;
-          setPreviewState(null);
-          setToolRef.current("cursor");
-        }
+        const entry = price;
+        // Default: 2% move in the favorable direction; 1:1 R:R on the other side
+        const dist = Math.abs(entry) * 0.02 || 1;
+        const target = kind === "long" ? entry + dist : entry - dist;
+        const stop = kind === "long" ? entry - dist : entry + dist;
+        // Default width: 20 bars to the right
+        const intervalSec = timeframeToSeconds(
+          useChartStore.getState().timeframe,
+        );
+        const timeB = time + 20 * intervalSec;
+        const defaults = useChartStore.getState().toolDefaults[kind] ?? {};
+        void drawingsApiRef.current.add({
+          id: generateId(),
+          kind,
+          symbol: symbolRef.current,
+          entry,
+          stop,
+          target,
+          timeA: time,
+          timeB,
+          ...defaults,
+        } as Parameters<typeof drawingsApiRef.current.add>[0]);
+        firstPointRef.current = null;
+        setPreviewState(null);
+        setToolRef.current("cursor");
         return;
       }
 
@@ -400,6 +406,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
             priceB: price,
             timeA: first.time,
             timeB: time,
+            ...(useChartStore.getState().toolDefaults["price-range"] ?? {}),
           });
           firstPointRef.current = null;
           setPreviewState(null);
@@ -422,6 +429,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
             symbol: symbolRef.current,
             timeA: first.time,
             timeB: time,
+            ...(useChartStore.getState().toolDefaults["date-range"] ?? {}),
           });
           firstPointRef.current = null;
           setPreviewState(null);
@@ -445,6 +453,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
             a: first,
             b: { time, price },
             levels: [...FIB_LEVELS_DEFAULT],
+            ...(useChartStore.getState().toolDefaults["fib-retracement"] ?? {}),
           });
           firstPointRef.current = null;
           setPreviewState(null);
@@ -466,6 +475,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
             a,
             b,
             c,
+            ...(useChartStore.getState().toolDefaults["parallel-channel"] ?? {}),
           });
           placementPointsRef.current = [];
           setPreviewState(null);

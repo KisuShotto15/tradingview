@@ -191,6 +191,18 @@ interface ChartState {
    * pane). E.g. { adx: "squeeze" } overlays ADX on the Squeeze pane.
    */
   indicatorOverlays: Partial<Record<IndicatorKey, IndicatorKey | "own">>;
+
+  /**
+   * Per-drawing-kind defaults (color, lineWidth, lineStyle). Applied to new
+   * drawings. Updated when the user edits a drawing's style — so next time
+   * they use the same tool, the same style is pre-selected.
+   */
+  toolDefaults: Partial<
+    Record<
+      string,
+      { color?: string; lineWidth?: number; lineStyle?: number }
+    >
+  >;
   /** User watchlists with sections/labels */
   watchlists: Watchlist[];
   activeWatchlistId: string;
@@ -221,6 +233,10 @@ interface ChartState {
   setLogScale: (v: boolean) => void;
   setVisibleBars: (n: number) => void;
   setIndicatorOverlay: (key: IndicatorKey, target: IndicatorKey | "own") => void;
+  setToolDefault: (
+    kind: string,
+    patch: { color?: string; lineWidth?: number; lineStyle?: number },
+  ) => void;
   createWatchlist: (name: string) => string;
   renameWatchlist: (id: string, name: string) => void;
   deleteWatchlist: (id: string) => void;
@@ -291,6 +307,7 @@ export const useChartStore = create<ChartState>()(
       logScale: false,
       visibleBars: 150,
       indicatorOverlays: {},
+      toolDefaults: {},
       ...initialWatchlists(),
       chartColors: { ...DEFAULT_CHART_COLORS },
       tool: "cursor",
@@ -357,6 +374,13 @@ export const useChartStore = create<ChartState>()(
       setIndicatorOverlay: (key, target) =>
         set((s) => ({
           indicatorOverlays: { ...s.indicatorOverlays, [key]: target },
+        })),
+      setToolDefault: (kind, patch) =>
+        set((s) => ({
+          toolDefaults: {
+            ...s.toolDefaults,
+            [kind]: { ...(s.toolDefaults[kind] ?? {}), ...patch },
+          },
         })),
       createWatchlist: (name) => {
         const id = randomId();
@@ -496,6 +520,7 @@ export const useChartStore = create<ChartState>()(
         logScale: s.logScale,
         visibleBars: s.visibleBars,
         indicatorOverlays: s.indicatorOverlays,
+        toolDefaults: s.toolDefaults,
         watchlists: s.watchlists,
         activeWatchlistId: s.activeWatchlistId,
         chartColors: s.chartColors,

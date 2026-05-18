@@ -25,6 +25,8 @@ interface DrawingsState {
   drawings: Drawing[];
   /** Currently selected drawing id (null = none) */
   selectedId: string | null;
+  /** Drawing whose settings dialog is open (null = closed) */
+  editingId: string | null;
   /** In-progress drawing placement */
   placement: PlacementState;
 
@@ -35,6 +37,7 @@ interface DrawingsState {
   removeDrawing: (id: string) => void;
   clearDrawings: (symbol?: string) => void;
   setSelected: (id: string | null) => void;
+  setEditing: (id: string | null) => void;
 
   setPlacement: (placement: PlacementState) => void;
   resetPlacement: () => void;
@@ -43,6 +46,7 @@ interface DrawingsState {
 export const useDrawingsStore = create<DrawingsState>()((set) => ({
   drawings: [],
   selectedId: null,
+  editingId: null,
   placement: INITIAL_PLACEMENT,
 
   setDrawings: (drawings) => set({ drawings }),
@@ -66,6 +70,7 @@ export const useDrawingsStore = create<DrawingsState>()((set) => ({
       selectedId: null,
     })),
   setSelected: (selectedId) => set({ selectedId }),
+  setEditing: (editingId) => set({ editingId }),
 
   setPlacement: (placement) => set({ placement }),
   resetPlacement: () => set({ placement: INITIAL_PLACEMENT }),

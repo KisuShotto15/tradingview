@@ -17,6 +17,7 @@ interface Props {
   by: number;
   selected: boolean;
   onSelect: () => void;
+  onEdit: () => void;
   chart: IChartApi | null;
   candleSeries: ISeriesApi<"Candlestick"> | null;
   container: HTMLElement | null;
@@ -30,6 +31,7 @@ export function TrendLineDraw({
   by,
   selected,
   onSelect,
+  onEdit,
   chart,
   candleSeries,
   container,
@@ -102,6 +104,7 @@ export function TrendLineDraw({
             onSelect();
           }
         }}
+        onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
       <line
         x1={ax}

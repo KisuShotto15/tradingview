@@ -17,6 +17,7 @@ interface Props {
   yB: number;
   selected: boolean;
   onSelect: () => void;
+  onEdit: () => void;
   chart: IChartApi | null;
   candleSeries: ISeriesApi<"Candlestick"> | null;
   container: HTMLElement | null;
@@ -30,6 +31,7 @@ export function PriceRangeDraw({
   yB,
   selected,
   onSelect,
+  onEdit,
   chart,
   candleSeries,
   container,

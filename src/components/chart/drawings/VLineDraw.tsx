@@ -13,6 +13,7 @@ interface Props {
   height: number;
   selected: boolean;
   onSelect: () => void;
+  onEdit: () => void;
   chart: IChartApi | null;
   candleSeries: ISeriesApi<"Candlestick"> | null;
   container: HTMLElement | null;
@@ -24,6 +25,7 @@ export function VLineDraw({
   height,
   selected,
   onSelect,
+  onEdit,
   chart,
   candleSeries,
   container,
@@ -79,6 +81,7 @@ export function VLineDraw({
             onSelect();
           }
         }}
+        onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
       <line
         x1={x}

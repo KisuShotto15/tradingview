@@ -14,6 +14,7 @@ interface Props {
   width: number;
   selected: boolean;
   onSelect: () => void;
+  onEdit: () => void;
   chart: IChartApi | null;
   candleSeries: ISeriesApi<"Candlestick"> | null;
   container: HTMLElement | null;
@@ -25,6 +26,7 @@ export function HLineDraw({
   width,
   selected,
   onSelect,
+  onEdit,
   chart,
   candleSeries,
   container,
@@ -81,6 +83,7 @@ export function HLineDraw({
             onSelect();
           }
         }}
+        onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
       {/* Visible line */}
       <line

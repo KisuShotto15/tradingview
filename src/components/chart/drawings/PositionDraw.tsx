@@ -28,6 +28,7 @@ interface Props {
   yTarget: number;
   selected: boolean;
   onSelect: () => void;
+  onEdit: () => void;
   candleSeries: ISeriesApi<"Candlestick"> | null;
   container: HTMLElement | null;
 }
@@ -41,6 +42,7 @@ export function PositionDraw({
   yTarget,
   selected,
   onSelect,
+  onEdit,
   candleSeries,
   container,
 }: Props) {

@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { IChartApi, ISeriesApi, UTCTimestamp } from "lightweight-charts";
+import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
+import { useChartStore } from "@/lib/store/chart-store";
+import { timeToX, timeframeToSeconds } from "@/lib/chart/coords";
+import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
 import type { Drawing } from "@/lib/drawings/types";
 import { HLineDraw } from "./HLineDraw";
 import { VLineDraw } from "./VLineDraw";
@@ -38,6 +41,7 @@ export function DrawingsLayer({
   const drawings = useDrawingsStore((s) => s.drawings);
   const selectedId = useDrawingsStore((s) => s.selectedId);
   const setSelected = useDrawingsStore((s) => s.setSelected);
+  const setEditing = useDrawingsStore((s) => s.setEditing);
 
   // Force re-render when symbol or renderTick changes
   const [, setTick] = useState(0);
@@ -62,8 +66,10 @@ export function DrawingsLayer({
           container,
           width,
           height,
+          intervalSec: timeframeToSeconds(useChartStore.getState().timeframe),
           selected: selectedId === d.id,
           onSelect: () => setSelected(d.id),
+          onEdit: () => setEditing(d.id),
         }),
       )}
     </svg>
@@ -77,12 +83,15 @@ interface RenderArgs {
   container: HTMLElement | null;
   width: number;
   height: number;
+  intervalSec: number;
   selected: boolean;
   onSelect: () => void;
+  onEdit: () => void;
 }
 
 function renderDrawing(args: RenderArgs) {
-  const { d, chart, candleSeries, container, width, height, selected, onSelect } = args;
+  const { d, chart, candleSeries, container, width, height, selected, onSelect, onEdit } = args;
+  const _intervalSec = args.intervalSec;
   switch (d.kind) {
     case "hline": {
       const y = candleSeries.priceToCoordinate(d.price);
@@ -95,6 +104,7 @@ function renderDrawing(args: RenderArgs) {
           width={width}
           selected={selected}
           onSelect={onSelect}
+          onEdit={onEdit}
           chart={chart}
           candleSeries={candleSeries}
           container={container}
@@ -102,7 +112,7 @@ function renderDrawing(args: RenderArgs) {
       );
     }
     case "vline": {
-      const x = chart.timeScale().timeToCoordinate(d.time as UTCTimestamp);
+      const x = timeToX(chart, Number(d.time), globalCandlesRef.current, _intervalSec);
       if (x === null) return null;
       return (
         <VLineDraw
@@ -112,6 +122,7 @@ function renderDrawing(args: RenderArgs) {
           height={height}
           selected={selected}
           onSelect={onSelect}
+          onEdit={onEdit}
           chart={chart}
           candleSeries={candleSeries}
           container={container}
@@ -119,7 +130,7 @@ function renderDrawing(args: RenderArgs) {
       );
     }
     case "hray": {
-      const x = chart.timeScale().timeToCoordinate(d.anchor.time as UTCTimestamp);
+      const x = timeToX(chart, Number(d.anchor.time), globalCandlesRef.current, _intervalSec);
       const y = candleSeries.priceToCoordinate(d.anchor.price);
       if (x === null || y === null) return null;
       return (
@@ -131,6 +142,7 @@ function renderDrawing(args: RenderArgs) {
           width={width}
           selected={selected}
           onSelect={onSelect}
+          onEdit={onEdit}
           chart={chart}
           candleSeries={candleSeries}
           container={container}
@@ -138,9 +150,9 @@ function renderDrawing(args: RenderArgs) {
       );
     }
     case "trendline": {
-      const ax = chart.timeScale().timeToCoordinate(d.a.time as UTCTimestamp);
+      const ax = timeToX(chart, Number(d.a.time), globalCandlesRef.current, _intervalSec);
       const ay = candleSeries.priceToCoordinate(d.a.price);
-      const bx = chart.timeScale().timeToCoordinate(d.b.time as UTCTimestamp);
+      const bx = timeToX(chart, Number(d.b.time), globalCandlesRef.current, _intervalSec);
       const by = candleSeries.priceToCoordinate(d.b.price);
       if (ax === null || ay === null || bx === null || by === null) return null;
       return (
@@ -153,6 +165,7 @@ function renderDrawing(args: RenderArgs) {
           by={by}
           selected={selected}
           onSelect={onSelect}
+          onEdit={onEdit}
           chart={chart}
           candleSeries={candleSeries}
           container={container}
@@ -160,11 +173,11 @@ function renderDrawing(args: RenderArgs) {
       );
     }
     case "parallel-channel": {
-      const ax = chart.timeScale().timeToCoordinate(d.a.time as UTCTimestamp);
+      const ax = timeToX(chart, Number(d.a.time), globalCandlesRef.current, _intervalSec);
       const ay = candleSeries.priceToCoordinate(d.a.price);
-      const bx = chart.timeScale().timeToCoordinate(d.b.time as UTCTimestamp);
+      const bx = timeToX(chart, Number(d.b.time), globalCandlesRef.current, _intervalSec);
       const by = candleSeries.priceToCoordinate(d.b.price);
-      const cx = chart.timeScale().timeToCoordinate(d.c.time as UTCTimestamp);
+      const cx = timeToX(chart, Number(d.c.time), globalCandlesRef.current, _intervalSec);
       const cy = candleSeries.priceToCoordinate(d.c.price);
       if (ax === null || ay === null || bx === null || by === null || cx === null || cy === null) return null;
       return (
@@ -179,6 +192,7 @@ function renderDrawing(args: RenderArgs) {
           cy={cy}
           selected={selected}
           onSelect={onSelect}
+          onEdit={onEdit}
           chart={chart}
           candleSeries={candleSeries}
           container={container}
@@ -187,8 +201,8 @@ function renderDrawing(args: RenderArgs) {
     }
     case "long":
     case "short": {
-      const xA = chart.timeScale().timeToCoordinate(d.timeA as UTCTimestamp);
-      const xB = chart.timeScale().timeToCoordinate(d.timeB as UTCTimestamp);
+      const xA = timeToX(chart, Number(d.timeA), globalCandlesRef.current, _intervalSec);
+      const xB = timeToX(chart, Number(d.timeB), globalCandlesRef.current, _intervalSec);
       const yEntry = candleSeries.priceToCoordinate(d.entry);
       const yStop = candleSeries.priceToCoordinate(d.stop);
       const yTarget = candleSeries.priceToCoordinate(d.target);
@@ -206,14 +220,15 @@ function renderDrawing(args: RenderArgs) {
           yTarget={yTarget}
           selected={selected}
           onSelect={onSelect}
+          onEdit={onEdit}
           candleSeries={candleSeries}
           container={container}
         />
       );
     }
     case "price-range": {
-      const xA = chart.timeScale().timeToCoordinate(d.timeA as UTCTimestamp);
-      const xB = chart.timeScale().timeToCoordinate(d.timeB as UTCTimestamp);
+      const xA = timeToX(chart, Number(d.timeA), globalCandlesRef.current, _intervalSec);
+      const xB = timeToX(chart, Number(d.timeB), globalCandlesRef.current, _intervalSec);
       const yA = candleSeries.priceToCoordinate(d.priceA);
       const yB = candleSeries.priceToCoordinate(d.priceB);
       if (xA === null || xB === null || yA === null || yB === null) return null;
@@ -227,6 +242,7 @@ function renderDrawing(args: RenderArgs) {
           yB={yB}
           selected={selected}
           onSelect={onSelect}
+          onEdit={onEdit}
           chart={chart}
           candleSeries={candleSeries}
           container={container}
@@ -234,8 +250,8 @@ function renderDrawing(args: RenderArgs) {
       );
     }
     case "date-range": {
-      const xA = chart.timeScale().timeToCoordinate(d.timeA as UTCTimestamp);
-      const xB = chart.timeScale().timeToCoordinate(d.timeB as UTCTimestamp);
+      const xA = timeToX(chart, Number(d.timeA), globalCandlesRef.current, _intervalSec);
+      const xB = timeToX(chart, Number(d.timeB), globalCandlesRef.current, _intervalSec);
       if (xA === null || xB === null) return null;
       return (
         <DateRangeDraw
@@ -246,6 +262,7 @@ function renderDrawing(args: RenderArgs) {
           height={height}
           selected={selected}
           onSelect={onSelect}
+          onEdit={onEdit}
           chart={chart}
           candleSeries={candleSeries}
           container={container}
@@ -253,9 +270,9 @@ function renderDrawing(args: RenderArgs) {
       );
     }
     case "fib-retracement": {
-      const ax = chart.timeScale().timeToCoordinate(d.a.time as UTCTimestamp);
+      const ax = timeToX(chart, Number(d.a.time), globalCandlesRef.current, _intervalSec);
       const ay = candleSeries.priceToCoordinate(d.a.price);
-      const bx = chart.timeScale().timeToCoordinate(d.b.time as UTCTimestamp);
+      const bx = timeToX(chart, Number(d.b.time), globalCandlesRef.current, _intervalSec);
       const by = candleSeries.priceToCoordinate(d.b.price);
       if (ax === null || ay === null || bx === null || by === null) return null;
       return (
@@ -268,6 +285,7 @@ function renderDrawing(args: RenderArgs) {
           by={by}
           selected={selected}
           onSelect={onSelect}
+          onEdit={onEdit}
           chart={chart}
           candleSeries={candleSeries}
           container={container}
@@ -275,9 +293,9 @@ function renderDrawing(args: RenderArgs) {
       );
     }
     case "ray": {
-      const ax = chart.timeScale().timeToCoordinate(d.a.time as UTCTimestamp);
+      const ax = timeToX(chart, Number(d.a.time), globalCandlesRef.current, _intervalSec);
       const ay = candleSeries.priceToCoordinate(d.a.price);
-      const bx = chart.timeScale().timeToCoordinate(d.b.time as UTCTimestamp);
+      const bx = timeToX(chart, Number(d.b.time), globalCandlesRef.current, _intervalSec);
       const by = candleSeries.priceToCoordinate(d.b.price);
       if (ax === null || ay === null || bx === null || by === null) return null;
       return (
@@ -292,6 +310,7 @@ function renderDrawing(args: RenderArgs) {
           height={height}
           selected={selected}
           onSelect={onSelect}
+          onEdit={onEdit}
           chart={chart}
           candleSeries={candleSeries}
           container={container}
