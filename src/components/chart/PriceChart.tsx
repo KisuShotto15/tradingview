@@ -7,7 +7,6 @@ import {
   LineSeries,
   HistogramSeries,
   AreaSeries,
-  BaselineSeries,
   CrosshairMode,
   PriceScaleMode,
   createSeriesMarkers,
@@ -132,7 +131,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const adxPlusDIRef = useRef<ISeriesApi<"Line"> | null>(null);
   const adxMinusDIRef = useRef<ISeriesApi<"Line"> | null>(null);
   // Squeeze Momentum pane
-  const squeezeHistRef = useRef<ISeriesApi<"Histogram" | "Baseline"> | null>(null);
+  const squeezeHistRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  /** Outline line drawn on top of the histogram (only in area mode) */
+  const squeezeOutlineRef = useRef<ISeriesApi<"Line"> | null>(null);
   const squeezeDotsRef = useRef<ISeriesApi<"Line"> | null>(null);
   const squeezeDotsMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   // VuManChu pane
@@ -870,6 +871,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
       try { chartRef.current.removeSeries(squeezeHistRef.current); } catch {}
       squeezeHistRef.current = null;
     }
+    if (squeezeOutlineRef.current) {
+      try { chartRef.current.removeSeries(squeezeOutlineRef.current); } catch {}
+      squeezeOutlineRef.current = null;
+    }
     if (squeezeDotsRef.current) {
       try { chartRef.current.removeSeries(squeezeDotsRef.current); } catch {}
       squeezeDotsRef.current = null;
@@ -878,31 +883,24 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (indicators.squeeze) {
       const paneIndex = panelIndexFor("squeeze");
       const sqStyle = useChartStore.getState().squeezeStyle;
+      // HistogramSeries with per-bar 4 colors (Pine logic) for both modes —
+      // the visible result is the colored fill from baseline (0) to value.
+      squeezeHistRef.current = chartRef.current.addSeries(
+        HistogramSeries,
+        { priceLineVisible: false, lastValueVisible: false },
+        paneIndex,
+      );
       if (sqStyle.plotStyle === "area") {
-        // BaselineSeries with 4-color gradient: bright at the peak/trough,
-        // dim near the baseline. Matches TradingView's Color 0..3 mapping.
-        // topFillColor2 is the color AT the line (peak), topFillColor1 is
-        // at the baseValue. Same logic mirrored for the bottom.
-        squeezeHistRef.current = chartRef.current.addSeries(
-          BaselineSeries,
+        // Add a smoothing LineSeries on top so the top edge looks like a
+        // continuous curve instead of stepped bar tops.
+        squeezeOutlineRef.current = chartRef.current.addSeries(
+          LineSeries,
           {
-            baseValue: { type: "price", price: 0 },
-            topFillColor2: sqStyle.areaPositive,      // Color 0 (peak)
-            topFillColor1: sqStyle.areaPositiveDim,   // Color 1 (baseline)
-            topLineColor: sqStyle.areaPositive,
-            bottomFillColor2: sqStyle.areaNegative,   // Color 2 (trough)
-            bottomFillColor1: sqStyle.areaNegativeDim,// Color 3 (baseline)
-            bottomLineColor: sqStyle.areaNegative,
+            color: "#ffffff",
             lineWidth: 1,
             priceLineVisible: false,
             lastValueVisible: false,
           },
-          paneIndex,
-        );
-      } else {
-        squeezeHistRef.current = chartRef.current.addSeries(
-          HistogramSeries,
-          { priceLineVisible: false, lastValueVisible: false },
           paneIndex,
         );
       }
@@ -1382,34 +1380,26 @@ export function PriceChart({ symbol, timeframe }: Props) {
       red: style.momentumDecNeg,
       maroon: style.momentumIncNeg,
     };
-    if (style.plotStyle === "area") {
-      // BaselineSeries: solid green above 0, solid red below 0, sharp cut
-      // at the baseline (no gradient). Matches the Pine "Plot style: Area"
-      // option in TradingView for the LazyBear Squeeze.
-      squeezeHistRef.current.setData(
+    // Per-bar 4-color histogram (Pine logic) — for both histogram and area
+    // modes. In area mode we additionally draw a smooth outline line on top.
+    squeezeHistRef.current.setData(
+      pts.map((p) => ({
+        time: p.time as UTCTimestamp,
+        value: p.momentum,
+        color: COLORS[p.color],
+      })),
+    );
+    squeezeHistRef.current.applyOptions({
+      visible: style.showMomentum && indicators.squeeze,
+    });
+    if (squeezeOutlineRef.current) {
+      squeezeOutlineRef.current.setData(
         pts.map((p) => ({
           time: p.time as UTCTimestamp,
           value: p.momentum,
         })),
       );
-      squeezeHistRef.current.applyOptions({
-        visible: style.showMomentum && indicators.squeeze,
-        topFillColor2: style.areaPositive,
-        topFillColor1: style.areaPositiveDim,
-        topLineColor: style.areaPositive,
-        bottomFillColor2: style.areaNegative,
-        bottomFillColor1: style.areaNegativeDim,
-        bottomLineColor: style.areaNegative,
-      });
-    } else {
-      squeezeHistRef.current.setData(
-        pts.map((p) => ({
-          time: p.time as UTCTimestamp,
-          value: p.momentum,
-          color: COLORS[p.color],
-        })),
-      );
-      squeezeHistRef.current.applyOptions({
+      squeezeOutlineRef.current.applyOptions({
         visible: style.showMomentum && indicators.squeeze,
       });
     }

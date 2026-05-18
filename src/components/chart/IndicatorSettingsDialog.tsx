@@ -513,54 +513,27 @@ function SqueezeStyleSection() {
         </select>
       </label>
 
-      {draft.plotStyle === "area" ? (
-        <>
-          <ColorPick
-            label="Color 0 — peak positive"
-            value={draft.areaPositive}
-            onChange={(v) => commit({ areaPositive: v })}
-          />
-          <ColorPick
-            label="Color 1 — baseline positive"
-            value={draft.areaPositiveDim}
-            onChange={(v) => commit({ areaPositiveDim: v })}
-          />
-          <ColorPick
-            label="Color 2 — trough negative"
-            value={draft.areaNegative}
-            onChange={(v) => commit({ areaNegative: v })}
-          />
-          <ColorPick
-            label="Color 3 — baseline negative"
-            value={draft.areaNegativeDim}
-            onChange={(v) => commit({ areaNegativeDim: v })}
-          />
-        </>
-      ) : (
-        <>
-          <SectionLabel>Style — Momentum</SectionLabel>
-          <ColorPick
-            label="Increasing positive"
-            value={draft.momentumIncPos}
-            onChange={(v) => commit({ momentumIncPos: v })}
-          />
-          <ColorPick
-            label="Decreasing positive"
-            value={draft.momentumDecPos}
-            onChange={(v) => commit({ momentumDecPos: v })}
-          />
-          <ColorPick
-            label="Increasing negative"
-            value={draft.momentumIncNeg}
-            onChange={(v) => commit({ momentumIncNeg: v })}
-          />
-          <ColorPick
-            label="Decreasing negative"
-            value={draft.momentumDecNeg}
-            onChange={(v) => commit({ momentumDecNeg: v })}
-          />
-        </>
-      )}
+      <SectionLabel>Style — Colors (per-bar, Pine 4-color)</SectionLabel>
+      <ColorPick
+        label="Color 0 — increasing positive"
+        value={draft.momentumIncPos}
+        onChange={(v) => commit({ momentumIncPos: v })}
+      />
+      <ColorPick
+        label="Color 1 — decreasing positive"
+        value={draft.momentumDecPos}
+        onChange={(v) => commit({ momentumDecPos: v })}
+      />
+      <ColorPick
+        label="Color 2 — decreasing negative"
+        value={draft.momentumDecNeg}
+        onChange={(v) => commit({ momentumDecNeg: v })}
+      />
+      <ColorPick
+        label="Color 3 — increasing negative"
+        value={draft.momentumIncNeg}
+        onChange={(v) => commit({ momentumIncNeg: v })}
+      />
 
       <SectionLabel>Style — Squeeze dots</SectionLabel>
       <ColorPick
