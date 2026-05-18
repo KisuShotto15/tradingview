@@ -1,19 +1,22 @@
 /**
- * ADX (Average Directional Index) — Wilder's classic.
+ * ADX (Average Directional Index) — Pine-faithful transcription of
+ * DMI/ADX/KEYLEVEL by LazyBear style.
  *
- *   TR  = max(high-low, |high-prevClose|, |low-prevClose|)
- *   +DM = (high-prevHigh) when greater than (prevLow-low) and > 0, else 0
- *   -DM = (prevLow-low)  when greater than (high-prevHigh) and > 0, else 0
- *
- *   Wilder-smoothed (RMA) over `period` bars:
- *     +DI = 100 * RMA(+DM) / RMA(TR)
- *     -DI = 100 * RMA(-DM) / RMA(TR)
- *     DX  = 100 * |+DI - -DI| / (+DI + -DI)
- *     ADX = RMA(DX, period)
+ *   up   = change(high)
+ *   down = -change(low)
+ *   truerange = rma(tr, diLen)
+ *   +DI  = fixnan(100 * rma(up > down && up > 0 ? up : 0, diLen) / truerange)
+ *   -DI  = fixnan(100 * rma(down > up && down > 0 ? down : 0, diLen) / truerange)
+ *   ADX  = 100 * rma(|+DI - -DI| / (+DI + -DI || 1), adxLen)
  */
 
 import type { Candle } from "@/lib/binance/types";
 import { rmaSeries, trueRangeSeries } from "./helpers";
+
+export interface ADXConfig {
+  diLen?: number;
+  adxLen?: number;
+}
 
 export interface ADXPoint {
   time: number;
@@ -22,8 +25,13 @@ export interface ADXPoint {
   minusDI: number;
 }
 
-export function adx(candles: Candle[], period = 14): ADXPoint[] {
-  if (candles.length < period * 2 + 1) return [];
+export function adx(candles: Candle[], cfg: ADXConfig | number = {}): ADXPoint[] {
+  // Backwards-compat: accept plain number as adxLen
+  const diLen = typeof cfg === "number" ? cfg : (cfg.diLen ?? 14);
+  const adxLen = typeof cfg === "number" ? cfg : (cfg.adxLen ?? 14);
+
+  const warmup = diLen + adxLen;
+  if (candles.length < warmup + 1) return [];
 
   const tr = trueRangeSeries(candles);
   const plusDM = new Array<number>(candles.length).fill(0);
@@ -36,14 +44,14 @@ export function adx(candles: Candle[], period = 14): ADXPoint[] {
     minusDM[i] = down > up && down > 0 ? down : 0;
   }
 
-  const smTR = rmaSeries(tr, period);
-  const smPlus = rmaSeries(plusDM, period);
-  const smMinus = rmaSeries(minusDM, period);
+  const smTR = rmaSeries(tr, diLen);
+  const smPlus = rmaSeries(plusDM, diLen);
+  const smMinus = rmaSeries(minusDM, diLen);
 
-  // Compute +DI, -DI, DX per bar
   const plusDI = new Array<number>(candles.length).fill(NaN);
   const minusDI = new Array<number>(candles.length).fill(NaN);
   const dx = new Array<number>(candles.length).fill(NaN);
+
   for (let i = 0; i < candles.length; i++) {
     if (isNaN(smTR[i]) || smTR[i] === 0) continue;
     plusDI[i] = (100 * smPlus[i]) / smTR[i];
@@ -52,21 +60,14 @@ export function adx(candles: Candle[], period = 14): ADXPoint[] {
     if (sum > 0) dx[i] = (100 * Math.abs(plusDI[i] - minusDI[i])) / sum;
   }
 
-  const adxArr = rmaSeries(dx.map((v) => (isNaN(v) ? 0 : v)), period);
-  // Mask out warm-up: ADX is only valid once both the inner RMA and outer RMA have data.
-  // First ADX value lands at bar (2 * period - 1) approximately.
-  const firstValid = 2 * period - 1;
+  const adxArr = rmaSeries(dx.map((v) => (isNaN(v) ? 0 : v)), adxLen);
+  const firstValid = diLen + adxLen - 1;
 
   const out: ADXPoint[] = [];
   for (let i = 0; i < candles.length; i++) {
     if (i < firstValid) continue;
     if (isNaN(adxArr[i]) || isNaN(plusDI[i]) || isNaN(minusDI[i])) continue;
-    out.push({
-      time: candles[i].time,
-      adx: adxArr[i],
-      plusDI: plusDI[i],
-      minusDI: minusDI[i],
-    });
+    out.push({ time: candles[i].time, adx: adxArr[i], plusDI: plusDI[i], minusDI: minusDI[i] });
   }
   return out;
 }

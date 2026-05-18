@@ -13,9 +13,11 @@ import { ColorPicker } from "@/components/ui/color-picker";
 import {
   useChartStore,
   DEFAULT_CONFIG,
+  DEFAULT_ADX_STYLE,
   DEFAULT_SQUEEZE_STYLE,
   type IndicatorKey,
   type IndicatorConfig,
+  type AdxStyle,
   type UserEMA,
   type SqueezeStyle,
 } from "@/lib/store/chart-store";
@@ -186,6 +188,8 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
     macdSlow: config.macdSlow,
     macdSignal: config.macdSignal,
     adx: config.adx,
+    adxDiLen: config.adxDiLen,
+    adxKeyLevel: config.adxKeyLevel,
     squeezeBB: config.squeezeBB,
     squeezeBBMult: config.squeezeBBMult,
     squeezeKC: config.squeezeKC,
@@ -199,6 +203,8 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
       macdSlow: config.macdSlow,
       macdSignal: config.macdSignal,
       adx: config.adx,
+      adxDiLen: config.adxDiLen,
+      adxKeyLevel: config.adxKeyLevel,
       squeezeBB: config.squeezeBB,
       squeezeBBMult: config.squeezeBBMult,
       squeezeKC: config.squeezeKC,
@@ -214,7 +220,12 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
         macdSlow: clamp(draft.macdSlow, 2, 200),
         macdSignal: clamp(draft.macdSignal, 2, 100),
       });
-    else if (target === "adx") onSave({ adx: clamp(draft.adx, 2, 100) });
+    else if (target === "adx")
+      onSave({
+        adx: clamp(draft.adx, 2, 100),
+        adxDiLen: clamp(draft.adxDiLen, 2, 100),
+        adxKeyLevel: clamp(draft.adxKeyLevel, 1, 100),
+      });
     else if (target === "squeeze")
       onSave({
         squeezeBB: clamp(draft.squeezeBB, 2, 200),
@@ -261,11 +272,25 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
       )}
       {target === "adx" && (
         <>
-          <Field
-            label="Period"
-            value={draft.adx}
-            onChange={(n) => setDraft((d) => ({ ...d, adx: n }))}
-          />
+          <SectionLabel>Inputs</SectionLabel>
+          <div className="grid grid-cols-3 gap-2">
+            <Field
+              label="ADX Smoothing"
+              value={draft.adx}
+              onChange={(n) => setDraft((d) => ({ ...d, adx: n }))}
+            />
+            <Field
+              label="DI Length"
+              value={draft.adxDiLen}
+              onChange={(n) => setDraft((d) => ({ ...d, adxDiLen: n }))}
+            />
+            <Field
+              label="Key Level"
+              value={draft.adxKeyLevel}
+              onChange={(n) => setDraft((d) => ({ ...d, adxKeyLevel: n }))}
+            />
+          </div>
+          <AdxStyleSection />
           <OverlaySection target="adx" />
         </>
       )}
@@ -477,6 +502,30 @@ function OverlaySection({ target }: { target: IndicatorKey }) {
         Place this indicator on top of another indicator&apos;s pane instead of
         its own.
       </p>
+    </div>
+  );
+}
+
+function AdxStyleSection() {
+  const style = useChartStore((s) => s.adxStyle);
+  const setAdxStyle = useChartStore((s) => s.setAdxStyle);
+  const [draft, setDraft] = useState<AdxStyle>(style);
+
+  useEffect(() => { setDraft(style); }, [style]);
+
+  function commit(patch: Partial<AdxStyle>) {
+    const next = { ...draft, ...patch };
+    setDraft(next);
+    setAdxStyle(patch);
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <SectionLabel>Style — Colors</SectionLabel>
+      <ColorPick label="ADX" value={draft.adxColor} onChange={(v) => commit({ adxColor: v })} />
+      <ColorPick label="+DI" value={draft.plusDiColor} onChange={(v) => commit({ plusDiColor: v })} />
+      <ColorPick label="-DI" value={draft.minusDiColor} onChange={(v) => commit({ minusDiColor: v })} />
+      <ColorPick label="Key Level" value={draft.keyLevelColor} onChange={(v) => commit({ keyLevelColor: v })} />
     </div>
   );
 }

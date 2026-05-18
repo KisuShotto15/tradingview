@@ -132,6 +132,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const adxRef = useRef<ISeriesApi<"Line"> | null>(null);
   const adxPlusDIRef = useRef<ISeriesApi<"Line"> | null>(null);
   const adxMinusDIRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const adxKeyLevelRef = useRef<ISeriesApi<"Line"> | null>(null);
   // Squeeze Momentum pane
   const squeezeHistRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const squeezeDotsRef = useRef<ISeriesApi<"Line"> | null>(null);
@@ -157,6 +158,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const userEMAs = useChartStore((s) => s.userEMAs);
   const removeUserEMA = useChartStore((s) => s.removeUserEMA);
   const toggleUserEMAHidden = useChartStore((s) => s.toggleUserEMAHidden);
+  const adxStyle = useChartStore((s) => s.adxStyle);
   const squeezeStyle = useChartStore((s) => s.squeezeStyle);
   const indicatorOverlays = useChartStore((s) => s.indicatorOverlays);
   const logScale = useChartStore((s) => s.logScale);
@@ -836,21 +838,31 @@ export function PriceChart({ symbol, timeframe }: Props) {
       try { chartRef.current.removeSeries(adxMinusDIRef.current); } catch {}
       adxMinusDIRef.current = null;
     }
+    if (adxKeyLevelRef.current) {
+      try { chartRef.current.removeSeries(adxKeyLevelRef.current); } catch {}
+      adxKeyLevelRef.current = null;
+    }
     if (indicators.adx) {
       const paneIndex = panelIndexFor("adx");
+      const style = useChartStore.getState().adxStyle;
       adxRef.current = chartRef.current.addSeries(
         LineSeries,
-        { color: "#ffb74d", lineWidth: 2, priceLineVisible: false, lastValueVisible: false },
+        { color: style.adxColor, lineWidth: 2, priceLineVisible: false, lastValueVisible: false },
         paneIndex,
       );
       adxPlusDIRef.current = chartRef.current.addSeries(
         LineSeries,
-        { color: "#26a69a", lineWidth: 1, priceLineVisible: false, lastValueVisible: false },
+        { color: style.plusDiColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false },
         paneIndex,
       );
       adxMinusDIRef.current = chartRef.current.addSeries(
         LineSeries,
-        { color: "#ef5350", lineWidth: 1, priceLineVisible: false, lastValueVisible: false },
+        { color: style.minusDiColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false },
+        paneIndex,
+      );
+      adxKeyLevelRef.current = chartRef.current.addSeries(
+        LineSeries,
+        { color: style.keyLevelColor, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false },
         paneIndex,
       );
       try {
@@ -1048,6 +1060,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (adxRef.current) adxRef.current.applyOptions({ visible: v("adx") });
     if (adxPlusDIRef.current) adxPlusDIRef.current.applyOptions({ visible: v("adx") });
     if (adxMinusDIRef.current) adxMinusDIRef.current.applyOptions({ visible: v("adx") });
+    if (adxKeyLevelRef.current) adxKeyLevelRef.current.applyOptions({ visible: v("adx") });
     // Squeeze pane
     if (squeezeHistRef.current) squeezeHistRef.current.applyOptions({ visible: v("squeeze") });
     if (squeezeDotsRef.current) squeezeDotsRef.current.applyOptions({ visible: v("squeeze") });
@@ -1173,7 +1186,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
   useEffect(() => {
     updateADX();
-  }, [config.adx]);
+  }, [config.adx, config.adxDiLen, config.adxKeyLevel, adxStyle]);
 
   useEffect(() => {
     updateSqueeze();
@@ -1336,14 +1349,25 @@ export function PriceChart({ symbol, timeframe }: Props) {
     const c = candlesRef.current;
     if (c.length === 0 || !adxRef.current) return;
     const cfg = configRef.current;
-    const data = adxCalc(c, cfg.adx);
+    const style = useChartStore.getState().adxStyle;
+    const data = adxCalc(c, { diLen: cfg.adxDiLen, adxLen: cfg.adx });
     adxRef.current.setData(data.map((p) => ({ time: p.time as UTCTimestamp, value: p.adx })));
+    adxRef.current.applyOptions({ color: style.adxColor });
     adxPlusDIRef.current?.setData(
       data.map((p) => ({ time: p.time as UTCTimestamp, value: p.plusDI })),
     );
+    adxPlusDIRef.current?.applyOptions({ color: style.plusDiColor });
     adxMinusDIRef.current?.setData(
       data.map((p) => ({ time: p.time as UTCTimestamp, value: p.minusDI })),
     );
+    adxMinusDIRef.current?.applyOptions({ color: style.minusDiColor });
+    // Key level: constant horizontal line at configured value
+    if (adxKeyLevelRef.current && data.length > 0) {
+      adxKeyLevelRef.current.setData(
+        data.map((p) => ({ time: p.time as UTCTimestamp, value: cfg.adxKeyLevel })),
+      );
+      adxKeyLevelRef.current.applyOptions({ color: style.keyLevelColor });
+    }
   }
 
   function updateSqueeze() {

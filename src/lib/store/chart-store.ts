@@ -34,6 +34,8 @@ export interface IndicatorConfig {
   macdSlow: number;
   macdSignal: number;
   adx: number;
+  adxDiLen: number;
+  adxKeyLevel: number;
   squeezeBB: number;
   squeezeBBMult: number;
   squeezeKC: number;
@@ -50,6 +52,8 @@ export const DEFAULT_CONFIG: IndicatorConfig = {
   macdSlow: 26,
   macdSignal: 9,
   adx: 14,
+  adxDiLen: 14,
+  adxKeyLevel: 23,
   squeezeBB: 20,
   squeezeBBMult: 2,
   squeezeKC: 20,
@@ -58,6 +62,20 @@ export const DEFAULT_CONFIG: IndicatorConfig = {
   vumanchuAvgLen: 12,
   vumanchuMaLen: 3,
   vumanchuMfiPeriod: 60,
+};
+
+export interface AdxStyle {
+  adxColor: string;
+  plusDiColor: string;
+  minusDiColor: string;
+  keyLevelColor: string;
+}
+
+export const DEFAULT_ADX_STYLE: AdxStyle = {
+  adxColor: "#787b86",
+  plusDiColor: "#26a69a",
+  minusDiColor: "#ef5350",
+  keyLevelColor: "#787b86",
 };
 
 export const INDICATOR_COLORS: Record<IndicatorKey, string> = {
@@ -180,6 +198,8 @@ interface ChartState {
   config: IndicatorConfig;
   /** User-added EMA instances (multi-instance) */
   userEMAs: UserEMA[];
+  /** ADX indicator style overrides */
+  adxStyle: AdxStyle;
   /** Squeeze indicator style overrides */
   squeezeStyle: SqueezeStyle;
   /** Logarithmic price scale (main pane only) */
@@ -233,6 +253,7 @@ interface ChartState {
   removeUserEMA: (id: string) => void;
   updateUserEMA: (id: string, patch: Partial<UserEMA>) => void;
   toggleUserEMAHidden: (id: string) => void;
+  setAdxStyle: (patch: Partial<AdxStyle>) => void;
   setSqueezeStyle: (patch: Partial<SqueezeStyle>) => void;
   setLogScale: (v: boolean) => void;
   setIndicatorLogScale: (key: IndicatorKey, v: boolean) => void;
@@ -309,6 +330,7 @@ export const useChartStore = create<ChartState>()(
         { id: randomId(), period: 20, color: EMA_PALETTE[0], lineWidth: 1, hidden: false },
         { id: randomId(), period: 50, color: EMA_PALETTE[1], lineWidth: 1, hidden: false },
       ],
+      adxStyle: { ...DEFAULT_ADX_STYLE },
       squeezeStyle: { ...DEFAULT_SQUEEZE_STYLE },
       logScale: false,
       indicatorLogScale: {},
@@ -375,6 +397,8 @@ export const useChartStore = create<ChartState>()(
             e.id === id ? { ...e, hidden: !e.hidden } : e,
           ),
         })),
+      setAdxStyle: (patch) =>
+        set((s) => ({ adxStyle: { ...s.adxStyle, ...patch } })),
       setSqueezeStyle: (patch) =>
         set((s) => ({ squeezeStyle: { ...s.squeezeStyle, ...patch } })),
       setLogScale: (logScale) => set({ logScale }),
@@ -529,6 +553,7 @@ export const useChartStore = create<ChartState>()(
         hidden: s.hidden,
         config: s.config,
         userEMAs: s.userEMAs,
+        adxStyle: s.adxStyle,
         squeezeStyle: s.squeezeStyle,
         logScale: s.logScale,
         indicatorLogScale: s.indicatorLogScale,
