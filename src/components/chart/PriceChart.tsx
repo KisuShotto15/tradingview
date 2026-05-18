@@ -7,6 +7,7 @@ import {
   LineSeries,
   HistogramSeries,
   AreaSeries,
+  BaselineSeries,
   CrosshairMode,
   PriceScaleMode,
   createSeriesMarkers,
@@ -131,7 +132,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const adxPlusDIRef = useRef<ISeriesApi<"Line"> | null>(null);
   const adxMinusDIRef = useRef<ISeriesApi<"Line"> | null>(null);
   // Squeeze Momentum pane
-  const squeezeHistRef = useRef<ISeriesApi<"Histogram" | "Area"> | null>(null);
+  const squeezeHistRef = useRef<ISeriesApi<"Histogram" | "Baseline"> | null>(null);
   const squeezeDotsRef = useRef<ISeriesApi<"Line"> | null>(null);
   const squeezeDotsMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   // VuManChu pane
@@ -878,12 +879,19 @@ export function PriceChart({ symbol, timeframe }: Props) {
       const paneIndex = panelIndexFor("squeeze");
       const sqStyle = useChartStore.getState().squeezeStyle;
       if (sqStyle.plotStyle === "area") {
+        // BaselineSeries: solid uniform fill above/below a baseline value (0).
+        // Sharp horizontal cut at 0 — exactly like the TradingView Squeeze.
         squeezeHistRef.current = chartRef.current.addSeries(
-          AreaSeries,
+          BaselineSeries,
           {
-            topColor: sqStyle.areaPositive + "88",
-            bottomColor: sqStyle.areaNegative + "88",
-            lineColor: "transparent",
+            baseValue: { type: "price", price: 0 },
+            topFillColor1: sqStyle.areaPositive,
+            topFillColor2: sqStyle.areaPositive,
+            topLineColor: sqStyle.areaPositive,
+            bottomFillColor1: sqStyle.areaNegative,
+            bottomFillColor2: sqStyle.areaNegative,
+            bottomLineColor: sqStyle.areaNegative,
+            lineWidth: 1,
             priceLineVisible: false,
             lastValueVisible: false,
           },
@@ -1373,8 +1381,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
       maroon: style.momentumIncNeg,
     };
     if (style.plotStyle === "area") {
-      // AreaSeries fills from baseValue (0) to the line. lineColor stays
-      // transparent so only the fill shows — looks like the TV "Area" plot.
+      // BaselineSeries: solid green above 0, solid red below 0, sharp cut
+      // at the baseline (no gradient). Matches the Pine "Plot style: Area"
+      // option in TradingView for the LazyBear Squeeze.
       squeezeHistRef.current.setData(
         pts.map((p) => ({
           time: p.time as UTCTimestamp,
@@ -1383,9 +1392,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
       );
       squeezeHistRef.current.applyOptions({
         visible: style.showMomentum && indicators.squeeze,
-        topColor: style.areaPositive + "AA",
-        bottomColor: style.areaNegative + "AA",
-        lineColor: "transparent",
+        topFillColor1: style.areaPositive,
+        topFillColor2: style.areaPositive,
+        topLineColor: style.areaPositive,
+        bottomFillColor1: style.areaNegative,
+        bottomFillColor2: style.areaNegative,
+        bottomLineColor: style.areaNegative,
       });
     } else {
       squeezeHistRef.current.setData(
