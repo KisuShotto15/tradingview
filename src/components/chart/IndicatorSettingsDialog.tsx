@@ -498,27 +498,59 @@ function SqueezeStyleSection() {
 
   return (
     <div className="flex flex-col gap-2">
-      <SectionLabel>Style — Momentum</SectionLabel>
-      <ColorPick
-        label="Increasing positive"
-        value={draft.momentumIncPos}
-        onChange={(v) => commit({ momentumIncPos: v })}
-      />
-      <ColorPick
-        label="Decreasing positive"
-        value={draft.momentumDecPos}
-        onChange={(v) => commit({ momentumDecPos: v })}
-      />
-      <ColorPick
-        label="Increasing negative"
-        value={draft.momentumIncNeg}
-        onChange={(v) => commit({ momentumIncNeg: v })}
-      />
-      <ColorPick
-        label="Decreasing negative"
-        value={draft.momentumDecNeg}
-        onChange={(v) => commit({ momentumDecNeg: v })}
-      />
+      <SectionLabel>Plot style</SectionLabel>
+      <label className="flex items-center justify-between gap-2">
+        <span className="text-xs text-tv-text">Mode</span>
+        <select
+          value={draft.plotStyle}
+          onChange={(e) =>
+            commit({ plotStyle: e.target.value as "histogram" | "area" })
+          }
+          className="rounded border border-tv-border bg-tv-bg px-2 py-1 text-xs"
+        >
+          <option value="histogram">Histogram (4 colors)</option>
+          <option value="area">Area (smooth fill)</option>
+        </select>
+      </label>
+
+      {draft.plotStyle === "area" ? (
+        <>
+          <ColorPick
+            label="Area positive"
+            value={draft.areaPositive}
+            onChange={(v) => commit({ areaPositive: v })}
+          />
+          <ColorPick
+            label="Area negative"
+            value={draft.areaNegative}
+            onChange={(v) => commit({ areaNegative: v })}
+          />
+        </>
+      ) : (
+        <>
+          <SectionLabel>Style — Momentum</SectionLabel>
+          <ColorPick
+            label="Increasing positive"
+            value={draft.momentumIncPos}
+            onChange={(v) => commit({ momentumIncPos: v })}
+          />
+          <ColorPick
+            label="Decreasing positive"
+            value={draft.momentumDecPos}
+            onChange={(v) => commit({ momentumDecPos: v })}
+          />
+          <ColorPick
+            label="Increasing negative"
+            value={draft.momentumIncNeg}
+            onChange={(v) => commit({ momentumIncNeg: v })}
+          />
+          <ColorPick
+            label="Decreasing negative"
+            value={draft.momentumDecNeg}
+            onChange={(v) => commit({ momentumDecNeg: v })}
+          />
+        </>
+      )}
 
       <SectionLabel>Style — Squeeze dots</SectionLabel>
       <ColorPick

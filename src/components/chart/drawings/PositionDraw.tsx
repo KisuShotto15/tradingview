@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import type { ISeriesApi } from "lightweight-charts";
+import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type {
   LongPositionDrawing,
   ShortPositionDrawing,
@@ -9,6 +9,7 @@ import type {
 } from "@/lib/drawings/types";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { DrawHandle } from "./DrawHandle";
+import { useDragShape } from "./use-drag-shape";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { formatPrice } from "@/lib/format";
 
@@ -16,19 +17,15 @@ type PositionDrawing = LongPositionDrawing | ShortPositionDrawing;
 
 interface Props {
   drawing: PositionDrawing;
-  /** Pixel x of timeA */
   xA: number;
-  /** Pixel x of timeB */
   xB: number;
-  /** Pixel y of entry */
   yEntry: number;
-  /** Pixel y of stop */
   yStop: number;
-  /** Pixel y of target */
   yTarget: number;
   selected: boolean;
   onSelect: () => void;
   onEdit: () => void;
+  chart: IChartApi | null;
   candleSeries: ISeriesApi<"Candlestick"> | null;
   container: HTMLElement | null;
 }
@@ -43,6 +40,7 @@ export function PositionDraw({
   selected,
   onSelect,
   onEdit,
+  chart,
   candleSeries,
   container,
 }: Props) {
@@ -89,24 +87,56 @@ export function PositionDraw({
     };
   }
 
+  // Drag the entire position (entry+stop+target+timeA+timeB)
+  const dragShape = useDragShape<PositionDrawing>(
+    chart,
+    candleSeries,
+    container,
+    (orig, dt, dp) => ({
+      entry: orig.entry + dp,
+      stop: orig.stop + dp,
+      target: orig.target + dp,
+      timeA: orig.timeA + dt,
+      timeB: orig.timeB + dt,
+    }),
+    () => {
+      const c = useDrawingsStore.getState().drawings.find((d) => d.id === drawing.id);
+      return c && (c.kind === "long" || c.kind === "short")
+        ? (c as PositionDrawing)
+        : null;
+    },
+    {
+      onStart: snap,
+      onMove: (patch) => updateLive(drawing.id, patch as Partial<Drawing>),
+      onEnd: commitEnd,
+    },
+  );
+
   const left = Math.min(xA, xB);
   const right = Math.max(xA, xB);
 
-  // Profit/loss zones depend on direction
   const profitY1 = Math.min(yEntry, yTarget);
   const profitY2 = Math.max(yEntry, yTarget);
   const lossY1 = Math.min(yEntry, yStop);
   const lossY2 = Math.max(yEntry, yStop);
 
-  // Risk:Reward
   const risk = Math.abs(drawing.entry - drawing.stop);
   const reward = Math.abs(drawing.target - drawing.entry);
   const rr = risk === 0 ? 0 : reward / risk;
   const rrLabel = `RR ${rr.toFixed(2)}`;
 
+  function onZoneMouseDown(e: React.MouseEvent) {
+    if (selected) {
+      dragShape(e);
+    } else {
+      e.stopPropagation();
+      onSelect();
+    }
+  }
+  const zoneCursor = selected ? "move" : "pointer";
+
   return (
     <g>
-      {/* Profit zone */}
       <rect
         x={left}
         y={profitY1}
@@ -114,13 +144,10 @@ export function PositionDraw({
         height={profitY2 - profitY1}
         fill={profitFill}
         stroke="none"
-        style={{ pointerEvents: "all", cursor: "pointer" }}
-        onMouseDown={(e) => {
-          e.stopPropagation();
-          onSelect();
-        }}
+        style={{ pointerEvents: "all", cursor: zoneCursor }}
+        onMouseDown={onZoneMouseDown}
+        onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
-      {/* Loss zone */}
       <rect
         x={left}
         y={lossY1}
@@ -128,18 +155,14 @@ export function PositionDraw({
         height={lossY2 - lossY1}
         fill={lossFill}
         stroke="none"
-        style={{ pointerEvents: "all", cursor: "pointer" }}
-        onMouseDown={(e) => {
-          e.stopPropagation();
-          onSelect();
-        }}
+        style={{ pointerEvents: "all", cursor: zoneCursor }}
+        onMouseDown={onZoneMouseDown}
+        onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
-      {/* Entry, stop, target lines */}
       <line x1={left} x2={right} y1={yEntry} y2={yEntry} stroke="#d1d4dc" strokeWidth={1} style={{ pointerEvents: "none" }} />
       <line x1={left} x2={right} y1={yStop} y2={yStop} stroke={lossColor} strokeWidth={1} strokeDasharray="3,3" style={{ pointerEvents: "none" }} />
       <line x1={left} x2={right} y1={yTarget} y2={yTarget} stroke={profitColor} strokeWidth={1} strokeDasharray="3,3" style={{ pointerEvents: "none" }} />
 
-      {/* Labels */}
       <text x={left + 6} y={yEntry - 3} fill="#d1d4dc" fontSize={10} fontFamily="var(--font-mono), monospace" style={{ pointerEvents: "none" }}>
         {`Entry  ${formatPrice(drawing.entry)}`}
       </text>
@@ -150,7 +173,6 @@ export function PositionDraw({
         {`Stop  ${formatPrice(drawing.stop)}`}
       </text>
 
-      {/* Direction badge */}
       <rect x={right - 50} y={yEntry - 8} width={44} height={16} fill={isLong ? profitColor : lossColor} rx={2} style={{ pointerEvents: "none" }} />
       <text x={right - 28} y={yEntry + 3} textAnchor="middle" fill="#ffffff" fontSize={10} fontFamily="var(--font-mono), monospace" style={{ pointerEvents: "none" }}>
         {isLong ? "LONG" : "SHORT"}

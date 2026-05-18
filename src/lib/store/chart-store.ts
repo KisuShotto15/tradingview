@@ -128,6 +128,11 @@ export interface SqueezeStyle {
   /** Visibility toggles */
   showMomentum: boolean;
   showSqueezeDots: boolean;
+  /** Plot style: histogram (Pine original) or filled area (smooth, TV-like) */
+  plotStyle: "histogram" | "area";
+  /** Area-mode positive / negative fill colors */
+  areaPositive: string;
+  areaNegative: string;
 }
 
 export const DEFAULT_SQUEEZE_STYLE: SqueezeStyle = {
@@ -140,6 +145,9 @@ export const DEFAULT_SQUEEZE_STYLE: SqueezeStyle = {
   noSqueeze: "#2962ff",
   showMomentum: true,
   showSqueezeDots: true,
+  plotStyle: "histogram",
+  areaPositive: "#26a69a",
+  areaNegative: "#ef5350",
 };
 
 export const DEFAULT_WATCHLIST = [

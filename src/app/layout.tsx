@@ -19,6 +19,10 @@ export const metadata: Metadata = {
   title: "TradingView Free — Open source crypto charts",
   description:
     "Live crypto charting platform. A free alternative to TradingView. Powered by Binance + lightweight-charts.",
+  icons: {
+    icon: [{ url: "/logo.svg", type: "image/svg+xml" }],
+    apple: "/logo.svg",
+  },
 };
 
 export default function RootLayout({

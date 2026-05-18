@@ -18,6 +18,14 @@ export function Header() {
   return (
     <header className="flex h-12 items-center justify-between border-b border-tv-border bg-tv-panel px-3">
       <div className="flex items-center gap-1">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/logo.svg"
+          alt="Logo"
+          width={28}
+          height={28}
+          className="mr-1 rounded-md"
+        />
         <SymbolSelector />
         <Separator orientation="vertical" className="h-6 bg-tv-border" />
         <TimeframeSelector />

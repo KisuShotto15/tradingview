@@ -131,7 +131,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const adxPlusDIRef = useRef<ISeriesApi<"Line"> | null>(null);
   const adxMinusDIRef = useRef<ISeriesApi<"Line"> | null>(null);
   // Squeeze Momentum pane
-  const squeezeHistRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const squeezeHistRef = useRef<ISeriesApi<"Histogram" | "Area"> | null>(null);
   const squeezeDotsRef = useRef<ISeriesApi<"Line"> | null>(null);
   const squeezeDotsMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   // VuManChu pane
@@ -876,11 +876,26 @@ export function PriceChart({ symbol, timeframe }: Props) {
     squeezeDotsMarkersRef.current = null;
     if (indicators.squeeze) {
       const paneIndex = panelIndexFor("squeeze");
-      squeezeHistRef.current = chartRef.current.addSeries(
-        HistogramSeries,
-        { priceLineVisible: false, lastValueVisible: false },
-        paneIndex,
-      );
+      const sqStyle = useChartStore.getState().squeezeStyle;
+      if (sqStyle.plotStyle === "area") {
+        squeezeHistRef.current = chartRef.current.addSeries(
+          AreaSeries,
+          {
+            topColor: sqStyle.areaPositive + "88",
+            bottomColor: sqStyle.areaNegative + "88",
+            lineColor: "transparent",
+            priceLineVisible: false,
+            lastValueVisible: false,
+          },
+          paneIndex,
+        );
+      } else {
+        squeezeHistRef.current = chartRef.current.addSeries(
+          HistogramSeries,
+          { priceLineVisible: false, lastValueVisible: false },
+          paneIndex,
+        );
+      }
       squeezeDotsRef.current = chartRef.current.addSeries(
         LineSeries,
         {
@@ -900,7 +915,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
     requestAnimationFrame(() => recomputePaneOffsets());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicators.squeeze, indicators.rsi, indicators.macd, indicators.adx, indicatorOverlays]);
+  }, [indicators.squeeze, indicators.rsi, indicators.macd, indicators.adx, indicatorOverlays, squeezeStyle.plotStyle]);
 
   // ── VuManChu Cipher B pane ───────────────────────────────────────────────
   useEffect(() => {
@@ -1357,14 +1372,33 @@ export function PriceChart({ symbol, timeframe }: Props) {
       red: style.momentumDecNeg,
       maroon: style.momentumIncNeg,
     };
-    squeezeHistRef.current.setData(
-      pts.map((p) => ({
-        time: p.time as UTCTimestamp,
-        value: p.momentum,
-        color: COLORS[p.color],
-      })),
-    );
-    squeezeHistRef.current.applyOptions({ visible: style.showMomentum && indicators.squeeze });
+    if (style.plotStyle === "area") {
+      // AreaSeries fills from baseValue (0) to the line. lineColor stays
+      // transparent so only the fill shows — looks like the TV "Area" plot.
+      squeezeHistRef.current.setData(
+        pts.map((p) => ({
+          time: p.time as UTCTimestamp,
+          value: p.momentum,
+        })),
+      );
+      squeezeHistRef.current.applyOptions({
+        visible: style.showMomentum && indicators.squeeze,
+        topColor: style.areaPositive + "AA",
+        bottomColor: style.areaNegative + "AA",
+        lineColor: "transparent",
+      });
+    } else {
+      squeezeHistRef.current.setData(
+        pts.map((p) => ({
+          time: p.time as UTCTimestamp,
+          value: p.momentum,
+          color: COLORS[p.color],
+        })),
+      );
+      squeezeHistRef.current.applyOptions({
+        visible: style.showMomentum && indicators.squeeze,
+      });
+    }
     // Zero-line dots: invisible line at 0 + colored markers for squeeze state
     squeezeDotsRef.current?.setData(
       pts.map((p) => ({ time: p.time as UTCTimestamp, value: 0 })),

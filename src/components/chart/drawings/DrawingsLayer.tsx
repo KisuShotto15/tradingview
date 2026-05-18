@@ -221,6 +221,7 @@ function renderDrawing(args: RenderArgs) {
           selected={selected}
           onSelect={onSelect}
           onEdit={onEdit}
+          chart={chart}
           candleSeries={candleSeries}
           container={container}
         />
