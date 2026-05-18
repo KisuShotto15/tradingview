@@ -69,6 +69,10 @@ export interface AdxStyle {
   plusDiColor: string;
   minusDiColor: string;
   keyLevelColor: string;
+  showAdx: boolean;
+  showPlusDi: boolean;
+  showMinusDi: boolean;
+  showKeyLevel: boolean;
 }
 
 export const DEFAULT_ADX_STYLE: AdxStyle = {
@@ -76,6 +80,10 @@ export const DEFAULT_ADX_STYLE: AdxStyle = {
   plusDiColor: "#26a69a",
   minusDiColor: "#ef5350",
   keyLevelColor: "#787b86",
+  showAdx: true,
+  showPlusDi: true,
+  showMinusDi: true,
+  showKeyLevel: true,
 };
 
 export const INDICATOR_COLORS: Record<IndicatorKey, string> = {

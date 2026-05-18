@@ -521,11 +521,23 @@ function AdxStyleSection() {
 
   return (
     <div className="flex flex-col gap-2">
-      <SectionLabel>Style — Colors</SectionLabel>
-      <ColorPick label="ADX" value={draft.adxColor} onChange={(v) => commit({ adxColor: v })} />
-      <ColorPick label="+DI" value={draft.plusDiColor} onChange={(v) => commit({ plusDiColor: v })} />
-      <ColorPick label="-DI" value={draft.minusDiColor} onChange={(v) => commit({ minusDiColor: v })} />
-      <ColorPick label="Key Level" value={draft.keyLevelColor} onChange={(v) => commit({ keyLevelColor: v })} />
+      <SectionLabel>Style — Lines</SectionLabel>
+      <div className="flex items-center justify-between gap-2">
+        <Toggle label="ADX" value={draft.showAdx} onChange={(v) => commit({ showAdx: v })} />
+        <ColorPick label="" value={draft.adxColor} onChange={(v) => commit({ adxColor: v })} />
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <Toggle label="+DI" value={draft.showPlusDi} onChange={(v) => commit({ showPlusDi: v })} />
+        <ColorPick label="" value={draft.plusDiColor} onChange={(v) => commit({ plusDiColor: v })} />
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <Toggle label="-DI" value={draft.showMinusDi} onChange={(v) => commit({ showMinusDi: v })} />
+        <ColorPick label="" value={draft.minusDiColor} onChange={(v) => commit({ minusDiColor: v })} />
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <Toggle label="Key Level" value={draft.showKeyLevel} onChange={(v) => commit({ showKeyLevel: v })} />
+        <ColorPick label="" value={draft.keyLevelColor} onChange={(v) => commit({ keyLevelColor: v })} />
+      </div>
     </div>
   );
 }

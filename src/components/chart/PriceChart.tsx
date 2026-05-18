@@ -1359,21 +1359,21 @@ export function PriceChart({ symbol, timeframe }: Props) {
     const style = useChartStore.getState().adxStyle;
     const data = adxCalc(c, { diLen: cfg.adxDiLen, adxLen: cfg.adx });
     adxRef.current.setData(data.map((p) => ({ time: p.time as UTCTimestamp, value: p.adx })));
-    adxRef.current.applyOptions({ color: style.adxColor });
+    adxRef.current.applyOptions({ color: style.adxColor, visible: style.showAdx && indicators.adx });
     adxPlusDIRef.current?.setData(
       data.map((p) => ({ time: p.time as UTCTimestamp, value: p.plusDI })),
     );
-    adxPlusDIRef.current?.applyOptions({ color: style.plusDiColor });
+    adxPlusDIRef.current?.applyOptions({ color: style.plusDiColor, visible: style.showPlusDi && indicators.adx });
     adxMinusDIRef.current?.setData(
       data.map((p) => ({ time: p.time as UTCTimestamp, value: p.minusDI })),
     );
-    adxMinusDIRef.current?.applyOptions({ color: style.minusDiColor });
+    adxMinusDIRef.current?.applyOptions({ color: style.minusDiColor, visible: style.showMinusDi && indicators.adx });
     // Key level: constant horizontal line at configured value
     if (adxKeyLevelRef.current && data.length > 0) {
       adxKeyLevelRef.current.setData(
         data.map((p) => ({ time: p.time as UTCTimestamp, value: cfg.adxKeyLevel })),
       );
-      adxKeyLevelRef.current.applyOptions({ color: style.keyLevelColor });
+      adxKeyLevelRef.current.applyOptions({ color: style.keyLevelColor, visible: style.showKeyLevel && indicators.adx });
     }
   }
 
