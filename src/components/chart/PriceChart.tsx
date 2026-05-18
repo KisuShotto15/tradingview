@@ -1817,12 +1817,14 @@ export function PriceChart({ symbol, timeframe }: Props) {
         height={containerSize.height}
         renderTick={renderTick}
       />
-      {indicators.squeeze && (
+      {indicators.squeeze && paneOffsets[squeezePaneIdx] && (
         <SqueezeOverlay
           chart={chartRef.current}
           squeezeSeries={squeezeHistRef.current}
           width={containerSize.width}
           height={containerSize.height}
+          paneTop={paneOffsets[squeezePaneIdx].top}
+          paneHeight={paneOffsets[squeezePaneIdx].height}
           pts={squeezePts}
           visible={squeezeStyle.showMomentum}
           colorMap={{

@@ -11,6 +11,10 @@ interface Props {
   pts: SqueezePoint[];
   colorMap: Record<SqueezeColor, string>;
   visible: boolean;
+  /** Vertical offset (px) of the squeeze pane within the chart container */
+  paneTop: number;
+  /** Height of the squeeze pane */
+  paneHeight: number;
 }
 
 /**
@@ -28,6 +32,8 @@ export function SqueezeOverlay({
   pts,
   colorMap,
   visible,
+  paneTop,
+  paneHeight,
 }: Props) {
   if (!chart || !squeezeSeries || !visible || pts.length === 0) return null;
   const ts = chart.timeScale();
@@ -62,12 +68,20 @@ export function SqueezeOverlay({
     }
   }
 
+  // Position the SVG over the squeeze pane only — priceToCoordinate returns
+  // y RELATIVE to the pane, so the SVG container must be offset to match.
+  void width;
+  void height;
   return (
     <svg
-      className="pointer-events-none absolute inset-0 z-[5]"
-      style={{ overflow: "visible" }}
-      width={width}
-      height={height}
+      className="pointer-events-none absolute z-[5]"
+      style={{
+        overflow: "visible",
+        top: paneTop,
+        height: paneHeight,
+        left: 0,
+        right: 0,
+      }}
     >
       {segments.map((seg, si) => {
         if (seg.bars.length === 0) return null;
