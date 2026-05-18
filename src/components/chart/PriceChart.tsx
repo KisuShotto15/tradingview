@@ -1147,16 +1147,25 @@ export function PriceChart({ symbol, timeframe }: Props) {
     };
   }, []);
 
-  // Direct mousemove listener on the chart container — drives the placement
-  // preview reliably (subscribeCrosshairMove can be flaky in edge cases).
+  // Window-level mousemove drives the placement preview. We listen on the
+  // window (not the container) so that lightweight-charts' internal
+  // stopPropagation calls can't suppress our updates.
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !chartRef.current || !candleSeriesRef.current) return;
     function onMove(e: MouseEvent) {
+      const container = containerRef.current;
       if (!container || !chartRef.current || !candleSeriesRef.current) return;
       // Only do work when there's an active placement
       if (!firstPointRef.current && placementPointsRef.current.length === 0) return;
       const rect = container.getBoundingClientRect();
+      // Skip when cursor is outside the chart
+      if (
+        e.clientX < rect.left ||
+        e.clientX > rect.right ||
+        e.clientY < rect.top ||
+        e.clientY > rect.bottom
+      ) {
+        return;
+      }
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const rawPrice = candleSeriesRef.current.coordinateToPrice(y);
@@ -1167,7 +1176,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       const t = xToTime(chartRef.current, x, candlesRef.current, intervalSec);
       if (t === null) return;
       let price = rawPrice as number;
-      let time = t;
+      const time = t;
       if (e.ctrlKey || e.metaKey) {
         const snapped = snapToOHLC(price, time, candlesRef.current);
         if (snapped !== null) price = snapped;
@@ -1175,9 +1184,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
       }
       setPreviewState((prev) => (prev ? { ...prev, cursor: { time, price } } : prev));
     }
-    container.addEventListener("mousemove", onMove);
+    window.addEventListener("mousemove", onMove);
     return () => {
-      container.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mousemove", onMove);
     };
   }, []);
 

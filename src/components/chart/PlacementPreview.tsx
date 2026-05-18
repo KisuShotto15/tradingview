@@ -60,8 +60,8 @@ export function PlacementPreview({
     if (aX === null || aY === null || bX === null || bY === null) return null;
     return (
       <svg
-        className="pointer-events-none absolute inset-0"
-        style={{ width, height }}
+        className="pointer-events-none absolute inset-0 z-20 h-full w-full"
+        style={{ overflow: "visible" }}
       >
         {/* Solid bright line so it's clearly visible against the chart */}
         <line
@@ -95,7 +95,7 @@ export function PlacementPreview({
     const stopColor = "rgba(239, 83, 80, 0.18)";
     if (eY === null || tY === null || sY === null) return null;
     return (
-      <svg className="pointer-events-none absolute inset-0" style={{ width, height }}>
+      <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full" style={{ overflow: "visible" }}>
         <rect
           x={left}
           y={Math.min(eY, tY)}
@@ -128,7 +128,7 @@ export function PlacementPreview({
     const top = Math.min(aY, bY);
     const bottom = Math.max(aY, bY);
     return (
-      <svg className="pointer-events-none absolute inset-0" style={{ width, height }}>
+      <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full" style={{ overflow: "visible" }}>
         <rect
           x={left}
           y={top}
@@ -148,7 +148,7 @@ export function PlacementPreview({
     const left = Math.min(aX, bX);
     const right = Math.max(aX, bX);
     return (
-      <svg className="pointer-events-none absolute inset-0" style={{ width, height }}>
+      <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full" style={{ overflow: "visible" }}>
         <rect
           x={left}
           y={0}
@@ -173,7 +173,7 @@ export function PlacementPreview({
       label: lv.toFixed(3),
     }));
     return (
-      <svg className="pointer-events-none absolute inset-0" style={{ width, height }}>
+      <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full" style={{ overflow: "visible" }}>
         {lines.map((l, i) => (
           <line
             key={i}
@@ -195,7 +195,7 @@ export function PlacementPreview({
     if (extra.length === 0) {
       if (aX === null || aY === null || bX === null || bY === null) return null;
       return (
-        <svg className="pointer-events-none absolute inset-0" style={{ width, height }}>
+        <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full" style={{ overflow: "visible" }}>
           <line
             x1={aX}
             y1={aY}
@@ -230,7 +230,7 @@ export function PlacementPreview({
       const pX2 = baseX2;
       const pY2 = baseY2 + offset;
       return (
-        <svg className="pointer-events-none absolute inset-0" style={{ width, height }}>
+        <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full" style={{ overflow: "visible" }}>
           <line
             x1={baseX1}
             y1={baseY1}
@@ -284,7 +284,7 @@ export function MagnetIndicator({
   const y = candleSeries.priceToCoordinate(target.price);
   if (x === null || y === null) return null;
   return (
-    <svg className="pointer-events-none absolute inset-0" style={{ width, height }}>
+    <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full" style={{ overflow: "visible" }}>
       <circle cx={x} cy={y} r={5} fill="none" stroke="#ffb74d" strokeWidth={2} />
       <circle cx={x} cy={y} r={2} fill="#ffb74d" />
     </svg>
