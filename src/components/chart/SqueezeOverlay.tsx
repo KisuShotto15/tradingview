@@ -17,16 +17,23 @@ interface Props {
   paneHeight: number;
 }
 
-/** Catmull-Rom spline through bar-center tops, closed back to baseline. */
-function smoothArea(pts: { x: number; y: number }[], yBase: number): string {
+/**
+ * Catmull-Rom spline through bar-center tops, closed back to baseline.
+ * hw = half bar width — baseline extends to left/right edges so adjacent
+ * segments share the same boundary with no gap between them.
+ */
+function smoothArea(pts: { x: number; y: number }[], yBase: number, hw: number): string {
   const n = pts.length;
   if (n === 0) return "";
+
+  const x0 = pts[0].x - hw;
+  const xN = pts[n - 1].x + hw;
+
   if (n === 1) {
-    const { x, y } = pts[0];
-    return `M ${x},${yBase} L ${x},${y} L ${x},${yBase} Z`;
+    return `M ${x0},${yBase} L ${pts[0].x},${pts[0].y} L ${xN},${yBase} Z`;
   }
 
-  let d = `M ${pts[0].x},${yBase} L ${pts[0].x},${pts[0].y} `;
+  let d = `M ${x0},${yBase} L ${pts[0].x},${pts[0].y} `;
 
   for (let i = 0; i < n - 1; i++) {
     const p0 = pts[Math.max(i - 1, 0)];
@@ -42,7 +49,7 @@ function smoothArea(pts: { x: number; y: number }[], yBase: number): string {
     d += `C ${cp1x.toFixed(2)},${cp1y.toFixed(2)} ${cp2x.toFixed(2)},${cp2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)} `;
   }
 
-  d += `L ${pts[n - 1].x},${yBase} Z`;
+  d += `L ${xN},${yBase} Z`;
   return d;
 }
 
@@ -74,6 +81,9 @@ export function SqueezeOverlay({
   }
   if (bars.length === 0) return null;
 
+  const opts = ts.options() as { barSpacing?: number };
+  const hw = Math.max((opts.barSpacing ?? 6) / 2, 0.5);
+
   // Group consecutive same-color bars into segments
   type Segment = { color: SqueezeColor; bars: Bar[] };
   const segments: Segment[] = [];
@@ -104,7 +114,7 @@ export function SqueezeOverlay({
       <g clipPath={`url(#${clipId})`}>
         {segments.map((seg, si) => {
           if (seg.bars.length === 0) return null;
-          const d = smoothArea(seg.bars, yBase);
+          const d = smoothArea(seg.bars, yBase, hw);
           return (
             <path
               key={si}
