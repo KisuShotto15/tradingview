@@ -158,6 +158,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const squeezeStyle = useChartStore((s) => s.squeezeStyle);
   const indicatorOverlays = useChartStore((s) => s.indicatorOverlays);
   const logScale = useChartStore((s) => s.logScale);
+  const indicatorLogScale = useChartStore((s) => s.indicatorLogScale);
   const pillsCollapsed = useChartStore((s) => s.pillsCollapsed);
   const chartColors = useChartStore((s) => s.chartColors);
   chartColorsRef.current = chartColors;
@@ -862,14 +863,24 @@ export function PriceChart({ symbol, timeframe }: Props) {
   // ── Squeeze Momentum pane ────────────────────────────────────────────────
   useEffect(() => {
     if (!chartRef.current) return;
-    if (indicators.squeeze && !squeezeHistRef.current) {
+    // Always teardown first so changes in pane assignment (overlays added /
+    // removed, RSI/MACD/ADX toggled) move the series to the correct pane.
+    if (squeezeHistRef.current) {
+      try { chartRef.current.removeSeries(squeezeHistRef.current); } catch {}
+      squeezeHistRef.current = null;
+    }
+    if (squeezeDotsRef.current) {
+      try { chartRef.current.removeSeries(squeezeDotsRef.current); } catch {}
+      squeezeDotsRef.current = null;
+    }
+    squeezeDotsMarkersRef.current = null;
+    if (indicators.squeeze) {
       const paneIndex = panelIndexFor("squeeze");
       squeezeHistRef.current = chartRef.current.addSeries(
         HistogramSeries,
         { priceLineVisible: false, lastValueVisible: false },
         paneIndex,
       );
-      // Invisible line at y=0 used to anchor the squeeze-state markers
       squeezeDotsRef.current = chartRef.current.addSeries(
         LineSeries,
         {
@@ -886,21 +897,26 @@ export function PriceChart({ symbol, timeframe }: Props) {
         chartRef.current.panes()[0]?.setStretchFactor(3);
       } catch {}
       updateSqueeze();
-    } else if (!indicators.squeeze && squeezeHistRef.current && chartRef.current) {
-      if (squeezeHistRef.current) chartRef.current.removeSeries(squeezeHistRef.current);
-      if (squeezeDotsRef.current) chartRef.current.removeSeries(squeezeDotsRef.current);
-      squeezeHistRef.current = null;
-      squeezeDotsRef.current = null;
-      squeezeDotsMarkersRef.current = null;
     }
     requestAnimationFrame(() => recomputePaneOffsets());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicators.squeeze, indicators.rsi, indicators.macd, indicators.adx]);
+  }, [indicators.squeeze, indicators.rsi, indicators.macd, indicators.adx, indicatorOverlays]);
 
   // ── VuManChu Cipher B pane ───────────────────────────────────────────────
   useEffect(() => {
     if (!chartRef.current) return;
-    if (indicators.vumanchu && !vmcWt2Ref.current) {
+    // Always teardown VuManChu series first to handle overlay/pane changes
+    {
+      const vmcRefs = [vmcWt1Ref, vmcWt2Ref, vmcVwapRef, vmcMfiRef, vmcRsiRef, vmcObRef, vmcOsRef, vmcZeroRef];
+      for (const r of vmcRefs) {
+        if (r.current) {
+          try { chartRef.current.removeSeries(r.current); } catch {}
+          r.current = null;
+        }
+      }
+      vmcMarkersRef.current = null;
+    }
+    if (indicators.vumanchu) {
       const paneIndex = panelIndexFor("vumanchu");
       // WT1 (light blue area)
       vmcWt1Ref.current = chartRef.current.addSeries(
@@ -1006,19 +1022,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
         chartRef.current.panes()[0]?.setStretchFactor(3);
       } catch {}
       updateVumanchu();
-    } else if (!indicators.vumanchu && vmcWt2Ref.current && chartRef.current) {
-      const refs = [vmcWt1Ref, vmcWt2Ref, vmcVwapRef, vmcMfiRef, vmcRsiRef, vmcObRef, vmcOsRef, vmcZeroRef];
-      for (const r of refs) {
-        if (r.current) {
-          try { chartRef.current.removeSeries(r.current); } catch {}
-          r.current = null;
-        }
-      }
-      vmcMarkersRef.current = null;
     }
     requestAnimationFrame(() => recomputePaneOffsets());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicators.vumanchu, indicators.rsi, indicators.macd, indicators.adx, indicators.squeeze]);
+  }, [indicators.vumanchu, indicators.rsi, indicators.macd, indicators.adx, indicators.squeeze, indicatorOverlays]);
 
   // Visibility — eye toggle (hidden state) + enabled state combined
   useEffect(() => {
@@ -1049,13 +1056,47 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (vmcZeroRef.current) vmcZeroRef.current.applyOptions({ visible: v("vumanchu") });
   }, [indicators, hidden]);
 
-  // Apply logarithmic price scale toggle
+  // Apply logarithmic price scale toggle — main candle pane ONLY (uses the
+  // candle series's own price scale so sub-pane indicators are unaffected).
   useEffect(() => {
-    if (!chartRef.current) return;
-    chartRef.current.priceScale("right").applyOptions({
+    if (!candleSeriesRef.current) return;
+    candleSeriesRef.current.priceScale().applyOptions({
       mode: logScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
     });
   }, [logScale]);
+
+  // Per-indicator log scale — applies to that indicator's pane price scale
+  useEffect(() => {
+    const apply = (
+      seriesRef: React.RefObject<ISeriesApi<"Line" | "Area" | "Histogram" | "Candlestick"> | null>,
+      enabled: boolean,
+    ) => {
+      if (!seriesRef.current) return;
+      seriesRef.current.priceScale().applyOptions({
+        mode: enabled ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
+      });
+    };
+    apply(
+      rsiRef as unknown as React.RefObject<ISeriesApi<"Line"> | null>,
+      !!indicatorLogScale.rsi,
+    );
+    apply(
+      macdRef as unknown as React.RefObject<ISeriesApi<"Line"> | null>,
+      !!indicatorLogScale.macd,
+    );
+    apply(
+      adxRef as unknown as React.RefObject<ISeriesApi<"Line"> | null>,
+      !!indicatorLogScale.adx,
+    );
+    apply(
+      squeezeHistRef as unknown as React.RefObject<ISeriesApi<"Histogram"> | null>,
+      !!indicatorLogScale.squeeze,
+    );
+    apply(
+      vmcWt2Ref as unknown as React.RefObject<ISeriesApi<"Area"> | null>,
+      !!indicatorLogScale.vumanchu,
+    );
+  }, [indicatorLogScale, indicators]);
 
   // Apply chart color customization
   useEffect(() => {
@@ -1754,27 +1795,85 @@ export function PriceChart({ symbol, timeframe }: Props) {
       )}
       {measureRender}
 
-      {/* A / L buttons inside the price scale area (bottom-right corner) */}
-      <div className="pointer-events-auto absolute bottom-7 right-1 z-10 flex flex-col items-center gap-0.5">
-        <button
-          onClick={() => chartRef.current?.timeScale().fitContent()}
-          title="Auto scale (fit content)"
-          className="flex h-5 w-5 items-center justify-center rounded border border-tv-border bg-tv-panel text-[10px] font-semibold text-tv-text-muted hover:text-tv-text"
-        >
-          A
-        </button>
-        <button
-          onClick={() => useChartStore.getState().setLogScale(!logScale)}
-          title={logScale ? "Switch to linear scale" : "Switch to logarithmic scale"}
-          className={`flex h-5 w-5 items-center justify-center rounded border border-tv-border text-[10px] font-semibold transition-colors ${
-            logScale
-              ? "bg-tv-blue/20 text-tv-blue"
-              : "bg-tv-panel text-tv-text-muted hover:text-tv-text"
-          }`}
-        >
-          L
-        </button>
-      </div>
+      {/* A / L buttons per pane — positioned at the bottom-right of each
+          pane (just above the next pane separator / time axis) */}
+      {paneOffsets.map((p, paneIdx) => {
+        // Resolve which indicator owns this pane (for log scale state)
+        let key: "main" | IndicatorKey = "main";
+        if (paneIdx > 0) {
+          for (const k of [
+            "rsi",
+            "macd",
+            "adx",
+            "squeeze",
+            "vumanchu",
+          ] as const) {
+            if (indicatorPaneIdx[k] === paneIdx && indicators[k]) {
+              key = k;
+              break;
+            }
+          }
+        }
+        const isLog =
+          key === "main" ? logScale : !!indicatorLogScale[key as IndicatorKey];
+        const toggleLog = () => {
+          if (key === "main") {
+            useChartStore.getState().setLogScale(!logScale);
+          } else {
+            useChartStore
+              .getState()
+              .setIndicatorLogScale(key as IndicatorKey, !isLog);
+          }
+        };
+        const autoFit = () => {
+          if (!chartRef.current) return;
+          if (key === "main") {
+            chartRef.current.timeScale().fitContent();
+          } else {
+            // Reset just the price scale of the pane to auto
+            const seriesByPane = {
+              rsi: rsiRef.current,
+              macd: macdRef.current,
+              adx: adxRef.current,
+              squeeze: squeezeHistRef.current,
+              vumanchu: vmcWt2Ref.current,
+            } as const;
+            const s = seriesByPane[key as keyof typeof seriesByPane];
+            if (s) {
+              s.priceScale().applyOptions({ autoScale: true });
+            }
+          }
+        };
+        return (
+          <div
+            key={paneIdx}
+            style={{
+              top: p.top + p.height - 26,
+              right: 4,
+            }}
+            className="pointer-events-auto absolute z-10 flex items-center gap-0.5"
+          >
+            <button
+              onClick={autoFit}
+              title="Auto scale"
+              className="flex h-5 w-5 items-center justify-center rounded border border-tv-border bg-tv-panel text-[10px] font-semibold text-tv-text-muted hover:text-tv-text"
+            >
+              A
+            </button>
+            <button
+              onClick={toggleLog}
+              title={isLog ? "Switch to linear" : "Switch to logarithmic"}
+              className={`flex h-5 w-5 items-center justify-center rounded border border-tv-border text-[10px] font-semibold transition-colors ${
+                isLog
+                  ? "bg-tv-blue/20 text-tv-blue"
+                  : "bg-tv-panel text-tv-text-muted hover:text-tv-text"
+              }`}
+            >
+              L
+            </button>
+          </div>
+        );
+      })}
 
       {/* Top-left of main pane: symbol info + OHLC + Volume pill + EMA pills */}
       <div

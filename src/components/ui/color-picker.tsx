@@ -63,9 +63,15 @@ export function ColorPicker({ value, onChange, className }: Props) {
         onClick={() => setOpen((o) => !o)}
         aria-label="Pick color"
         className="h-7 w-9 cursor-pointer rounded border border-tv-border"
-        style={{
-          background: `linear-gradient(45deg, #555 25%, transparent 25%, transparent 75%, #555 75%) 0 0/8px 8px, ${value}`,
-        }}
+        style={
+          opacity < 0.99
+            ? {
+                backgroundImage: `linear-gradient(${value}, ${value}), linear-gradient(45deg, #444 25%, transparent 25%, transparent 75%, #444 75%), linear-gradient(45deg, #444 25%, transparent 25%, transparent 75%, #444 75%)`,
+                backgroundSize: "100% 100%, 8px 8px, 8px 8px",
+                backgroundPosition: "0 0, 0 0, 4px 4px",
+              }
+            : { background: value }
+        }
       />
       {open && (
         <div
@@ -93,9 +99,15 @@ export function ColorPicker({ value, onChange, className }: Props) {
           <div className="mt-3 flex items-center gap-2 border-t border-tv-border pt-3">
             <div
               className="h-6 w-6 rounded border border-tv-border"
-              style={{
-                background: `linear-gradient(45deg, #555 25%, transparent 25%, transparent 75%, #555 75%) 0 0/6px 6px, ${value}`,
-              }}
+              style={
+                opacity < 0.99
+                  ? {
+                      backgroundImage: `linear-gradient(${value}, ${value}), linear-gradient(45deg, #444 25%, transparent 25%, transparent 75%, #444 75%), linear-gradient(45deg, #444 25%, transparent 25%, transparent 75%, #444 75%)`,
+                      backgroundSize: "100% 100%, 6px 6px, 6px 6px",
+                      backgroundPosition: "0 0, 0 0, 3px 3px",
+                    }
+                  : { background: value }
+              }
             />
             <label
               title="Add custom color"

@@ -182,8 +182,10 @@ interface ChartState {
   userEMAs: UserEMA[];
   /** Squeeze indicator style overrides */
   squeezeStyle: SqueezeStyle;
-  /** Logarithmic price scale */
+  /** Logarithmic price scale (main pane only) */
   logScale: boolean;
+  /** Per-indicator log scale toggle (sub-panes) */
+  indicatorLogScale: Partial<Record<IndicatorKey, boolean>>;
   /** How many recent bars to show when (re)loading a chart */
   visibleBars: number;
   /** Whether the indicator pill list on the main pane is collapsed */
@@ -233,6 +235,7 @@ interface ChartState {
   toggleUserEMAHidden: (id: string) => void;
   setSqueezeStyle: (patch: Partial<SqueezeStyle>) => void;
   setLogScale: (v: boolean) => void;
+  setIndicatorLogScale: (key: IndicatorKey, v: boolean) => void;
   setVisibleBars: (n: number) => void;
   setPillsCollapsed: (v: boolean) => void;
   setIndicatorOverlay: (key: IndicatorKey, target: IndicatorKey | "own") => void;
@@ -308,6 +311,7 @@ export const useChartStore = create<ChartState>()(
       ],
       squeezeStyle: { ...DEFAULT_SQUEEZE_STYLE },
       logScale: false,
+      indicatorLogScale: {},
       visibleBars: 150,
       pillsCollapsed: false,
       indicatorOverlays: {},
@@ -374,6 +378,10 @@ export const useChartStore = create<ChartState>()(
       setSqueezeStyle: (patch) =>
         set((s) => ({ squeezeStyle: { ...s.squeezeStyle, ...patch } })),
       setLogScale: (logScale) => set({ logScale }),
+      setIndicatorLogScale: (key, v) =>
+        set((s) => ({
+          indicatorLogScale: { ...s.indicatorLogScale, [key]: v },
+        })),
       setVisibleBars: (visibleBars) => set({ visibleBars }),
       setPillsCollapsed: (pillsCollapsed) => set({ pillsCollapsed }),
       setIndicatorOverlay: (key, target) =>
@@ -523,6 +531,7 @@ export const useChartStore = create<ChartState>()(
         userEMAs: s.userEMAs,
         squeezeStyle: s.squeezeStyle,
         logScale: s.logScale,
+        indicatorLogScale: s.indicatorLogScale,
         visibleBars: s.visibleBars,
         pillsCollapsed: s.pillsCollapsed,
         indicatorOverlays: s.indicatorOverlays,
