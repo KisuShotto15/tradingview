@@ -186,6 +186,8 @@ interface ChartState {
   logScale: boolean;
   /** How many recent bars to show when (re)loading a chart */
   visibleBars: number;
+  /** Whether the indicator pill list on the main pane is collapsed */
+  pillsCollapsed: boolean;
   /**
    * Maps an indicator to the indicator whose pane it shares ("own" = its own
    * pane). E.g. { adx: "squeeze" } overlays ADX on the Squeeze pane.
@@ -232,6 +234,7 @@ interface ChartState {
   setSqueezeStyle: (patch: Partial<SqueezeStyle>) => void;
   setLogScale: (v: boolean) => void;
   setVisibleBars: (n: number) => void;
+  setPillsCollapsed: (v: boolean) => void;
   setIndicatorOverlay: (key: IndicatorKey, target: IndicatorKey | "own") => void;
   setToolDefault: (
     kind: string,
@@ -306,6 +309,7 @@ export const useChartStore = create<ChartState>()(
       squeezeStyle: { ...DEFAULT_SQUEEZE_STYLE },
       logScale: false,
       visibleBars: 150,
+      pillsCollapsed: false,
       indicatorOverlays: {},
       toolDefaults: {},
       ...initialWatchlists(),
@@ -371,6 +375,7 @@ export const useChartStore = create<ChartState>()(
         set((s) => ({ squeezeStyle: { ...s.squeezeStyle, ...patch } })),
       setLogScale: (logScale) => set({ logScale }),
       setVisibleBars: (visibleBars) => set({ visibleBars }),
+      setPillsCollapsed: (pillsCollapsed) => set({ pillsCollapsed }),
       setIndicatorOverlay: (key, target) =>
         set((s) => ({
           indicatorOverlays: { ...s.indicatorOverlays, [key]: target },
@@ -519,6 +524,7 @@ export const useChartStore = create<ChartState>()(
         squeezeStyle: s.squeezeStyle,
         logScale: s.logScale,
         visibleBars: s.visibleBars,
+        pillsCollapsed: s.pillsCollapsed,
         indicatorOverlays: s.indicatorOverlays,
         toolDefaults: s.toolDefaults,
         watchlists: s.watchlists,

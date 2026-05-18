@@ -37,6 +37,7 @@ import {
   DEFAULT_CHART_COLORS,
 } from "@/lib/store/chart-store";
 import { formatPrice, formatVolume } from "@/lib/format";
+import { ChevronUp } from "lucide-react";
 import { IndicatorPill } from "./IndicatorPill";
 import { MeasureOverlay } from "./MeasureOverlay";
 import { DrawingsLayer } from "./drawings/DrawingsLayer";
@@ -157,6 +158,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const squeezeStyle = useChartStore((s) => s.squeezeStyle);
   const indicatorOverlays = useChartStore((s) => s.indicatorOverlays);
   const logScale = useChartStore((s) => s.logScale);
+  const pillsCollapsed = useChartStore((s) => s.pillsCollapsed);
   const chartColors = useChartStore((s) => s.chartColors);
   chartColorsRef.current = chartColors;
   const tool = useChartStore((s) => s.tool);
@@ -1830,29 +1832,49 @@ export function PriceChart({ symbol, timeframe }: Props) {
           )}
         </div>
 
-        {/* Indicator pills for the main pane (fixed position below price) */}
+        {/* Indicator pills for the main pane (collapsible) */}
         <div className="mt-1 flex flex-col items-start gap-1">
-          {userEMAs.map((e) => (
-            <IndicatorPill
-              key={e.id}
-              name={`EMA ${e.period}`}
-              color={e.color}
-              hidden={e.hidden}
-              onToggleHide={() => toggleUserEMAHidden(e.id)}
-              onSettings={() => setSettingsTarget({ kind: "ema", id: e.id })}
-              onRemove={() => removeUserEMA(e.id)}
-            />
-          ))}
-          {indicators.volume && (
-            <IndicatorPill
-              name="Vol"
-              value={lastValues.volume !== undefined ? formatVolume(lastValues.volume) : undefined}
-              color={INDICATOR_COLORS.volume}
-              hidden={hidden.volume}
-              onToggleHide={() => toggleHidden("volume")}
-              onSettings={() => setSettingsTarget("volume")}
-              onRemove={() => removeIndicator("volume")}
-            />
+          {!pillsCollapsed && (
+            <>
+              {userEMAs.map((e) => (
+                <IndicatorPill
+                  key={e.id}
+                  name={`EMA ${e.period}`}
+                  color={e.color}
+                  hidden={e.hidden}
+                  onToggleHide={() => toggleUserEMAHidden(e.id)}
+                  onSettings={() => setSettingsTarget({ kind: "ema", id: e.id })}
+                  onRemove={() => removeUserEMA(e.id)}
+                />
+              ))}
+              {indicators.volume && (
+                <IndicatorPill
+                  name="Vol"
+                  value={lastValues.volume !== undefined ? formatVolume(lastValues.volume) : undefined}
+                  color={INDICATOR_COLORS.volume}
+                  hidden={hidden.volume}
+                  onToggleHide={() => toggleHidden("volume")}
+                  onSettings={() => setSettingsTarget("volume")}
+                  onRemove={() => removeIndicator("volume")}
+                />
+              )}
+            </>
+          )}
+          {(userEMAs.length > 0 || indicators.volume) && (
+            <button
+              onClick={() =>
+                useChartStore.getState().setPillsCollapsed(!pillsCollapsed)
+              }
+              title={pillsCollapsed ? "Show indicators" : "Hide indicators"}
+              aria-label={pillsCollapsed ? "Show indicators" : "Hide indicators"}
+              className="pointer-events-auto flex h-5 w-5 items-center justify-center rounded bg-tv-panel/95 text-tv-text-muted ring-1 ring-tv-border hover:bg-tv-panel-hover hover:text-tv-text"
+            >
+              <ChevronUp
+                className={`h-3.5 w-3.5 transition-transform ${
+                  pillsCollapsed ? "rotate-180" : ""
+                }`}
+              />
+            </button>
           )}
         </div>
       </div>

@@ -1,6 +1,8 @@
 import type { Candle, Timeframe } from "./types";
+import { isPerp, cleanSym } from "./rest";
 
-const WS_BASE = "wss://stream.binance.com:9443/stream";
+const SPOT_WS = "wss://stream.binance.com:9443/stream";
+const FUTURES_WS = "wss://fstream.binance.com/stream";
 
 interface KlineMsg {
   stream: string;
@@ -9,8 +11,8 @@ interface KlineMsg {
     E: number;
     s: string;
     k: {
-      t: number; // open time
-      T: number; // close time
+      t: number;
+      T: number;
       s: string;
       i: string;
       o: string;
@@ -18,7 +20,7 @@ interface KlineMsg {
       h: string;
       l: string;
       v: string;
-      x: boolean; // is closed
+      x: boolean;
     };
   };
 }
@@ -29,8 +31,8 @@ interface MiniTickerMsg {
     e: string;
     E: number;
     s: string;
-    c: string; // close
-    o: string; // open
+    c: string;
+    o: string;
     h: string;
     l: string;
     v: string;
@@ -46,16 +48,11 @@ export interface KlineSubscription {
   onCandle: (c: Candle) => void;
 }
 
-export interface TickerSubscription {
-  symbols: string[];
-  onTick: (s: { symbol: string; close: number; open: number; pct: number }) => void;
-}
-
 /**
- * Single multiplexed WS connection to Binance, with auto-reconnect.
- * Subscriptions can be added/removed at runtime via SUBSCRIBE/UNSUBSCRIBE.
+ * One Binance WS connection (either spot or futures). Multiplexed with
+ * auto-reconnect.
  */
-export class BinanceWS {
+class BinanceWSConn {
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -65,20 +62,23 @@ export class BinanceWS {
   private connected = false;
   private closing = false;
 
+  constructor(private url: string, private symbolDecorator: (s: string) => string) {}
+
   connect() {
     if (this.ws || this.closing) return;
-    this.ws = new WebSocket(WS_BASE);
+    this.ws = new WebSocket(this.url);
 
     this.ws.onopen = () => {
       this.connected = true;
       this.reconnectAttempts = 0;
-      // Re-subscribe everything
       const streams: string[] = [];
       this.klineSubs.forEach((s) => {
-        streams.push(`${s.symbol.toLowerCase()}@kline_${s.interval}`);
+        streams.push(`${cleanSym(s.symbol).toLowerCase()}@kline_${s.interval}`);
       });
       this.tickerSubs.forEach((_v, k) => streams.push(k));
-      if (streams.length > 0) this.send({ method: "SUBSCRIBE", params: streams, id: this.nextId++ });
+      if (streams.length > 0) {
+        this.send({ method: "SUBSCRIBE", params: streams, id: this.nextId++ });
+      }
     };
 
     this.ws.onmessage = (ev) => {
@@ -96,9 +96,7 @@ export class BinanceWS {
       if (!this.closing) this.scheduleReconnect();
     };
 
-    this.ws.onerror = () => {
-      this.ws?.close();
-    };
+    this.ws.onerror = () => this.ws?.close();
   }
 
   private scheduleReconnect() {
@@ -136,12 +134,18 @@ export class BinanceWS {
   }
 
   subscribeKline(sub: KlineSubscription): () => void {
-    const stream = `${sub.symbol.toLowerCase()}@kline_${sub.interval}`;
+    const stream = `${cleanSym(sub.symbol).toLowerCase()}@kline_${sub.interval}`;
     this.klineSubs.set(stream, sub);
-    if (this.connected) this.send({ method: "SUBSCRIBE", params: [stream], id: this.nextId++ });
+    if (this.connected) {
+      this.send({ method: "SUBSCRIBE", params: [stream], id: this.nextId++ });
+    } else if (!this.ws) {
+      this.connect();
+    }
     return () => {
       this.klineSubs.delete(stream);
-      if (this.connected) this.send({ method: "UNSUBSCRIBE", params: [stream], id: this.nextId++ });
+      if (this.connected) {
+        this.send({ method: "UNSUBSCRIBE", params: [stream], id: this.nextId++ });
+      }
     };
   }
 
@@ -149,23 +153,32 @@ export class BinanceWS {
     symbols: string[],
     onTick: (s: { symbol: string; close: number; open: number; pct: number }) => void,
   ): () => void {
-    const streams = symbols.map((s) => `${s.toLowerCase()}@miniTicker`);
-    streams.forEach((stream) => {
+    const streams = symbols.map(
+      (s) => `${cleanSym(s).toLowerCase()}@miniTicker`,
+    );
+    streams.forEach((stream, i) => {
+      const inputSym = symbols[i];
       this.tickerSubs.set(stream, (d) => {
         const close = parseFloat(d.c);
         const open = parseFloat(d.o);
         onTick({
-          symbol: d.s,
+          symbol: this.symbolDecorator(inputSym),
           close,
           open,
           pct: open === 0 ? 0 : ((close - open) / open) * 100,
         });
       });
     });
-    if (this.connected) this.send({ method: "SUBSCRIBE", params: streams, id: this.nextId++ });
+    if (this.connected) {
+      this.send({ method: "SUBSCRIBE", params: streams, id: this.nextId++ });
+    } else if (!this.ws) {
+      this.connect();
+    }
     return () => {
       streams.forEach((s) => this.tickerSubs.delete(s));
-      if (this.connected) this.send({ method: "UNSUBSCRIBE", params: streams, id: this.nextId++ });
+      if (this.connected) {
+        this.send({ method: "UNSUBSCRIBE", params: streams, id: this.nextId++ });
+      }
     };
   }
 
@@ -177,16 +190,46 @@ export class BinanceWS {
   }
 }
 
-// Singleton — only one WS connection per browser tab
+/**
+ * Public WS facade with two underlying connections (spot + futures). Routes
+ * subscriptions by inspecting the symbol for the ".P" suffix.
+ */
+export class BinanceWS {
+  private spot = new BinanceWSConn(SPOT_WS, (s) => s);
+  private futures = new BinanceWSConn(FUTURES_WS, (s) => s);
+
+  connect() {
+    // Lazy: connect on first subscription
+  }
+
+  subscribeKline(sub: KlineSubscription): () => void {
+    const conn = isPerp(sub.symbol) ? this.futures : this.spot;
+    return conn.subscribeKline(sub);
+  }
+
+  subscribeMiniTickers(
+    symbols: string[],
+    onTick: (s: { symbol: string; close: number; open: number; pct: number }) => void,
+  ): () => void {
+    const spotSyms = symbols.filter((s) => !isPerp(s));
+    const perpSyms = symbols.filter((s) => isPerp(s));
+    const unsubs: (() => void)[] = [];
+    if (spotSyms.length > 0)
+      unsubs.push(this.spot.subscribeMiniTickers(spotSyms, onTick));
+    if (perpSyms.length > 0)
+      unsubs.push(this.futures.subscribeMiniTickers(perpSyms, onTick));
+    return () => unsubs.forEach((u) => u());
+  }
+
+  close() {
+    this.spot.close();
+    this.futures.close();
+  }
+}
+
 let singleton: BinanceWS | null = null;
 export function getBinanceWS(): BinanceWS {
-  if (typeof window === "undefined") {
-    // SSR safety: dummy
-    return new BinanceWS();
-  }
-  if (!singleton) {
-    singleton = new BinanceWS();
-    singleton.connect();
-  }
+  if (typeof window === "undefined") return new BinanceWS();
+  if (!singleton) singleton = new BinanceWS();
   return singleton;
 }
