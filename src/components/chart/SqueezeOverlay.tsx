@@ -18,8 +18,9 @@ interface Props {
 type Pt = { x: number; y: number };
 
 /**
- * Smooth filled area through topPts using horizontal-tangent cubic bezier.
- * Closes back to baseline (y = yBase) on both sides.
+ * Smooth filled area through topPts using Catmull-Rom spline.
+ * The first and last points are at yBase (baseline connection).
+ * Closes back to baseline via a straight line at the end.
  */
 function buildPath(topPts: Pt[], yBase: number): string {
   const n = topPts.length;
@@ -28,15 +29,20 @@ function buildPath(topPts: Pt[], yBase: number): string {
   const start = topPts[0];
   const end = topPts[n - 1];
 
-  // Start and end are already at yBase; just go straight up/down
-  let d = `M ${start.x.toFixed(1)},${yBase.toFixed(1)} `;
-  d += `L ${start.x.toFixed(1)},${start.y.toFixed(1)} `;
+  let d = `M ${start.x.toFixed(1)},${yBase.toFixed(1)} L ${start.x.toFixed(1)},${start.y.toFixed(1)} `;
 
   for (let i = 0; i < n - 1; i++) {
+    const p0 = topPts[Math.max(i - 1, 0)];
     const p1 = topPts[i];
     const p2 = topPts[i + 1];
-    const mx = ((p1.x + p2.x) / 2).toFixed(1);
-    d += `C ${mx},${p1.y.toFixed(1)} ${mx},${p2.y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)} `;
+    const p3 = topPts[Math.min(i + 2, n - 1)];
+
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+    d += `C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)} `;
   }
 
   d += `L ${end.x.toFixed(1)},${yBase.toFixed(1)} Z`;
