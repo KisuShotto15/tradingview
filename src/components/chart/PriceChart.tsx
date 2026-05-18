@@ -2090,29 +2090,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
             (p) => indicatorOverlays[p.key] === target,
           );
 
-        // Draggable pill wrapper
-        const DraggablePill = ({ p }: { p: typeof SUB_PANES[number] }) => (
-          <div
-            className="pointer-events-auto cursor-grab active:cursor-grabbing"
-            draggable
-            onDragStart={(e) => {
-              setDragKey(p.key);
-              e.dataTransfer.effectAllowed = "move";
-            }}
-            onDragEnd={() => setDragKey(null)}
-          >
-            <IndicatorPill
-              name={p.name}
-              value={p.value}
-              color={INDICATOR_COLORS[p.key]}
-              hidden={hidden[p.key]}
-              onToggleHide={() => toggleHidden(p.key)}
-              onSettings={() => setSettingsTarget(p.key)}
-              onRemove={() => removeIndicator(p.key)}
-            />
-          </div>
-        );
-
         return (
           <>
             {/* Drop zones — shown for all owned panes while dragging */}
@@ -2160,9 +2137,30 @@ export function PriceChart({ symbol, timeframe }: Props) {
                   style={{ top: offset.top + 6, left: 12 }}
                   className="pointer-events-none absolute z-10 flex flex-col items-start gap-1"
                 >
-                  <DraggablePill p={p} />
-                  {guests.map((g) => (
-                    <DraggablePill key={g.key} p={g} />
+                  {[p, ...guests].map((entry) => (
+                    <div key={entry.key} className="pointer-events-auto flex items-center gap-0.5">
+                      {/* Drag handle — only this element is draggable so pill buttons stay functional */}
+                      <div
+                        className="cursor-grab select-none px-0.5 text-xs text-white/30 hover:text-white/60 active:cursor-grabbing"
+                        draggable
+                        onDragStart={(e) => {
+                          setDragKey(entry.key);
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragEnd={() => setDragKey(null)}
+                      >
+                        ⠿
+                      </div>
+                      <IndicatorPill
+                        name={entry.name}
+                        value={entry.value}
+                        color={INDICATOR_COLORS[entry.key]}
+                        hidden={hidden[entry.key]}
+                        onToggleHide={() => toggleHidden(entry.key)}
+                        onSettings={() => setSettingsTarget(entry.key)}
+                        onRemove={() => removeIndicator(entry.key)}
+                      />
+                    </div>
                   ))}
                 </div>
               );
