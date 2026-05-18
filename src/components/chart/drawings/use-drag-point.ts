@@ -6,6 +6,7 @@ import type { Point } from "@/lib/drawings/types";
 import { useChartStore } from "@/lib/store/chart-store";
 import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
+import { snapToOHLC } from "@/lib/chart/snap";
 
 interface DragHandlers {
   onStart?: () => void;
@@ -32,20 +33,29 @@ export function useDragPoint(
 
       if (handlers.onStart) handlers.onStart();
 
-      function toPoint(clientX: number, clientY: number): Point | null {
+      function toPoint(
+        clientX: number,
+        clientY: number,
+        snap: boolean,
+      ): Point | null {
         const rect = container!.getBoundingClientRect();
         const x = clientX - rect.left;
         const y = clientY - rect.top;
-        const price = candleSeries!.coordinateToPrice(y);
-        if (price === null) return null;
+        const rawPrice = candleSeries!.coordinateToPrice(y);
+        if (rawPrice === null) return null;
         const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
         const time = xToTime(chart!, x, globalCandlesRef.current, intervalSec);
         if (time === null) return null;
+        let price = rawPrice as number;
+        if (snap) {
+          const snapped = snapToOHLC(price, time, globalCandlesRef.current);
+          if (snapped !== null) price = snapped;
+        }
         return { time, price };
       }
 
       function onMove(ev: MouseEvent) {
-        const pt = toPoint(ev.clientX, ev.clientY);
+        const pt = toPoint(ev.clientX, ev.clientY, ev.ctrlKey || ev.metaKey);
         if (pt) handlers.onMove(pt);
       }
 

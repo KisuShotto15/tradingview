@@ -4,6 +4,7 @@ import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { DrawingTool } from "@/lib/store/chart-store";
 import type { Candle } from "@/lib/binance/types";
 import { timeToX } from "@/lib/chart/coords";
+import { extendRay } from "@/lib/drawings/geometry";
 
 interface Point {
   time: number;
@@ -58,23 +59,29 @@ export function PlacementPreview({
 
   if (tool === "trendline" || tool === "ray") {
     if (aX === null || aY === null || bX === null || bY === null) return null;
+    // For a ray, extend the segment through the cursor to the chart edge so
+    // the user previews the full infinite line, not just the cursor segment.
+    let endX = bX;
+    let endY = bY;
+    if (tool === "ray" && width > 0 && height > 0) {
+      const end = extendRay({ x: aX, y: aY }, { x: bX, y: bY }, width, height);
+      endX = end.x;
+      endY = end.y;
+    }
     return (
       <svg
         className="pointer-events-none absolute inset-0 z-20 h-full w-full"
         style={{ overflow: "visible" }}
       >
-        {/* Solid bright line so it's clearly visible against the chart */}
         <line
           x1={aX}
           y1={aY}
-          x2={bX}
-          y2={bY}
+          x2={endX}
+          y2={endY}
           stroke={PREVIEW_STROKE}
           strokeWidth={1.5}
         />
-        {/* Anchor at first click — filled blue circle with white outline */}
         <circle cx={aX} cy={aY} r={5} fill={PREVIEW_HANDLE} stroke="#ffffff" strokeWidth={1.5} />
-        {/* Cursor end — hollow */}
         <circle cx={bX} cy={bY} r={4} fill="none" stroke={PREVIEW_HANDLE} strokeWidth={1.5} />
       </svg>
     );

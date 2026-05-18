@@ -184,6 +184,8 @@ interface ChartState {
   squeezeStyle: SqueezeStyle;
   /** Logarithmic price scale */
   logScale: boolean;
+  /** How many recent bars to show when (re)loading a chart */
+  visibleBars: number;
   /** User watchlists with sections/labels */
   watchlists: Watchlist[];
   activeWatchlistId: string;
@@ -212,6 +214,7 @@ interface ChartState {
   toggleUserEMAHidden: (id: string) => void;
   setSqueezeStyle: (patch: Partial<SqueezeStyle>) => void;
   setLogScale: (v: boolean) => void;
+  setVisibleBars: (n: number) => void;
   createWatchlist: (name: string) => string;
   renameWatchlist: (id: string, name: string) => void;
   deleteWatchlist: (id: string) => void;
@@ -280,6 +283,7 @@ export const useChartStore = create<ChartState>()(
       ],
       squeezeStyle: { ...DEFAULT_SQUEEZE_STYLE },
       logScale: false,
+      visibleBars: 150,
       ...initialWatchlists(),
       chartColors: { ...DEFAULT_CHART_COLORS },
       tool: "cursor",
@@ -342,6 +346,7 @@ export const useChartStore = create<ChartState>()(
       setSqueezeStyle: (patch) =>
         set((s) => ({ squeezeStyle: { ...s.squeezeStyle, ...patch } })),
       setLogScale: (logScale) => set({ logScale }),
+      setVisibleBars: (visibleBars) => set({ visibleBars }),
       createWatchlist: (name) => {
         const id = randomId();
         set((state) => ({
@@ -478,6 +483,7 @@ export const useChartStore = create<ChartState>()(
         userEMAs: s.userEMAs,
         squeezeStyle: s.squeezeStyle,
         logScale: s.logScale,
+        visibleBars: s.visibleBars,
         watchlists: s.watchlists,
         activeWatchlistId: s.activeWatchlistId,
         chartColors: s.chartColors,

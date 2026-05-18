@@ -43,6 +43,7 @@ import { DrawingsLayer } from "./drawings/DrawingsLayer";
 import { PlacementPreview, MagnetIndicator } from "./PlacementPreview";
 import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
+import { snapToOHLC } from "@/lib/chart/snap";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { generateId, FIB_LEVELS_DEFAULT } from "@/lib/drawings/types";
@@ -87,17 +88,6 @@ const TV_COLORS = {
   purple: "#ab47bc",
   grid: "#0e0e0e",
 };
-
-function snapToOHLC(price: number, time: number, candles: Candle[]): number | null {
-  if (candles.length === 0) return null;
-  const candle = candles.reduce((best, c) =>
-    Math.abs(c.time - time) < Math.abs(best.time - time) ? c : best,
-  );
-  const levels = [candle.open, candle.high, candle.low, candle.close];
-  return levels.reduce((closest, level) =>
-    Math.abs(level - price) < Math.abs(closest - price) ? level : closest,
-  );
-}
 
 interface HoverInfo {
   o: number;
@@ -608,7 +598,21 @@ export function PriceChart({ symbol, timeframe }: Props) {
     // Re-render measure overlay on pan / zoom so pixel coords stay in sync
     const tsRangeHandler = () => setRenderTick((t) => t + 1);
     chart.timeScale().subscribeVisibleTimeRangeChange(tsRangeHandler);
-    const logicalRangeHandler = () => setRenderTick((t) => t + 1);
+    let zoomSaveTimer: ReturnType<typeof setTimeout> | null = null;
+    const logicalRangeHandler = () => {
+      setRenderTick((t) => t + 1);
+      // Persist the user's zoom level (visible bar count) — debounced
+      if (zoomSaveTimer) clearTimeout(zoomSaveTimer);
+      zoomSaveTimer = setTimeout(() => {
+        const range = chart.timeScale().getVisibleLogicalRange();
+        if (range && range.to > range.from) {
+          const bars = Math.round(range.to - range.from);
+          if (bars >= 5 && bars <= 5000) {
+            useChartStore.getState().setVisibleBars(bars);
+          }
+        }
+      }, 500);
+    };
     chart.timeScale().subscribeVisibleLogicalRangeChange(logicalRangeHandler);
 
     // ResizeObserver — recompute pane offsets when chart container resizes
@@ -1458,7 +1462,17 @@ export function PriceChart({ symbol, timeframe }: Props) {
         updateADX();
         updateSqueeze();
         updateVumanchu();
-        chartRef.current?.timeScale().fitContent();
+        // Show the user's preferred number of recent bars (persisted across
+        // loads). Bypasses lightweight-charts' default "fit all" which zooms
+        // out way too far for 1000 bars.
+        if (chartRef.current && klines.length > 0) {
+          const bars = useChartStore.getState().visibleBars;
+          const lastIdx = klines.length - 1;
+          chartRef.current.timeScale().setVisibleLogicalRange({
+            from: Math.max(0, lastIdx - bars + 1),
+            to: lastIdx + 4,
+          });
+        }
         requestAnimationFrame(() => recomputePaneOffsets());
 
         if (klines.length > 0) {
@@ -1684,25 +1698,25 @@ export function PriceChart({ symbol, timeframe }: Props) {
       )}
       {measureRender}
 
-      {/* Bottom-right corner buttons: log scale toggle + auto-fit */}
-      <div className="pointer-events-auto absolute bottom-9 right-16 z-10 flex items-center gap-1">
+      {/* A / L buttons inside the price scale area (bottom-right corner) */}
+      <div className="pointer-events-auto absolute bottom-7 right-1 z-10 flex flex-col items-center gap-0.5">
+        <button
+          onClick={() => chartRef.current?.timeScale().fitContent()}
+          title="Auto scale (fit content)"
+          className="flex h-5 w-5 items-center justify-center rounded border border-tv-border bg-tv-panel text-[10px] font-semibold text-tv-text-muted hover:text-tv-text"
+        >
+          A
+        </button>
         <button
           onClick={() => useChartStore.getState().setLogScale(!logScale)}
           title={logScale ? "Switch to linear scale" : "Switch to logarithmic scale"}
-          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
+          className={`flex h-5 w-5 items-center justify-center rounded border border-tv-border text-[10px] font-semibold transition-colors ${
             logScale
               ? "bg-tv-blue/20 text-tv-blue"
-              : "bg-tv-panel/80 text-tv-text-muted hover:text-tv-text"
+              : "bg-tv-panel text-tv-text-muted hover:text-tv-text"
           }`}
         >
-          log
-        </button>
-        <button
-          onClick={() => chartRef.current?.timeScale().fitContent()}
-          title="Fit content"
-          className="rounded bg-tv-panel/80 px-1.5 py-0.5 text-[10px] font-semibold text-tv-text-muted hover:text-tv-text"
-        >
-          auto
+          L
         </button>
       </div>
 

@@ -5,6 +5,7 @@ import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import { useChartStore } from "@/lib/store/chart-store";
 import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
+import { snapToOHLC } from "@/lib/chart/snap";
 
 interface ShapeDragHandlers<T> {
   onStart?: () => void;
@@ -56,10 +57,16 @@ export function useDragShape<T>(
         const x = ev.clientX - rect.left;
         const y = ev.clientY - rect.top;
         const t = xToTime(chart, x, globalCandlesRef.current, interval);
-        const p = candleSeries.coordinateToPrice(y);
-        if (t === null || p === null) return;
+        const rawP = candleSeries.coordinateToPrice(y);
+        if (t === null || rawP === null) return;
+        let p = rawP as number;
+        // Magnet snap when Ctrl/Cmd is held during drag
+        if (ev.ctrlKey || ev.metaKey) {
+          const snapped = snapToOHLC(p, t, globalCandlesRef.current);
+          if (snapped !== null) p = snapped;
+        }
         const dt = t - startTime!;
-        const dp = (p as number) - startPrice;
+        const dp = p - startPrice;
         const patch = applyRef.current(original!, dt, dp);
         handlersRef.current.onMove(patch);
       }
