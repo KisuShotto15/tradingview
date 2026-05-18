@@ -42,6 +42,8 @@ import { IndicatorPill } from "./IndicatorPill";
 import { MeasureOverlay } from "./MeasureOverlay";
 import { DrawingsLayer } from "./drawings/DrawingsLayer";
 import { PlacementPreview, MagnetIndicator } from "./PlacementPreview";
+import { SqueezeOverlay } from "./SqueezeOverlay";
+import type { SqueezePoint } from "@/lib/indicators/squeeze";
 import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
 import { snapToOHLC } from "@/lib/chart/snap";
@@ -198,6 +200,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   } | null>(null);
   const [ctrlHeld, setCtrlHeld] = useState(false);
   const [magnetTarget, setMagnetTarget] = useState<{ time: number; price: number } | null>(null);
+  const [squeezePts, setSqueezePts] = useState<SqueezePoint[]>([]);
   const measureRef = useRef(measure);
   measureRef.current = measure;
 
@@ -1380,18 +1383,24 @@ export function PriceChart({ symbol, timeframe }: Props) {
       red: style.momentumDecNeg,
       maroon: style.momentumIncNeg,
     };
-    // Per-bar 4-color histogram (Pine logic) — for both histogram and area
-    // modes. In area mode we additionally draw a smooth outline line on top.
+    // Feed the histogram the raw momentum WITHOUT per-bar colors (or with
+    // a transparent color). The actual visible rendering is done by the
+    // SqueezeOverlay SVG layer, which draws polygons per Pine-color segment
+    // with bars touching exactly — no gaps, smooth solid regions matching
+    // TradingView's plot.style_columns look.
     squeezeHistRef.current.setData(
       pts.map((p) => ({
         time: p.time as UTCTimestamp,
         value: p.momentum,
-        color: COLORS[p.color],
+        color: "rgba(0,0,0,0)",
       })),
     );
     squeezeHistRef.current.applyOptions({
       visible: style.showMomentum && indicators.squeeze,
     });
+    // Publish pts to React state so SqueezeOverlay can render them.
+    setSqueezePts(pts);
+    // Outline line for area mode (drawn on top of overlay)
     if (squeezeOutlineRef.current) {
       squeezeOutlineRef.current.setData(
         pts.map((p) => ({
@@ -1403,6 +1412,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
         visible: style.showMomentum && indicators.squeeze,
       });
     }
+    // Reference COLORS to avoid unused-var warning
+    void COLORS;
     // Zero-line dots: invisible line at 0 + colored markers for squeeze state
     squeezeDotsRef.current?.setData(
       pts.map((p) => ({ time: p.time as UTCTimestamp, value: 0 })),
@@ -1806,6 +1817,22 @@ export function PriceChart({ symbol, timeframe }: Props) {
         height={containerSize.height}
         renderTick={renderTick}
       />
+      {indicators.squeeze && (
+        <SqueezeOverlay
+          chart={chartRef.current}
+          squeezeSeries={squeezeHistRef.current}
+          width={containerSize.width}
+          height={containerSize.height}
+          pts={squeezePts}
+          visible={squeezeStyle.showMomentum}
+          colorMap={{
+            lime: squeezeStyle.momentumIncPos,
+            green: squeezeStyle.momentumDecPos,
+            red: squeezeStyle.momentumDecNeg,
+            maroon: squeezeStyle.momentumIncNeg,
+          }}
+        />
+      )}
       {previewState && (
         <PlacementPreview
           tool={tool}
