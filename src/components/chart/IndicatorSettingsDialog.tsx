@@ -516,14 +516,24 @@ function SqueezeStyleSection() {
       {draft.plotStyle === "area" ? (
         <>
           <ColorPick
-            label="Area positive"
+            label="Color 0 — peak positive"
             value={draft.areaPositive}
             onChange={(v) => commit({ areaPositive: v })}
           />
           <ColorPick
-            label="Area negative"
+            label="Color 1 — baseline positive"
+            value={draft.areaPositiveDim}
+            onChange={(v) => commit({ areaPositiveDim: v })}
+          />
+          <ColorPick
+            label="Color 2 — trough negative"
             value={draft.areaNegative}
             onChange={(v) => commit({ areaNegative: v })}
+          />
+          <ColorPick
+            label="Color 3 — baseline negative"
+            value={draft.areaNegativeDim}
+            onChange={(v) => commit({ areaNegativeDim: v })}
           />
         </>
       ) : (

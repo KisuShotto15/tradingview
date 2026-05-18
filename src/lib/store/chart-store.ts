@@ -130,9 +130,15 @@ export interface SqueezeStyle {
   showSqueezeDots: boolean;
   /** Plot style: histogram (Pine original) or filled area (smooth, TV-like) */
   plotStyle: "histogram" | "area";
-  /** Area-mode positive / negative fill colors */
-  areaPositive: string;
-  areaNegative: string;
+  /**
+   * Area mode: 4 colors mapping to TradingView's "Color 0..3". The top
+   * gradient goes from the bright (peak) → dim (near baseline) color, same
+   * for the bottom.
+   */
+  areaPositive: string;     // Color 0 — bright (peak), top line
+  areaPositiveDim: string;  // Color 1 — dim (near baseline)
+  areaNegative: string;     // Color 2 — bright (trough), bottom line
+  areaNegativeDim: string;  // Color 3 — dim (near baseline)
 }
 
 export const DEFAULT_SQUEEZE_STYLE: SqueezeStyle = {
@@ -146,8 +152,10 @@ export const DEFAULT_SQUEEZE_STYLE: SqueezeStyle = {
   showMomentum: true,
   showSqueezeDots: true,
   plotStyle: "histogram",
-  areaPositive: "#26a69a",
-  areaNegative: "#ef5350",
+  areaPositive: "#00c853",      // Color 0 bright green (peak)
+  areaPositiveDim: "#1b5e20",   // Color 1 dim green (baseline)
+  areaNegative: "#ef5350",      // Color 2 bright red (trough)
+  areaNegativeDim: "#b71c1c",   // Color 3 dim red (baseline)
 };
 
 export const DEFAULT_WATCHLIST = [

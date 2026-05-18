@@ -879,17 +879,19 @@ export function PriceChart({ symbol, timeframe }: Props) {
       const paneIndex = panelIndexFor("squeeze");
       const sqStyle = useChartStore.getState().squeezeStyle;
       if (sqStyle.plotStyle === "area") {
-        // BaselineSeries: solid uniform fill above/below a baseline value (0).
-        // Sharp horizontal cut at 0 — exactly like the TradingView Squeeze.
+        // BaselineSeries with 4-color gradient: bright at the peak/trough,
+        // dim near the baseline. Matches TradingView's Color 0..3 mapping.
+        // topFillColor2 is the color AT the line (peak), topFillColor1 is
+        // at the baseValue. Same logic mirrored for the bottom.
         squeezeHistRef.current = chartRef.current.addSeries(
           BaselineSeries,
           {
             baseValue: { type: "price", price: 0 },
-            topFillColor1: sqStyle.areaPositive,
-            topFillColor2: sqStyle.areaPositive,
+            topFillColor2: sqStyle.areaPositive,      // Color 0 (peak)
+            topFillColor1: sqStyle.areaPositiveDim,   // Color 1 (baseline)
             topLineColor: sqStyle.areaPositive,
-            bottomFillColor1: sqStyle.areaNegative,
-            bottomFillColor2: sqStyle.areaNegative,
+            bottomFillColor2: sqStyle.areaNegative,   // Color 2 (trough)
+            bottomFillColor1: sqStyle.areaNegativeDim,// Color 3 (baseline)
             bottomLineColor: sqStyle.areaNegative,
             lineWidth: 1,
             priceLineVisible: false,
@@ -1392,11 +1394,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
       );
       squeezeHistRef.current.applyOptions({
         visible: style.showMomentum && indicators.squeeze,
-        topFillColor1: style.areaPositive,
         topFillColor2: style.areaPositive,
+        topFillColor1: style.areaPositiveDim,
         topLineColor: style.areaPositive,
-        bottomFillColor1: style.areaNegative,
         bottomFillColor2: style.areaNegative,
+        bottomFillColor1: style.areaNegativeDim,
         bottomLineColor: style.areaNegative,
       });
     } else {
