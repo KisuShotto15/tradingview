@@ -2080,15 +2080,22 @@ export function PriceChart({ symbol, timeframe }: Props) {
           },
         ].filter((p) => indicators[p.key as IndicatorKey]);
 
-        // Panes that "own" their slot (not overlaid on another pane)
-        const ownedPanes = SUB_PANES.filter(
-          (p) => !indicatorOverlays[p.key] || indicatorOverlays[p.key] === "own",
-        );
+        // An indicator "owns" its slot unless it has a valid, active, non-circular overlay target.
+        // Handles stale persisted state: orphaned targets (disabled indicator) or circular refs.
+        const activeKeys = new Set(SUB_PANES.map((p) => p.key));
+        const ownedPanes = SUB_PANES.filter((p) => {
+          const target = indicatorOverlays[p.key];
+          if (!target || target === "own") return true;
+          if (!activeKeys.has(target as IndicatorKey)) return true; // target disabled/removed
+          if (indicatorOverlays[target as IndicatorKey] === p.key) return true; // circular ref
+          return false;
+        });
 
-        // Which indicators are overlaid on a given target key
+        // Which indicators are valid guests of a given target (excludes circular/orphaned refs)
+        const ownedKeySet = new Set(ownedPanes.map((p) => p.key));
         const overlaidOn = (target: IndicatorKey) =>
           SUB_PANES.filter(
-            (p) => indicatorOverlays[p.key] === target,
+            (p) => indicatorOverlays[p.key] === target && !ownedKeySet.has(p.key),
           );
 
         return (
@@ -2115,6 +2122,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
                       if (dragKey === p.key || indicatorOverlays[dragKey] === p.key) {
                         setIndicatorOverlay(dragKey, "own");
                       } else {
+                        // Clear the reverse direction first to prevent circular refs
+                        if (indicatorOverlays[p.key] === dragKey) {
+                          setIndicatorOverlay(p.key, "own");
+                        }
                         setIndicatorOverlay(dragKey, p.key);
                       }
                       setDragKey(null);
