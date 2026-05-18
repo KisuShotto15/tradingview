@@ -171,6 +171,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const removeIndicator = useChartStore((s) => s.removeIndicator);
   const toggleHidden = useChartStore((s) => s.toggleHidden);
   const setSettingsTarget = useChartStore((s) => s.setSettingsTarget);
+  const setIndicatorOverlay = useChartStore((s) => s.setIndicatorOverlay);
   const drawingsApi = useDrawings();
   // Note: useAlertMonitor relies on lastPrice (state); see below where it's invoked.
 
@@ -191,6 +192,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const [lastValues, setLastValues] = useState<LastValues>({});
   const [paneOffsets, setPaneOffsets] = useState<PaneOffset[]>([]);
   const [measure, setMeasure] = useState<MeasureState>(INITIAL_MEASURE);
+  const [dragKey, setDragKey] = useState<IndicatorKey | null>(null);
   const [renderTick, setRenderTick] = useState(0);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [previewState, setPreviewState] = useState<{
@@ -641,6 +643,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
       if (cr) setContainerSize({ width: cr.width, height: cr.height });
     });
     ro.observe(containerRef.current);
+    // mouseup on the chart container catches pane-separator drag-resizes
+    // (ResizeObserver only fires on container resize, not internal pane layout changes)
+    const onPaneMouseUp = () => requestAnimationFrame(() => recomputePaneOffsets());
+    containerRef.current.addEventListener("mouseup", onPaneMouseUp);
     recomputePaneOffsets();
     const initRect = containerRef.current.getBoundingClientRect();
     setContainerSize({ width: initRect.width, height: initRect.height });
@@ -649,6 +655,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       chart.timeScale().unsubscribeVisibleTimeRangeChange(tsRangeHandler);
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(logicalRangeHandler);
       ro.disconnect();
+      containerRef.current?.removeEventListener("mouseup", onPaneMouseUp);
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
@@ -2036,107 +2043,133 @@ export function PriceChart({ symbol, timeframe }: Props) {
         </div>
       </div>
 
-      {/* RSI pane label */}
-      {indicators.rsi && paneOffsets[rsiPaneIdx] && (
-        <div
-          style={{ top: paneOffsets[rsiPaneIdx].top + 6, left: 12 }}
-          className="pointer-events-none absolute z-10"
-        >
-          <IndicatorPill
-            name={`RSI ${config.rsi}`}
-            value={lastValues.rsi !== undefined ? lastValues.rsi.toFixed(2) : undefined}
-            color={INDICATOR_COLORS.rsi}
-            hidden={hidden.rsi}
-            onToggleHide={() => toggleHidden("rsi")}
-            onSettings={() => setSettingsTarget("rsi")}
-            onRemove={() => removeIndicator("rsi")}
-          />
-        </div>
-      )}
+      {/* ── Sub-pane indicator pills with drag-to-overlay ─────────────────── */}
+      {(() => {
+        // Config for each sub-pane indicator
+        type PaneEntry = { key: IndicatorKey; paneIdx: number; name: string; value?: string };
+        const SUB_PANES: PaneEntry[] = [
+          {
+            key: "rsi" as IndicatorKey,
+            paneIdx: rsiPaneIdx,
+            name: `RSI ${config.rsi}`,
+            value: lastValues.rsi !== undefined ? lastValues.rsi.toFixed(2) : undefined,
+          },
+          {
+            key: "macd" as IndicatorKey,
+            paneIdx: macdPaneIdx,
+            name: `MACD ${config.macdFast}, ${config.macdSlow}, ${config.macdSignal}`,
+            value: lastValues.macd !== undefined
+              ? `${lastValues.macd.toFixed(2)} / ${(lastValues.macdSignal ?? 0).toFixed(2)}`
+              : undefined,
+          },
+          {
+            key: "adx" as IndicatorKey,
+            paneIdx: adxPaneIdx,
+            name: `ADX ${config.adx}`,
+          },
+          {
+            key: "squeeze" as IndicatorKey,
+            paneIdx: squeezePaneIdx,
+            name: "Squeeze Momentum",
+          },
+          {
+            key: "vumanchu" as IndicatorKey,
+            paneIdx: vumanchuPaneIdx,
+            name: "VuManChu Cipher B",
+          },
+        ].filter((p) => indicators[p.key as IndicatorKey]);
 
-      {/* MACD pane label */}
-      {indicators.macd && paneOffsets[macdPaneIdx] && (
-        <div
-          style={{ top: paneOffsets[macdPaneIdx].top + 6, left: 12 }}
-          className="pointer-events-none absolute z-10"
-        >
-          <IndicatorPill
-            name={`MACD ${config.macdFast}, ${config.macdSlow}, ${config.macdSignal}`}
-            value={
-              lastValues.macd !== undefined
-                ? `${lastValues.macd.toFixed(2)} / ${(lastValues.macdSignal ?? 0).toFixed(2)}`
-                : undefined
-            }
-            color={INDICATOR_COLORS.macd}
-            hidden={hidden.macd}
-            onToggleHide={() => toggleHidden("macd")}
-            onSettings={() => setSettingsTarget("macd")}
-            onRemove={() => removeIndicator("macd")}
-          />
-        </div>
-      )}
+        // Panes that "own" their slot (not overlaid on another pane)
+        const ownedPanes = SUB_PANES.filter(
+          (p) => !indicatorOverlays[p.key] || indicatorOverlays[p.key] === "own",
+        );
 
-      {/* ADX pane label */}
-      {indicators.adx && paneOffsets[adxPaneIdx] && (
-        <div
-          style={{ top: paneOffsets[adxPaneIdx].top + 6, left: 12 }}
-          className="pointer-events-none absolute z-10 flex flex-col items-start gap-1"
-        >
-          <IndicatorPill
-            name={`ADX ${config.adx}`}
-            color={INDICATOR_COLORS.adx}
-            hidden={hidden.adx}
-            onToggleHide={() => toggleHidden("adx")}
-            onSettings={() => setSettingsTarget("adx")}
-            onRemove={() => removeIndicator("adx")}
-          />
-        </div>
-      )}
+        // Which indicators are overlaid on a given target key
+        const overlaidOn = (target: IndicatorKey) =>
+          SUB_PANES.filter(
+            (p) => indicatorOverlays[p.key] === target,
+          );
 
-      {/* Squeeze Momentum pane label */}
-      {indicators.squeeze && paneOffsets[squeezePaneIdx] && (
-        <div
-          style={{ top: paneOffsets[squeezePaneIdx].top + 6, left: 12 }}
-          className="pointer-events-none absolute z-10 flex flex-col items-start gap-1"
-        >
-          <IndicatorPill
-            name="Squeeze Momentum"
-            color={INDICATOR_COLORS.squeeze}
-            hidden={hidden.squeeze}
-            onToggleHide={() => toggleHidden("squeeze")}
-            onSettings={() => setSettingsTarget("squeeze")}
-            onRemove={() => removeIndicator("squeeze")}
-          />
-          {/* If ADX is overlaid on this pane, show its pill too */}
-          {indicators.adx && indicatorOverlays.adx === "squeeze" && (
+        // Draggable pill wrapper
+        const DraggablePill = ({ p }: { p: typeof SUB_PANES[number] }) => (
+          <div
+            className="pointer-events-auto cursor-grab active:cursor-grabbing"
+            draggable
+            onDragStart={(e) => {
+              setDragKey(p.key);
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            onDragEnd={() => setDragKey(null)}
+          >
             <IndicatorPill
-              name={`ADX ${config.adx}`}
-              color={INDICATOR_COLORS.adx}
-              hidden={hidden.adx}
-              onToggleHide={() => toggleHidden("adx")}
-              onSettings={() => setSettingsTarget("adx")}
-              onRemove={() => removeIndicator("adx")}
+              name={p.name}
+              value={p.value}
+              color={INDICATOR_COLORS[p.key]}
+              hidden={hidden[p.key]}
+              onToggleHide={() => toggleHidden(p.key)}
+              onSettings={() => setSettingsTarget(p.key)}
+              onRemove={() => removeIndicator(p.key)}
             />
-          )}
-        </div>
-      )}
+          </div>
+        );
 
-      {/* VuManChu pane label */}
-      {indicators.vumanchu && paneOffsets[vumanchuPaneIdx] && (
-        <div
-          style={{ top: paneOffsets[vumanchuPaneIdx].top + 6, left: 12 }}
-          className="pointer-events-none absolute z-10 flex flex-col items-start gap-1"
-        >
-          <IndicatorPill
-            name="VuManChu Cipher B"
-            color={INDICATOR_COLORS.vumanchu}
-            hidden={hidden.vumanchu}
-            onToggleHide={() => toggleHidden("vumanchu")}
-            onSettings={() => setSettingsTarget("vumanchu")}
-            onRemove={() => removeIndicator("vumanchu")}
-          />
-        </div>
-      )}
+        return (
+          <>
+            {/* Drop zones — shown for all owned panes while dragging */}
+            {dragKey &&
+              ownedPanes.map((p) => {
+                const offset = paneOffsets[p.paneIdx];
+                if (!offset) return null;
+                const isSource =
+                  dragKey === p.key || indicatorOverlays[dragKey] === p.key;
+                return (
+                  <div
+                    key={`drop-${p.key}`}
+                    style={{ top: offset.top, height: offset.height, left: 0, right: 0 }}
+                    className={`pointer-events-auto absolute z-20 border-2 transition-colors ${
+                      isSource
+                        ? "border-yellow-400/60 bg-yellow-400/5"
+                        : "border-blue-400/60 bg-blue-400/10"
+                    }`}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (!dragKey) return;
+                      if (dragKey === p.key || indicatorOverlays[dragKey] === p.key) {
+                        setIndicatorOverlay(dragKey, "own");
+                      } else {
+                        setIndicatorOverlay(dragKey, p.key);
+                      }
+                      setDragKey(null);
+                    }}
+                  >
+                    <span className="absolute left-1/2 top-2 -translate-x-1/2 rounded bg-black/60 px-2 py-0.5 text-xs text-white/70">
+                      {isSource ? "Quitar overlay" : `Overlay en ${p.name}`}
+                    </span>
+                  </div>
+                );
+              })}
+
+            {/* Pills for each owned pane */}
+            {ownedPanes.map((p) => {
+              const offset = paneOffsets[p.paneIdx];
+              if (!offset) return null;
+              const guests = overlaidOn(p.key);
+              return (
+                <div
+                  key={p.key}
+                  style={{ top: offset.top + 6, left: 12 }}
+                  className="pointer-events-none absolute z-10 flex flex-col items-start gap-1"
+                >
+                  <DraggablePill p={p} />
+                  {guests.map((g) => (
+                    <DraggablePill key={g.key} p={g} />
+                  ))}
+                </div>
+              );
+            })}
+          </>
+        );
+      })()}
     </div>
   );
 }
