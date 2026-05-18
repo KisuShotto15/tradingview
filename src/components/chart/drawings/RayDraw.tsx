@@ -7,6 +7,7 @@ import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { extendRay } from "@/lib/drawings/geometry";
 import { DrawHandle } from "./DrawHandle";
 import { useDragPoint } from "./use-drag-point";
+import { useDragShape } from "./use-drag-shape";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 
 interface Props {
@@ -48,21 +49,38 @@ export function RayDraw({
     const current = useDrawingsStore.getState().drawings.find((d) => d.id === drawing.id);
     if (current && current.kind === "ray") snapshotRef.current = current;
   }
+  function commitEnd() {
+    if (snapshotRef.current) void commit(drawing.id, snapshotRef.current);
+  }
 
   const dragA = useDragPoint(chart, candleSeries, container, {
     onStart: snap,
     onMove: (pt: Point) => updateLive(drawing.id, { a: pt } as Partial<RayDrawing>),
-    onEnd: () => {
-      if (snapshotRef.current) void commit(drawing.id, snapshotRef.current);
-    },
+    onEnd: commitEnd,
   });
   const dragB = useDragPoint(chart, candleSeries, container, {
     onStart: snap,
     onMove: (pt: Point) => updateLive(drawing.id, { b: pt } as Partial<RayDrawing>),
-    onEnd: () => {
-      if (snapshotRef.current) void commit(drawing.id, snapshotRef.current);
-    },
+    onEnd: commitEnd,
   });
+  const dragLine = useDragShape<RayDrawing>(
+    chart,
+    candleSeries,
+    container,
+    (orig, dt, dp) => ({
+      a: { time: orig.a.time + dt, price: orig.a.price + dp },
+      b: { time: orig.b.time + dt, price: orig.b.price + dp },
+    }),
+    () => {
+      const c = useDrawingsStore.getState().drawings.find((d) => d.id === drawing.id);
+      return c && c.kind === "ray" ? (c as RayDrawing) : null;
+    },
+    {
+      onStart: snap,
+      onMove: (patch) => updateLive(drawing.id, patch as Partial<RayDrawing>),
+      onEnd: commitEnd,
+    },
+  );
 
   const end = extendRay({ x: ax, y: ay }, { x: bx, y: by }, width, height);
 
@@ -75,10 +93,17 @@ export function RayDraw({
         y2={end.y}
         stroke="transparent"
         strokeWidth={10}
-        style={{ pointerEvents: "stroke", cursor: "pointer" }}
+        style={{
+          pointerEvents: "stroke",
+          cursor: selected ? "move" : "pointer",
+        }}
         onMouseDown={(e) => {
-          e.stopPropagation();
-          onSelect();
+          if (selected) {
+            dragLine(e);
+          } else {
+            e.stopPropagation();
+            onSelect();
+          }
         }}
       />
       <line

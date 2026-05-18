@@ -1,6 +1,11 @@
 "use client";
 
+import { useRef } from "react";
+import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { HRayDrawing } from "@/lib/drawings/types";
+import { useDrawingsStore } from "@/lib/store/drawings-store";
+import { useDragShape } from "./use-drag-shape";
+import { useDrawings } from "@/lib/supabase/use-drawings";
 import { formatPrice } from "@/lib/format";
 
 interface Props {
@@ -13,12 +18,53 @@ interface Props {
   width: number;
   selected: boolean;
   onSelect: () => void;
+  chart: IChartApi | null;
+  candleSeries: ISeriesApi<"Candlestick"> | null;
+  container: HTMLElement | null;
 }
 
-export function HRayDraw({ drawing, anchorX, y, width, selected, onSelect }: Props) {
+export function HRayDraw({
+  drawing,
+  anchorX,
+  y,
+  width,
+  selected,
+  onSelect,
+  chart,
+  candleSeries,
+  container,
+}: Props) {
   const color = drawing.color ?? "#2962ff";
   const stroke = selected ? "#ffffff" : color;
   const strokeWidth = selected ? 2 : drawing.lineWidth ?? 1;
+  const { updateLive, commit } = useDrawings();
+  const snapshotRef = useRef<HRayDrawing | null>(null);
+
+  function snap() {
+    const c = useDrawingsStore.getState().drawings.find((d) => d.id === drawing.id);
+    if (c && c.kind === "hray") snapshotRef.current = c;
+  }
+  function commitEnd() {
+    if (snapshotRef.current) void commit(drawing.id, snapshotRef.current);
+  }
+
+  const dragLine = useDragShape<HRayDrawing>(
+    chart,
+    candleSeries,
+    container,
+    (orig, dt, dp) => ({
+      anchor: { time: orig.anchor.time + dt, price: orig.anchor.price + dp },
+    }),
+    () => {
+      const c = useDrawingsStore.getState().drawings.find((d) => d.id === drawing.id);
+      return c && c.kind === "hray" ? (c as HRayDrawing) : null;
+    },
+    {
+      onStart: snap,
+      onMove: (patch) => updateLive(drawing.id, patch as Partial<HRayDrawing>),
+      onEnd: commitEnd,
+    },
+  );
 
   return (
     <g>
@@ -29,10 +75,17 @@ export function HRayDraw({ drawing, anchorX, y, width, selected, onSelect }: Pro
         y2={y}
         stroke="transparent"
         strokeWidth={10}
-        style={{ pointerEvents: "stroke", cursor: "pointer" }}
+        style={{
+          pointerEvents: "stroke",
+          cursor: selected ? "move" : "pointer",
+        }}
         onMouseDown={(e) => {
-          e.stopPropagation();
-          onSelect();
+          if (selected) {
+            dragLine(e);
+          } else {
+            e.stopPropagation();
+            onSelect();
+          }
         }}
       />
       <line

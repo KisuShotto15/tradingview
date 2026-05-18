@@ -6,6 +6,7 @@ import type { TrendLineDrawing, Point } from "@/lib/drawings/types";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { DrawHandle } from "./DrawHandle";
 import { useDragPoint } from "./use-drag-point";
+import { useDragShape } from "./use-drag-shape";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 
 interface Props {
@@ -43,21 +44,42 @@ export function TrendLineDraw({
     const current = useDrawingsStore.getState().drawings.find((d) => d.id === drawing.id);
     if (current && current.kind === "trendline") snapshotRef.current = current;
   }
+  function commitEnd() {
+    if (snapshotRef.current) void commit(drawing.id, snapshotRef.current);
+  }
 
   const dragA = useDragPoint(chart, candleSeries, container, {
     onStart: snap,
     onMove: (pt: Point) => updateLive(drawing.id, { a: pt } as Partial<TrendLineDrawing>),
-    onEnd: () => {
-      if (snapshotRef.current) void commit(drawing.id, snapshotRef.current);
-    },
+    onEnd: commitEnd,
   });
   const dragB = useDragPoint(chart, candleSeries, container, {
     onStart: snap,
     onMove: (pt: Point) => updateLive(drawing.id, { b: pt } as Partial<TrendLineDrawing>),
-    onEnd: () => {
-      if (snapshotRef.current) void commit(drawing.id, snapshotRef.current);
-    },
+    onEnd: commitEnd,
   });
+  const dragLine = useDragShape<TrendLineDrawing>(
+    chart,
+    candleSeries,
+    container,
+    (orig, dt, dp) => ({
+      a: { time: orig.a.time + dt, price: orig.a.price + dp },
+      b: { time: orig.b.time + dt, price: orig.b.price + dp },
+    }),
+    () => {
+      const current = useDrawingsStore.getState().drawings.find(
+        (d) => d.id === drawing.id,
+      );
+      return current && current.kind === "trendline"
+        ? (current as TrendLineDrawing)
+        : null;
+    },
+    {
+      onStart: snap,
+      onMove: (patch) => updateLive(drawing.id, patch as Partial<TrendLineDrawing>),
+      onEnd: commitEnd,
+    },
+  );
 
   return (
     <g>
@@ -68,10 +90,17 @@ export function TrendLineDraw({
         y2={by}
         stroke="transparent"
         strokeWidth={10}
-        style={{ pointerEvents: "stroke", cursor: "pointer" }}
+        style={{
+          pointerEvents: "stroke",
+          cursor: selected ? "move" : "pointer",
+        }}
         onMouseDown={(e) => {
-          e.stopPropagation();
-          onSelect();
+          if (selected) {
+            dragLine(e);
+          } else {
+            e.stopPropagation();
+            onSelect();
+          }
         }}
       />
       <line

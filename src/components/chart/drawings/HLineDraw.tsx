@@ -1,6 +1,11 @@
 "use client";
 
+import { useRef } from "react";
+import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { HLineDrawing } from "@/lib/drawings/types";
+import { useDrawingsStore } from "@/lib/store/drawings-store";
+import { useDragShape } from "./use-drag-shape";
+import { useDrawings } from "@/lib/supabase/use-drawings";
 import { formatPrice } from "@/lib/format";
 
 interface Props {
@@ -9,12 +14,50 @@ interface Props {
   width: number;
   selected: boolean;
   onSelect: () => void;
+  chart: IChartApi | null;
+  candleSeries: ISeriesApi<"Candlestick"> | null;
+  container: HTMLElement | null;
 }
 
-export function HLineDraw({ drawing, y, width, selected, onSelect }: Props) {
+export function HLineDraw({
+  drawing,
+  y,
+  width,
+  selected,
+  onSelect,
+  chart,
+  candleSeries,
+  container,
+}: Props) {
   const color = drawing.color ?? "#2962ff";
   const stroke = selected ? "#ffffff" : color;
   const strokeWidth = selected ? 2 : drawing.lineWidth ?? 1;
+  const { updateLive, commit } = useDrawings();
+  const snapshotRef = useRef<HLineDrawing | null>(null);
+
+  function snap() {
+    const c = useDrawingsStore.getState().drawings.find((d) => d.id === drawing.id);
+    if (c && c.kind === "hline") snapshotRef.current = c;
+  }
+  function commitEnd() {
+    if (snapshotRef.current) void commit(drawing.id, snapshotRef.current);
+  }
+
+  const dragLine = useDragShape<HLineDrawing>(
+    chart,
+    candleSeries,
+    container,
+    (orig, _dt, dp) => ({ price: orig.price + dp }),
+    () => {
+      const c = useDrawingsStore.getState().drawings.find((d) => d.id === drawing.id);
+      return c && c.kind === "hline" ? (c as HLineDrawing) : null;
+    },
+    {
+      onStart: snap,
+      onMove: (patch) => updateLive(drawing.id, patch as Partial<HLineDrawing>),
+      onEnd: commitEnd,
+    },
+  );
 
   return (
     <g>
@@ -26,10 +69,17 @@ export function HLineDraw({ drawing, y, width, selected, onSelect }: Props) {
         y2={y}
         stroke="transparent"
         strokeWidth={10}
-        style={{ pointerEvents: "stroke", cursor: "pointer" }}
+        style={{
+          pointerEvents: "stroke",
+          cursor: selected ? "ns-resize" : "pointer",
+        }}
         onMouseDown={(e) => {
-          e.stopPropagation();
-          onSelect();
+          if (selected) {
+            dragLine(e);
+          } else {
+            e.stopPropagation();
+            onSelect();
+          }
         }}
       />
       {/* Visible line */}

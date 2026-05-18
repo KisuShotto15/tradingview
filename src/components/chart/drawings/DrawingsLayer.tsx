@@ -95,6 +95,9 @@ function renderDrawing(args: RenderArgs) {
           width={width}
           selected={selected}
           onSelect={onSelect}
+          chart={chart}
+          candleSeries={candleSeries}
+          container={container}
         />
       );
     }
@@ -109,6 +112,9 @@ function renderDrawing(args: RenderArgs) {
           height={height}
           selected={selected}
           onSelect={onSelect}
+          chart={chart}
+          candleSeries={candleSeries}
+          container={container}
         />
       );
     }
@@ -125,6 +131,9 @@ function renderDrawing(args: RenderArgs) {
           width={width}
           selected={selected}
           onSelect={onSelect}
+          chart={chart}
+          candleSeries={candleSeries}
+          container={container}
         />
       );
     }
