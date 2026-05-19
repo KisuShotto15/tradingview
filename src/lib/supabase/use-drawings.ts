@@ -8,8 +8,16 @@ import {
   clearDrawingsCloud,
 } from "./drawings-data";
 import { useAuth } from "./auth-context";
-import { historyStack } from "@/lib/drawings/history-instance";
+import { unifiedHistory, applyViewport } from "@/lib/history";
+import { useChartStore } from "@/lib/store/chart-store";
 import type { Drawing } from "@/lib/drawings/types";
+import type { DrawingOp } from "@/lib/history";
+
+// Keep historyStack alias so existing push call-sites still compile
+const historyStack = {
+  pushOp: (op: DrawingOp) => unifiedHistory.push({ kind: "drawing", op }),
+  clear: () => unifiedHistory.clear(),
+};
 
 /**
  * Wrapper around the drawings store that also:
@@ -83,40 +91,63 @@ export function useDrawings() {
     if (user) await clearDrawingsCloud(symbol);
   }
 
-  async function undo() {
-    const op = historyStack.popUndo();
-    if (!op) return;
+  async function applyDrawingOp(op: DrawingOp, direction: "undo" | "redo") {
     switch (op.type) {
       case "add":
-        removeLocal(op.drawing.id);
-        if (user) await deleteDrawingCloud(op.drawing.id);
+        if (direction === "undo") {
+          removeLocal(op.drawing.id);
+          if (user) await deleteDrawingCloud(op.drawing.id);
+        } else {
+          addLocal(op.drawing);
+          if (user) await insertDrawing(op.drawing);
+        }
         break;
       case "remove":
-        addLocal(op.drawing);
-        if (user) await insertDrawing(op.drawing);
+        if (direction === "undo") {
+          addLocal(op.drawing);
+          if (user) await insertDrawing(op.drawing);
+        } else {
+          removeLocal(op.drawing.id);
+          if (user) await deleteDrawingCloud(op.drawing.id);
+        }
         break;
-      case "update":
-        updateLocal(op.id, op.previous);
-        if (user) await updateDrawingCloud(op.previous);
+      case "update": {
+        const snapshot = direction === "undo" ? op.previous : op.next;
+        updateLocal(op.id, snapshot);
+        if (user) await updateDrawingCloud(snapshot);
+        break;
+      }
+    }
+  }
+
+  async function undo() {
+    const unified = unifiedHistory.popUndo();
+    if (!unified) return;
+    switch (unified.kind) {
+      case "drawing":
+        await applyDrawingOp(unified.op, "undo");
+        break;
+      case "chartState":
+        useChartStore.getState().applySnapshot(unified.before);
+        break;
+      case "viewport":
+        applyViewport(unified.before);
         break;
     }
   }
 
   async function redo() {
-    const op = historyStack.popRedo();
-    if (!op) return;
-    switch (op.type) {
-      case "add":
-        addLocal(op.drawing);
-        if (user) await insertDrawing(op.drawing);
+    const unified = unifiedHistory.popRedo();
+    if (!unified) return;
+    switch (unified.kind) {
+      case "drawing":
+        await applyDrawingOp(unified.op, "redo");
         break;
-      case "remove":
-        removeLocal(op.drawing.id);
-        if (user) await deleteDrawingCloud(op.drawing.id);
+      case "chartState":
+        useChartStore.getState().applySnapshot(unified.after);
         break;
-      case "update":
-        updateLocal(op.id, op.next);
-        if (user) await updateDrawingCloud(op.next);
+      case "viewport":
+        applyViewport(unified.after);
         break;
     }
   }

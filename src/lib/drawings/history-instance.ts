@@ -1,4 +1,2 @@
-import { HistoryStack } from "./history";
-
-/** Singleton history stack shared across the app. */
-export const historyStack = new HistoryStack();
+// Re-export unified history as the drawings history singleton (backward compat)
+export { unifiedHistory as historyStack } from "@/lib/history";

@@ -49,6 +49,7 @@ import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
 import { snapToOHLC } from "@/lib/chart/snap";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
+import { unifiedHistory, registerViewportApplier, isApplyingHistory } from "@/lib/history";
 import { generateId, FIB_LEVELS_DEFAULT } from "@/lib/drawings/types";
 import { useAlertMonitor } from "@/hooks/useAlertMonitor";
 
@@ -619,20 +620,33 @@ export function PriceChart({ symbol, timeframe }: Props) {
     // Re-render measure overlay on pan / zoom so pixel coords stay in sync
     const tsRangeHandler = () => setRenderTick((t) => t + 1);
     chart.timeScale().subscribeVisibleTimeRangeChange(tsRangeHandler);
+    // Register viewport applier so undo/redo can restore pan/zoom
+    registerViewportApplier((range) => {
+      chart.timeScale().setVisibleLogicalRange({ from: range.from, to: range.to });
+    });
+
     let zoomSaveTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastViewport: { from: number; to: number } | null = null;
     const logicalRangeHandler = () => {
       setRenderTick((t) => t + 1);
-      // Persist the user's zoom level (visible bar count) — debounced
       if (zoomSaveTimer) clearTimeout(zoomSaveTimer);
       zoomSaveTimer = setTimeout(() => {
         const range = chart.timeScale().getVisibleLogicalRange();
-        if (range && range.to > range.from) {
-          const bars = Math.round(range.to - range.from);
-          if (bars >= 5 && bars <= 5000) {
-            useChartStore.getState().setVisibleBars(bars);
+        if (!range || range.to <= range.from) return;
+        const bars = Math.round(range.to - range.from);
+        if (bars >= 5 && bars <= 5000) {
+          useChartStore.getState().setVisibleBars(bars);
+        }
+        // Push viewport op to unified history (skip during undo/redo application)
+        if (!isApplyingHistory) {
+          const before = lastViewport ?? { from: range.from, to: range.to };
+          const after = { from: range.from, to: range.to };
+          if (Math.abs(before.from - after.from) > 0.5 || Math.abs(before.to - after.to) > 0.5) {
+            unifiedHistory.push({ kind: "viewport", before, after });
           }
         }
-      }, 500);
+        lastViewport = { from: range.from, to: range.to };
+      }, 600);
     };
     chart.timeScale().subscribeVisibleLogicalRangeChange(logicalRangeHandler);
 
@@ -2100,29 +2114,30 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
         return (
           <>
-            {/* Drop zones — shown for all owned panes while dragging */}
-            {dragKey &&
-              ownedPanes.map((p) => {
+            {/* Drop zones — always in the DOM so HTML5 DnD finds them before drag starts.
+                Visibility and pointer-events are toggled by CSS based on dragKey. */}
+            {ownedPanes.map((p) => {
                 const offset = paneOffsets[p.paneIdx];
                 if (!offset) return null;
-                const isSource =
-                  dragKey === p.key || indicatorOverlays[dragKey] === p.key;
+                const isSource = !!dragKey && (dragKey === p.key || indicatorOverlays[dragKey] === p.key);
+                const active = dragKey !== null;
                 return (
                   <div
                     key={`drop-${p.key}`}
                     style={{ top: offset.top, height: offset.height, left: 0, right: 0 }}
-                    className={`pointer-events-auto absolute z-20 border-2 transition-colors ${
-                      isSource
-                        ? "border-yellow-400/60 bg-yellow-400/5"
-                        : "border-blue-400/60 bg-blue-400/10"
+                    className={`absolute z-20 border-2 transition-all duration-150 ${
+                      active
+                        ? isSource
+                          ? "pointer-events-auto border-yellow-400/60 bg-yellow-400/5"
+                          : "pointer-events-auto border-blue-400/60 bg-blue-400/10"
+                        : "pointer-events-none border-transparent bg-transparent"
                     }`}
-                    onDragOver={(e) => e.preventDefault()}
+                    onDragOver={(e) => { if (active) e.preventDefault(); }}
                     onDrop={() => {
                       if (!dragKey) return;
                       if (dragKey === p.key || indicatorOverlays[dragKey] === p.key) {
                         setIndicatorOverlay(dragKey, "own");
                       } else {
-                        // Clear the reverse direction first to prevent circular refs
                         if (indicatorOverlays[p.key] === dragKey) {
                           setIndicatorOverlay(p.key, "own");
                         }
@@ -2131,9 +2146,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
                       setDragKey(null);
                     }}
                   >
-                    <span className="absolute left-1/2 top-2 -translate-x-1/2 rounded bg-black/60 px-2 py-0.5 text-xs text-white/70">
-                      {isSource ? "Quitar overlay" : `Overlay en ${p.name}`}
-                    </span>
+                    {active && (
+                      <span className="absolute left-1/2 top-2 -translate-x-1/2 rounded bg-black/60 px-2 py-0.5 text-xs text-white/70">
+                        {isSource ? "Remove overlay" : `Overlay on ${p.name}`}
+                      </span>
+                    )}
                   </div>
                 );
               })}

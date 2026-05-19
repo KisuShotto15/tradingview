@@ -3,6 +3,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Timeframe } from "@/lib/binance/types";
+import { unifiedHistory, isApplyingHistory, withoutHistory } from "@/lib/history";
+import type { ChartStateSnapshot } from "@/lib/history";
 
 export type IndicatorKey =
   | "rsi"
@@ -285,6 +287,8 @@ interface ChartState {
   setSymbolDialogOpen: (v: boolean) => void;
   setSettingsTarget: (k: SettingsTarget | null) => void;
   setChartSettingsOpen: (v: boolean) => void;
+  /** Apply a partial snapshot from undo/redo — does NOT push to history */
+  applySnapshot: (snap: ChartStateSnapshot) => void;
 }
 
 function randomId(): string {
@@ -314,7 +318,7 @@ function initialWatchlists(): {
 
 export const useChartStore = create<ChartState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       symbol: "BTCUSDT",
       timeframe: "15m" as Timeframe,
       indicators: {
@@ -355,71 +359,189 @@ export const useChartStore = create<ChartState>()(
 
       setSymbol: (symbol) => set({ symbol }),
       setTimeframe: (timeframe) => set({ timeframe }),
-      toggleIndicator: (key) =>
-        set((s) => ({
-          indicators: { ...s.indicators, [key]: !s.indicators[key] },
-          hidden: !s.indicators[key]
-            ? { ...s.hidden, [key]: false }
-            : s.hidden,
-        })),
-      removeIndicator: (key) =>
-        set((s) => ({
-          indicators: { ...s.indicators, [key]: false },
-          hidden: { ...s.hidden, [key]: false },
-        })),
-      toggleHidden: (key) =>
-        set((s) => ({ hidden: { ...s.hidden, [key]: !s.hidden[key] } })),
-      setConfig: (patch) =>
-        set((s) => ({ config: { ...s.config, ...patch } })),
-      addUserEMA: () =>
-        set((s) => {
-          const usedColors = new Set(s.userEMAs.map((e) => e.color));
-          const nextColor =
-            EMA_PALETTE.find((c) => !usedColors.has(c)) ??
-            EMA_PALETTE[s.userEMAs.length % EMA_PALETTE.length];
-          // Suggest a longer period than any existing EMA, or 9 if none
-          const maxPeriod = s.userEMAs.reduce((m, e) => Math.max(m, e.period), 0);
+
+      toggleIndicator: (key) => {
+        if (!isApplyingHistory) {
+          const s = get();
+          const before: ChartStateSnapshot = { indicators: { ...s.indicators }, hidden: { ...s.hidden } };
+          set((st) => ({
+            indicators: { ...st.indicators, [key]: !st.indicators[key] },
+            hidden: !st.indicators[key] ? { ...st.hidden, [key]: false } : st.hidden,
+          }));
+          const after = get();
+          unifiedHistory.push({ kind: "chartState", before, after: { indicators: { ...after.indicators }, hidden: { ...after.hidden } } });
+        } else {
+          set((st) => ({
+            indicators: { ...st.indicators, [key]: !st.indicators[key] },
+            hidden: !st.indicators[key] ? { ...st.hidden, [key]: false } : st.hidden,
+          }));
+        }
+      },
+
+      removeIndicator: (key) => {
+        if (!isApplyingHistory) {
+          const s = get();
+          const before: ChartStateSnapshot = { indicators: { ...s.indicators }, hidden: { ...s.hidden } };
+          set((st) => ({ indicators: { ...st.indicators, [key]: false }, hidden: { ...st.hidden, [key]: false } }));
+          const after = get();
+          unifiedHistory.push({ kind: "chartState", before, after: { indicators: { ...after.indicators }, hidden: { ...after.hidden } } });
+        } else {
+          set((st) => ({ indicators: { ...st.indicators, [key]: false }, hidden: { ...st.hidden, [key]: false } }));
+        }
+      },
+
+      toggleHidden: (key) => {
+        if (!isApplyingHistory) {
+          const s = get();
+          const before: ChartStateSnapshot = { hidden: { ...s.hidden } };
+          set((st) => ({ hidden: { ...st.hidden, [key]: !st.hidden[key] } }));
+          const after = get();
+          unifiedHistory.push({ kind: "chartState", before, after: { hidden: { ...after.hidden } } });
+        } else {
+          set((st) => ({ hidden: { ...st.hidden, [key]: !st.hidden[key] } }));
+        }
+      },
+
+      setConfig: (patch) => {
+        if (!isApplyingHistory) {
+          const s = get();
+          const before: ChartStateSnapshot = { config: { ...s.config } };
+          set((st) => ({ config: { ...st.config, ...patch } }));
+          const after = get();
+          unifiedHistory.push({ kind: "chartState", before, after: { config: { ...after.config } } });
+        } else {
+          set((st) => ({ config: { ...st.config, ...patch } }));
+        }
+      },
+
+      addUserEMA: () => {
+        const s = get();
+        const before: ChartStateSnapshot = { userEMAs: [...s.userEMAs] };
+        set((st) => {
+          const usedColors = new Set(st.userEMAs.map((e) => e.color));
+          const nextColor = EMA_PALETTE.find((c) => !usedColors.has(c)) ?? EMA_PALETTE[st.userEMAs.length % EMA_PALETTE.length];
+          const maxPeriod = st.userEMAs.reduce((m, e) => Math.max(m, e.period), 0);
           const suggested = maxPeriod > 0 ? Math.min(maxPeriod * 2, 500) : 9;
-          return {
-            userEMAs: [
-              ...s.userEMAs,
-              {
-                id: randomId(),
-                period: suggested,
-                color: nextColor,
-                lineWidth: 1,
-                hidden: false,
-              },
-            ],
-          };
-        }),
-      removeUserEMA: (id) =>
-        set((s) => ({ userEMAs: s.userEMAs.filter((e) => e.id !== id) })),
-      updateUserEMA: (id, patch) =>
-        set((s) => ({
-          userEMAs: s.userEMAs.map((e) => (e.id === id ? { ...e, ...patch } : e)),
-        })),
-      toggleUserEMAHidden: (id) =>
-        set((s) => ({
-          userEMAs: s.userEMAs.map((e) =>
-            e.id === id ? { ...e, hidden: !e.hidden } : e,
-          ),
-        })),
-      setAdxStyle: (patch) =>
-        set((s) => ({ adxStyle: { ...s.adxStyle, ...patch } })),
-      setSqueezeStyle: (patch) =>
-        set((s) => ({ squeezeStyle: { ...s.squeezeStyle, ...patch } })),
-      setLogScale: (logScale) => set({ logScale }),
-      setIndicatorLogScale: (key, v) =>
-        set((s) => ({
-          indicatorLogScale: { ...s.indicatorLogScale, [key]: v },
-        })),
+          return { userEMAs: [...st.userEMAs, { id: randomId(), period: suggested, color: nextColor, lineWidth: 1, hidden: false }] };
+        });
+        if (!isApplyingHistory) {
+          const after = get();
+          unifiedHistory.push({ kind: "chartState", before, after: { userEMAs: [...after.userEMAs] } });
+        }
+      },
+
+      removeUserEMA: (id) => {
+        if (!isApplyingHistory) {
+          const s = get();
+          const before: ChartStateSnapshot = { userEMAs: [...s.userEMAs] };
+          set((st) => ({ userEMAs: st.userEMAs.filter((e) => e.id !== id) }));
+          const after = get();
+          unifiedHistory.push({ kind: "chartState", before, after: { userEMAs: [...after.userEMAs] } });
+        } else {
+          set((st) => ({ userEMAs: st.userEMAs.filter((e) => e.id !== id) }));
+        }
+      },
+
+      updateUserEMA: (id, patch) => {
+        if (!isApplyingHistory) {
+          const s = get();
+          const before: ChartStateSnapshot = { userEMAs: [...s.userEMAs] };
+          set((st) => ({ userEMAs: st.userEMAs.map((e) => (e.id === id ? { ...e, ...patch } : e)) }));
+          const after = get();
+          unifiedHistory.push({ kind: "chartState", before, after: { userEMAs: [...after.userEMAs] } });
+        } else {
+          set((st) => ({ userEMAs: st.userEMAs.map((e) => (e.id === id ? { ...e, ...patch } : e)) }));
+        }
+      },
+
+      toggleUserEMAHidden: (id) => {
+        if (!isApplyingHistory) {
+          const s = get();
+          const before: ChartStateSnapshot = { userEMAs: [...s.userEMAs] };
+          set((st) => ({ userEMAs: st.userEMAs.map((e) => (e.id === id ? { ...e, hidden: !e.hidden } : e)) }));
+          const after = get();
+          unifiedHistory.push({ kind: "chartState", before, after: { userEMAs: [...after.userEMAs] } });
+        } else {
+          set((st) => ({ userEMAs: st.userEMAs.map((e) => (e.id === id ? { ...e, hidden: !e.hidden } : e)) }));
+        }
+      },
+
+      setAdxStyle: (patch) => {
+        if (!isApplyingHistory) {
+          const s = get();
+          const before: ChartStateSnapshot = { adxStyle: { ...s.adxStyle } };
+          set((st) => ({ adxStyle: { ...st.adxStyle, ...patch } }));
+          const after = get();
+          unifiedHistory.push({ kind: "chartState", before, after: { adxStyle: { ...after.adxStyle } } });
+        } else {
+          set((st) => ({ adxStyle: { ...st.adxStyle, ...patch } }));
+        }
+      },
+
+      setSqueezeStyle: (patch) => {
+        if (!isApplyingHistory) {
+          const s = get();
+          const before: ChartStateSnapshot = { squeezeStyle: { ...s.squeezeStyle } };
+          set((st) => ({ squeezeStyle: { ...st.squeezeStyle, ...patch } }));
+          const after = get();
+          unifiedHistory.push({ kind: "chartState", before, after: { squeezeStyle: { ...after.squeezeStyle } } });
+        } else {
+          set((st) => ({ squeezeStyle: { ...st.squeezeStyle, ...patch } }));
+        }
+      },
+
+      setLogScale: (logScale) => {
+        if (!isApplyingHistory) {
+          const before: ChartStateSnapshot = { logScale: get().logScale };
+          set({ logScale });
+          unifiedHistory.push({ kind: "chartState", before, after: { logScale } });
+        } else {
+          set({ logScale });
+        }
+      },
+
+      setIndicatorLogScale: (key, v) => {
+        if (!isApplyingHistory) {
+          const s = get();
+          const before: ChartStateSnapshot = { indicatorLogScale: { ...s.indicatorLogScale } };
+          set((st) => ({ indicatorLogScale: { ...st.indicatorLogScale, [key]: v } }));
+          const after = get();
+          unifiedHistory.push({ kind: "chartState", before, after: { indicatorLogScale: { ...after.indicatorLogScale } } });
+        } else {
+          set((st) => ({ indicatorLogScale: { ...st.indicatorLogScale, [key]: v } }));
+        }
+      },
+
       setVisibleBars: (visibleBars) => set({ visibleBars }),
       setPillsCollapsed: (pillsCollapsed) => set({ pillsCollapsed }),
-      setIndicatorOverlay: (key, target) =>
-        set((s) => ({
-          indicatorOverlays: { ...s.indicatorOverlays, [key]: target },
-        })),
+
+      setIndicatorOverlay: (key, target) => {
+        if (!isApplyingHistory) {
+          const s = get();
+          const before: ChartStateSnapshot = { indicatorOverlays: { ...s.indicatorOverlays } };
+          set((st) => ({ indicatorOverlays: { ...st.indicatorOverlays, [key]: target } }));
+          const after = get();
+          unifiedHistory.push({ kind: "chartState", before, after: { indicatorOverlays: { ...after.indicatorOverlays } } });
+        } else {
+          set((st) => ({ indicatorOverlays: { ...st.indicatorOverlays, [key]: target } }));
+        }
+      },
+
+      applySnapshot: (snap) => {
+        withoutHistory(() => {
+          const patch: Partial<ChartState> = {};
+          if (snap.indicators !== undefined) patch.indicators = snap.indicators;
+          if (snap.hidden !== undefined) patch.hidden = snap.hidden;
+          if (snap.config !== undefined) patch.config = snap.config;
+          if (snap.userEMAs !== undefined) patch.userEMAs = snap.userEMAs;
+          if (snap.adxStyle !== undefined) patch.adxStyle = snap.adxStyle;
+          if (snap.squeezeStyle !== undefined) patch.squeezeStyle = snap.squeezeStyle;
+          if (snap.logScale !== undefined) patch.logScale = snap.logScale;
+          if (snap.indicatorLogScale !== undefined) patch.indicatorLogScale = snap.indicatorLogScale;
+          if (snap.indicatorOverlays !== undefined) patch.indicatorOverlays = snap.indicatorOverlays;
+          set(patch as Partial<ChartState>);
+        });
+      },
       setToolDefault: (kind, patch) =>
         set((s) => ({
           toolDefaults: {
