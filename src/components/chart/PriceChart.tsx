@@ -1088,13 +1088,15 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (macdSignalRef.current) macdSignalRef.current.applyOptions({ visible: v("macd") });
     if (macdHistRef.current) macdHistRef.current.applyOptions({ visible: v("macd") });
     if (volumeSeriesRef.current) volumeSeriesRef.current.applyOptions({ visible: v("volume") });
-    // ADX pane
-    if (adxRef.current) adxRef.current.applyOptions({ visible: v("adx") });
-    if (adxPlusDIRef.current) adxPlusDIRef.current.applyOptions({ visible: v("adx") });
-    if (adxMinusDIRef.current) adxMinusDIRef.current.applyOptions({ visible: v("adx") });
-    if (adxKeyLevelRef.current) adxKeyLevelRef.current.applyOptions({ visible: v("adx") });
-    // Squeeze pane
-    if (squeezeHistRef.current) squeezeHistRef.current.applyOptions({ visible: v("squeeze") });
+    // ADX pane — respect per-line visibility from adxStyle
+    const adxSt = useChartStore.getState().adxStyle;
+    if (adxRef.current) adxRef.current.applyOptions({ visible: v("adx") && adxSt.showAdx });
+    if (adxPlusDIRef.current) adxPlusDIRef.current.applyOptions({ visible: v("adx") && adxSt.showPlusDi });
+    if (adxMinusDIRef.current) adxMinusDIRef.current.applyOptions({ visible: v("adx") && adxSt.showMinusDi });
+    if (adxKeyLevelRef.current) adxKeyLevelRef.current.applyOptions({ visible: v("adx") && adxSt.showKeyLevel });
+    // Squeeze pane — respect showMomentum from squeezeStyle
+    const sqSt = useChartStore.getState().squeezeStyle;
+    if (squeezeHistRef.current) squeezeHistRef.current.applyOptions({ visible: v("squeeze") && sqSt.showMomentum });
     if (squeezeDotsRef.current) squeezeDotsRef.current.applyOptions({ visible: v("squeeze") });
     // VuManChu pane
     if (vmcWt1Ref.current) vmcWt1Ref.current.applyOptions({ visible: v("vumanchu") });
@@ -1384,21 +1386,22 @@ export function PriceChart({ symbol, timeframe }: Props) {
     const style = useChartStore.getState().adxStyle;
     const data = adxCalc(c, { diLen: cfg.adxDiLen, adxLen: cfg.adx });
     adxRef.current.setData(data.map((p) => ({ time: p.time as UTCTimestamp, value: p.adx })));
-    adxRef.current.applyOptions({ color: style.adxColor, visible: style.showAdx && indicators.adx });
+    const adxEnabled = indicators.adx && !hidden.adx;
+    adxRef.current.applyOptions({ color: style.adxColor, visible: style.showAdx && adxEnabled });
     adxPlusDIRef.current?.setData(
       data.map((p) => ({ time: p.time as UTCTimestamp, value: p.plusDI })),
     );
-    adxPlusDIRef.current?.applyOptions({ color: style.plusDiColor, visible: style.showPlusDi && indicators.adx });
+    adxPlusDIRef.current?.applyOptions({ color: style.plusDiColor, visible: style.showPlusDi && adxEnabled });
     adxMinusDIRef.current?.setData(
       data.map((p) => ({ time: p.time as UTCTimestamp, value: p.minusDI })),
     );
-    adxMinusDIRef.current?.applyOptions({ color: style.minusDiColor, visible: style.showMinusDi && indicators.adx });
+    adxMinusDIRef.current?.applyOptions({ color: style.minusDiColor, visible: style.showMinusDi && adxEnabled });
     // Key level: constant horizontal line at configured value
     if (adxKeyLevelRef.current && data.length > 0) {
       adxKeyLevelRef.current.setData(
         data.map((p) => ({ time: p.time as UTCTimestamp, value: cfg.adxKeyLevel })),
       );
-      adxKeyLevelRef.current.applyOptions({ color: style.keyLevelColor, visible: style.showKeyLevel && indicators.adx });
+      adxKeyLevelRef.current.applyOptions({ color: style.keyLevelColor, visible: style.showKeyLevel && adxEnabled });
     }
   }
 
@@ -1432,7 +1435,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       })),
     );
     squeezeHistRef.current.applyOptions({
-      visible: style.showMomentum && indicators.squeeze,
+      visible: style.showMomentum && indicators.squeeze && !hidden.squeeze,
     });
     // Publish pts to React state so SqueezeOverlay can render them.
     setSqueezePts(pts);
