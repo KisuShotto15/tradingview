@@ -868,24 +868,30 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (indicators.adx) {
       const paneIndex = panelIndexFor("adx");
       const style = useChartStore.getState().adxStyle;
+      // When ADX shares a pane with another indicator, give it its own overlay
+      // price scale so it auto-scales independently (ADX: 0-100 vs Squeeze: ±3
+      // would leave ADX completely off-screen on a shared scale).
+      const adxOverlayTarget = indicatorOverlays.adx;
+      const adxIsGuest = !!(adxOverlayTarget && adxOverlayTarget !== "own" && indicators[adxOverlayTarget as IndicatorKey]);
+      const adxScaleId = adxIsGuest ? "adx-overlay" : "right";
       adxRef.current = chartRef.current.addSeries(
         LineSeries,
-        { color: style.adxColor, lineWidth: 2, priceLineVisible: false, lastValueVisible: false },
+        { color: style.adxColor, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId },
         paneIndex,
       );
       adxPlusDIRef.current = chartRef.current.addSeries(
         LineSeries,
-        { color: style.plusDiColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false },
+        { color: style.plusDiColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId },
         paneIndex,
       );
       adxMinusDIRef.current = chartRef.current.addSeries(
         LineSeries,
-        { color: style.minusDiColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false },
+        { color: style.minusDiColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId },
         paneIndex,
       );
       adxKeyLevelRef.current = chartRef.current.addSeries(
         LineSeries,
-        { color: style.keyLevelColor, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false },
+        { color: style.keyLevelColor, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId },
         paneIndex,
       );
       try {
@@ -893,12 +899,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
         chartRef.current.panes()[0]?.setStretchFactor(3);
       } catch {}
       updateADX();
-      // Reset autoscale on the pane's price scale so ADX values (0-100 range)
-      // are not clipped when the pane previously had a locked scale for a
-      // different indicator (e.g. Squeeze with -3 to +3 range).
-      try {
-        adxRef.current?.priceScale().applyOptions({ autoScale: true });
-      } catch {}
     }
     requestAnimationFrame(() => recomputePaneOffsets());
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -944,9 +944,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
         chartRef.current.panes()[0]?.setStretchFactor(3);
       } catch {}
       updateSqueeze();
-      try {
-        squeezeHistRef.current?.priceScale().applyOptions({ autoScale: true });
-      } catch {}
     }
     requestAnimationFrame(() => recomputePaneOffsets());
     // eslint-disable-next-line react-hooks/exhaustive-deps
