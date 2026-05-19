@@ -381,10 +381,22 @@ export const useChartStore = create<ChartState>()(
       removeIndicator: (key) => {
         if (!isApplyingHistory) {
           const s = get();
-          const before: ChartStateSnapshot = { indicators: { ...s.indicators }, hidden: { ...s.hidden } };
+          // Snapshot includes style fields so ONE undo restores the indicator + all its settings.
+          const before: ChartStateSnapshot = {
+            indicators: { ...s.indicators },
+            hidden: { ...s.hidden },
+            config: { ...s.config },
+            adxStyle: { ...s.adxStyle },
+            squeezeStyle: { ...s.squeezeStyle },
+            indicatorOverlays: { ...s.indicatorOverlays },
+          };
           set((st) => ({ indicators: { ...st.indicators, [key]: false }, hidden: { ...st.hidden, [key]: false } }));
           const after = get();
-          unifiedHistory.push({ kind: "chartState", before, after: { indicators: { ...after.indicators }, hidden: { ...after.hidden } } });
+          unifiedHistory.push({
+            kind: "chartState",
+            before,
+            after: { indicators: { ...after.indicators }, hidden: { ...after.hidden } },
+          });
         } else {
           set((st) => ({ indicators: { ...st.indicators, [key]: false }, hidden: { ...st.hidden, [key]: false } }));
         }

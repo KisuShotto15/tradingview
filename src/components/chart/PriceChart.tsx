@@ -194,6 +194,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const [paneOffsets, setPaneOffsets] = useState<PaneOffset[]>([]);
   const [measure, setMeasure] = useState<MeasureState>(INITIAL_MEASURE);
   const [dragKey, setDragKey] = useState<IndicatorKey | null>(null);
+  const pointerDragRef = useRef<{ key: IndicatorKey } | null>(null);
   const [renderTick, setRenderTick] = useState(0);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [previewState, setPreviewState] = useState<{
@@ -1772,6 +1773,66 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const squeezePaneIdx = indicatorPaneIdx.squeeze;
   const vumanchuPaneIdx = indicatorPaneIdx.vumanchu;
 
+  // ── Overlay drag state — computed at component scope so pointer drag effect can read it ──
+  type PaneEntry = { key: IndicatorKey; paneIdx: number; name: string; value?: string };
+  const subPaneEntries: PaneEntry[] = (
+    [
+      { key: "rsi" as IndicatorKey, paneIdx: rsiPaneIdx, name: `RSI ${config.rsi}`, value: lastValues.rsi !== undefined ? lastValues.rsi.toFixed(2) : undefined },
+      { key: "macd" as IndicatorKey, paneIdx: macdPaneIdx, name: `MACD ${config.macdFast}, ${config.macdSlow}, ${config.macdSignal}`, value: lastValues.macd !== undefined ? `${lastValues.macd.toFixed(2)} / ${(lastValues.macdSignal ?? 0).toFixed(2)}` : undefined },
+      { key: "adx" as IndicatorKey, paneIdx: adxPaneIdx, name: `ADX ${config.adx}` },
+      { key: "squeeze" as IndicatorKey, paneIdx: squeezePaneIdx, name: "Squeeze Momentum" },
+      { key: "vumanchu" as IndicatorKey, paneIdx: vumanchuPaneIdx, name: "VuManChu Cipher B" },
+    ] as PaneEntry[]
+  ).filter((p) => indicators[p.key]);
+
+  const subPaneActiveKeys = new Set(subPaneEntries.map((p) => p.key));
+  const ownedSubPanes = subPaneEntries.filter((p) => {
+    const target = indicatorOverlays[p.key];
+    if (!target || target === "own") return true;
+    if (!subPaneActiveKeys.has(target as IndicatorKey)) return true;
+    if (indicatorOverlays[target as IndicatorKey] === p.key) return true;
+    return false;
+  });
+  const ownedSubPaneKeySet = new Set(ownedSubPanes.map((p) => p.key));
+
+  // Pointer-based drag — more reliable than HTML5 DnD which breaks on React re-renders
+  useEffect(() => {
+    if (!dragKey) return;
+    function onPointerUp(e: PointerEvent) {
+      const dk = pointerDragRef.current?.key;
+      if (!dk) { setDragKey(null); return; }
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      if (containerRect) {
+        const relY = e.clientY - containerRect.top;
+        for (const p of ownedSubPanes) {
+          const offset = paneOffsets[p.paneIdx];
+          if (!offset) continue;
+          if (relY >= offset.top && relY <= offset.top + offset.height) {
+            if (dk !== p.key) {
+              if (indicatorOverlays[p.key] === dk) setIndicatorOverlay(p.key, "own");
+              setIndicatorOverlay(dk, p.key);
+            } else if (indicatorOverlays[dk] && indicatorOverlays[dk] !== "own") {
+              setIndicatorOverlay(dk, "own");
+            }
+            break;
+          }
+        }
+      }
+      pointerDragRef.current = null;
+      setDragKey(null);
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") { pointerDragRef.current = null; setDragKey(null); }
+    }
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragKey]);
+
   let measureRender: React.ReactNode = null;
   if (
     measure.a &&
@@ -2059,156 +2120,85 @@ export function PriceChart({ symbol, timeframe }: Props) {
       </div>
 
       {/* ── Sub-pane indicator pills with drag-to-overlay ─────────────────── */}
-      {(() => {
-        // Config for each sub-pane indicator
-        type PaneEntry = { key: IndicatorKey; paneIdx: number; name: string; value?: string };
-        const SUB_PANES: PaneEntry[] = [
-          {
-            key: "rsi" as IndicatorKey,
-            paneIdx: rsiPaneIdx,
-            name: `RSI ${config.rsi}`,
-            value: lastValues.rsi !== undefined ? lastValues.rsi.toFixed(2) : undefined,
-          },
-          {
-            key: "macd" as IndicatorKey,
-            paneIdx: macdPaneIdx,
-            name: `MACD ${config.macdFast}, ${config.macdSlow}, ${config.macdSignal}`,
-            value: lastValues.macd !== undefined
-              ? `${lastValues.macd.toFixed(2)} / ${(lastValues.macdSignal ?? 0).toFixed(2)}`
-              : undefined,
-          },
-          {
-            key: "adx" as IndicatorKey,
-            paneIdx: adxPaneIdx,
-            name: `ADX ${config.adx}`,
-          },
-          {
-            key: "squeeze" as IndicatorKey,
-            paneIdx: squeezePaneIdx,
-            name: "Squeeze Momentum",
-          },
-          {
-            key: "vumanchu" as IndicatorKey,
-            paneIdx: vumanchuPaneIdx,
-            name: "VuManChu Cipher B",
-          },
-        ].filter((p) => indicators[p.key as IndicatorKey]);
-
-        // An indicator "owns" its slot unless it has a valid, active, non-circular overlay target.
-        // Handles stale persisted state: orphaned targets (disabled indicator) or circular refs.
-        const activeKeys = new Set(SUB_PANES.map((p) => p.key));
-        const ownedPanes = SUB_PANES.filter((p) => {
-          const target = indicatorOverlays[p.key];
-          if (!target || target === "own") return true;
-          if (!activeKeys.has(target as IndicatorKey)) return true; // target disabled/removed
-          if (indicatorOverlays[target as IndicatorKey] === p.key) return true; // circular ref
-          return false;
-        });
-
-        // Which indicators are valid guests of a given target (excludes circular/orphaned refs)
-        const ownedKeySet = new Set(ownedPanes.map((p) => p.key));
-        const overlaidOn = (target: IndicatorKey) =>
-          SUB_PANES.filter(
-            (p) => indicatorOverlays[p.key] === target && !ownedKeySet.has(p.key),
-          );
-
+      {/* Drop zones — always in the DOM. Visible/active only while dragging. */}
+      {ownedSubPanes.map((p) => {
+        const offset = paneOffsets[p.paneIdx];
+        if (!offset) return null;
+        const isSource = !!dragKey && (dragKey === p.key || indicatorOverlays[dragKey] === p.key);
+        const active = dragKey !== null;
         return (
-          <>
-            {/* Drop zones — always in the DOM so HTML5 DnD finds them before drag starts.
-                Visibility and pointer-events are toggled by CSS based on dragKey. */}
-            {ownedPanes.map((p) => {
-                const offset = paneOffsets[p.paneIdx];
-                if (!offset) return null;
-                const isSource = !!dragKey && (dragKey === p.key || indicatorOverlays[dragKey] === p.key);
-                const active = dragKey !== null;
-                return (
+          <div
+            key={`drop-${p.key}`}
+            style={{ top: offset.top, height: offset.height, left: 0, right: 0 }}
+            className={`absolute z-20 border-2 transition-all duration-150 ${
+              active
+                ? isSource
+                  ? "border-yellow-400/60 bg-yellow-400/5"
+                  : "border-blue-400/60 bg-blue-400/10"
+                : "border-transparent bg-transparent"
+            }`}
+          >
+            {active && (
+              <span className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 rounded bg-black/60 px-2 py-0.5 text-xs text-white/70">
+                {isSource ? "Release to detach" : `Drop to overlay on ${p.name}`}
+              </span>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Pills for each owned pane */}
+      {ownedSubPanes.map((p) => {
+        const offset = paneOffsets[p.paneIdx];
+        if (!offset) return null;
+        const guests = subPaneEntries.filter(
+          (e) => indicatorOverlays[e.key] === p.key && !ownedSubPaneKeySet.has(e.key),
+        );
+        return (
+          <div
+            key={p.key}
+            style={{ top: offset.top + 6, left: 12 }}
+            className="pointer-events-none absolute z-10 flex flex-col items-start gap-1"
+          >
+            {[p, ...guests].map((entry) => {
+              const isGuest = indicatorOverlays[entry.key] && indicatorOverlays[entry.key] !== "own";
+              return (
+                <div key={entry.key} className="pointer-events-auto flex items-center gap-0.5">
+                  {/* Drag handle — uses pointer events (not HTML5 DnD) for reliability */}
                   <div
-                    key={`drop-${p.key}`}
-                    style={{ top: offset.top, height: offset.height, left: 0, right: 0 }}
-                    className={`absolute z-20 border-2 transition-all duration-150 ${
-                      active
-                        ? isSource
-                          ? "pointer-events-auto border-yellow-400/60 bg-yellow-400/5"
-                          : "pointer-events-auto border-blue-400/60 bg-blue-400/10"
-                        : "pointer-events-none border-transparent bg-transparent"
-                    }`}
-                    onDragOver={(e) => { if (active) e.preventDefault(); }}
-                    onDrop={() => {
-                      if (!dragKey) return;
-                      if (dragKey === p.key || indicatorOverlays[dragKey] === p.key) {
-                        setIndicatorOverlay(dragKey, "own");
-                      } else {
-                        if (indicatorOverlays[p.key] === dragKey) {
-                          setIndicatorOverlay(p.key, "own");
-                        }
-                        setIndicatorOverlay(dragKey, p.key);
-                      }
-                      setDragKey(null);
+                    className={`cursor-grab select-none px-0.5 text-xs hover:text-white/60 active:cursor-grabbing ${dragKey === entry.key ? "text-white/80" : "text-white/30"}`}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      pointerDragRef.current = { key: entry.key };
+                      setDragKey(entry.key);
                     }}
                   >
-                    {active && (
-                      <span className="absolute left-1/2 top-2 -translate-x-1/2 rounded bg-black/60 px-2 py-0.5 text-xs text-white/70">
-                        {isSource ? "Remove overlay" : `Overlay on ${p.name}`}
-                      </span>
-                    )}
+                    ⠿
                   </div>
-                );
-              })}
-
-            {/* Pills for each owned pane */}
-            {ownedPanes.map((p) => {
-              const offset = paneOffsets[p.paneIdx];
-              if (!offset) return null;
-              const guests = overlaidOn(p.key);
-              return (
-                <div
-                  key={p.key}
-                  style={{ top: offset.top + 6, left: 12 }}
-                  className="pointer-events-none absolute z-10 flex flex-col items-start gap-1"
-                >
-                  {[p, ...guests].map((entry) => {
-                    const isGuest = indicatorOverlays[entry.key] && indicatorOverlays[entry.key] !== "own";
-                    return (
-                      <div key={entry.key} className="pointer-events-auto flex items-center gap-0.5">
-                        {/* Drag handle — only this element is draggable so pill buttons stay functional */}
-                        <div
-                          className="cursor-grab select-none px-0.5 text-xs text-white/30 hover:text-white/60 active:cursor-grabbing"
-                          draggable
-                          onDragStart={(e) => {
-                            setDragKey(entry.key);
-                            e.dataTransfer.effectAllowed = "move";
-                          }}
-                          onDragEnd={() => setDragKey(null)}
-                        >
-                          ⠿
-                        </div>
-                        {isGuest && (
-                          <button
-                            title="Detach to own pane"
-                            className="flex h-5 w-5 items-center justify-center rounded text-[10px] text-white/40 hover:bg-white/10 hover:text-white/80"
-                            onClick={() => setIndicatorOverlay(entry.key, "own")}
-                          >
-                            ⊞
-                          </button>
-                        )}
-                        <IndicatorPill
-                          name={entry.name}
-                          value={entry.value}
-                          color={INDICATOR_COLORS[entry.key]}
-                          hidden={hidden[entry.key]}
-                          onToggleHide={() => toggleHidden(entry.key)}
-                          onSettings={() => setSettingsTarget(entry.key)}
-                          onRemove={() => removeIndicator(entry.key)}
-                        />
-                      </div>
-                    );
-                  })}
+                  {isGuest && (
+                    <button
+                      title="Detach to own pane"
+                      className="flex h-5 w-5 items-center justify-center rounded text-[10px] text-white/40 hover:bg-white/10 hover:text-white/80"
+                      onClick={() => setIndicatorOverlay(entry.key, "own")}
+                    >
+                      ⊞
+                    </button>
+                  )}
+                  <IndicatorPill
+                    name={entry.name}
+                    value={entry.value}
+                    color={INDICATOR_COLORS[entry.key]}
+                    hidden={hidden[entry.key]}
+                    onToggleHide={() => toggleHidden(entry.key)}
+                    onSettings={() => setSettingsTarget(entry.key)}
+                    onRemove={() => removeIndicator(entry.key)}
+                  />
                 </div>
               );
             })}
-          </>
+          </div>
         );
-      })()}
+      })}
     </div>
   );
 }
