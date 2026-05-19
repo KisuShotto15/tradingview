@@ -2135,7 +2135,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
                 ? isSource
                   ? "border-yellow-400/60 bg-yellow-400/5"
                   : "border-blue-400/60 bg-blue-400/10"
-                : "border-transparent bg-transparent"
+                : "pointer-events-none border-transparent bg-transparent"
             }`}
           >
             {active && (
