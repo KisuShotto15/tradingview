@@ -944,6 +944,22 @@ export function PriceChart({ symbol, timeframe }: Props) {
         chartRef.current.panes()[0]?.setStretchFactor(3);
       } catch {}
       updateSqueeze();
+      // If ADX shares this pane (overlaid on Squeeze or vice-versa), re-add ADX
+      // series AFTER the Squeeze histogram so ADX lines render on top of the
+      // filled histogram bars (last-added series renders on top in LW-charts).
+      if (indicators.adx && panelIndexFor("adx") === paneIndex) {
+        const adxSt = useChartStore.getState().adxStyle;
+        const adxScaleId = "adx-overlay";
+        if (adxRef.current) { try { chartRef.current.removeSeries(adxRef.current); } catch {} adxRef.current = null; }
+        if (adxPlusDIRef.current) { try { chartRef.current.removeSeries(adxPlusDIRef.current); } catch {} adxPlusDIRef.current = null; }
+        if (adxMinusDIRef.current) { try { chartRef.current.removeSeries(adxMinusDIRef.current); } catch {} adxMinusDIRef.current = null; }
+        if (adxKeyLevelRef.current) { try { chartRef.current.removeSeries(adxKeyLevelRef.current); } catch {} adxKeyLevelRef.current = null; }
+        adxRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.adxColor, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId }, paneIndex);
+        adxPlusDIRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.plusDiColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId }, paneIndex);
+        adxMinusDIRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.minusDiColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId }, paneIndex);
+        adxKeyLevelRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.keyLevelColor, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId }, paneIndex);
+        updateADX();
+      }
     }
     requestAnimationFrame(() => recomputePaneOffsets());
     // eslint-disable-next-line react-hooks/exhaustive-deps
