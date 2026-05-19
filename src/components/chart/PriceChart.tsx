@@ -893,6 +893,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
         chartRef.current.panes()[0]?.setStretchFactor(3);
       } catch {}
       updateADX();
+      // Reset autoscale on the pane's price scale so ADX values (0-100 range)
+      // are not clipped when the pane previously had a locked scale for a
+      // different indicator (e.g. Squeeze with -3 to +3 range).
+      try {
+        adxRef.current?.priceScale().applyOptions({ autoScale: true });
+      } catch {}
     }
     requestAnimationFrame(() => recomputePaneOffsets());
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -938,6 +944,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
         chartRef.current.panes()[0]?.setStretchFactor(3);
       } catch {}
       updateSqueeze();
+      try {
+        squeezeHistRef.current?.priceScale().applyOptions({ autoScale: true });
+      } catch {}
     }
     requestAnimationFrame(() => recomputePaneOffsets());
     // eslint-disable-next-line react-hooks/exhaustive-deps
