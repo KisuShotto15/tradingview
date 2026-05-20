@@ -136,8 +136,8 @@ export function SqueezeOverlay({
 
   return (
     <svg
-      className="pointer-events-none absolute z-[5] transition-opacity duration-200"
-      style={{ top: paneTop, height: paneHeight, left: 0, right: 0, width: "100%", opacity }}
+      className="pointer-events-none absolute z-[5]"
+      style={{ top: paneTop, height: paneHeight, left: 0, right: 0, width: "100%" }}
     >
       <defs>
         <clipPath id="sqz-pane">

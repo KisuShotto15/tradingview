@@ -25,6 +25,8 @@ interface Props {
   container: HTMLElement | null;
   width: number;
   height: number;
+  /** Height of pane 0 (main chart). Drawings are clipped to this area. */
+  mainPaneHeight?: number;
   /** Bumped whenever the chart pans/zooms so we re-render pixel coords */
   renderTick: number;
 }
@@ -36,6 +38,7 @@ export function DrawingsLayer({
   container,
   width,
   height,
+  mainPaneHeight,
   renderTick,
 }: Props) {
   const drawings = useDrawingsStore((s) => s.drawings);
@@ -53,25 +56,33 @@ export function DrawingsLayer({
 
   const visible = drawings.filter((d) => d.symbol === symbol);
 
+  const clipH = mainPaneHeight ?? height;
   return (
     <svg
       className="pointer-events-none absolute inset-0 z-10 h-full w-full"
       style={{ overflow: "visible" }}
     >
-      {visible.map((d) =>
-        renderDrawing({
-          d,
-          chart,
-          candleSeries,
-          container,
-          width,
-          height,
-          intervalSec: timeframeToSeconds(useChartStore.getState().timeframe),
-          selected: selectedId === d.id,
-          onSelect: () => setSelected(d.id),
-          onEdit: () => setEditing(d.id),
-        }),
-      )}
+      <defs>
+        <clipPath id="drawings-main-pane">
+          <rect x="0" y="0" width={width} height={clipH} />
+        </clipPath>
+      </defs>
+      <g clipPath="url(#drawings-main-pane)">
+        {visible.map((d) =>
+          renderDrawing({
+            d,
+            chart,
+            candleSeries,
+            container,
+            width,
+            height,
+            intervalSec: timeframeToSeconds(useChartStore.getState().timeframe),
+            selected: selectedId === d.id,
+            onSelect: () => setSelected(d.id),
+            onEdit: () => setEditing(d.id),
+          }),
+        )}
+      </g>
     </svg>
   );
 }
