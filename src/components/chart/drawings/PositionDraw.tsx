@@ -12,6 +12,9 @@ import { DrawHandle } from "./DrawHandle";
 import { useDragShape } from "./use-drag-shape";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { formatPrice } from "@/lib/format";
+import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
+import { useChartStore } from "@/lib/store/chart-store";
+import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
 
 type PositionDrawing = LongPositionDrawing | ShortPositionDrawing;
 
@@ -123,12 +126,14 @@ export function PositionDraw({
     e.preventDefault();
     e.stopPropagation();
     snap();
+    const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
     function onMove(ev: MouseEvent) {
       const rect = container!.getBoundingClientRect();
       const x = ev.clientX - rect.left;
-      const t = chart!.timeScale().coordinateToTime(x);
+      // Use xToTime so dragging into the future (right offset area) works
+      const t = xToTime(chart!, x, globalCandlesRef.current, intervalSec);
       if (t === null) return;
-      updateLive(drawing.id, { timeB: Number(t) } as Partial<Drawing>);
+      updateLive(drawing.id, { timeB: t } as Partial<Drawing>);
     }
     function onUp() {
       document.removeEventListener("mousemove", onMove);
