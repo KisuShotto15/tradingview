@@ -28,6 +28,7 @@ interface BaseDrawing {
   symbol: string;
   color?: string;
   lineWidth?: number;
+  hidden?: boolean;
   alert?: AlertConfig | null;
 }
 

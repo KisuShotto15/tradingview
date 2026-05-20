@@ -44,6 +44,7 @@ import { MeasureOverlay } from "./MeasureOverlay";
 import { DrawingsLayer } from "./drawings/DrawingsLayer";
 import { PlacementPreview, MagnetIndicator } from "./PlacementPreview";
 import { SqueezeOverlay } from "./SqueezeOverlay";
+import { FloatingContextToolbar } from "./FloatingContextToolbar";
 import type { SqueezePoint } from "@/lib/indicators/squeeze";
 import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
@@ -2072,6 +2073,14 @@ export function PriceChart({ symbol, timeframe }: Props) {
         />
       )}
       {measureRender}
+
+      <FloatingContextToolbar
+        containerSize={containerSize}
+        onOpenSettings={() => {
+          const id = useDrawingsStore.getState().selectedId;
+          if (id) useDrawingsStore.getState().setEditing(id);
+        }}
+      />
 
       {/* A / L buttons per pane — positioned at the bottom-right of each
           pane (just above the next pane separator / time axis) */}

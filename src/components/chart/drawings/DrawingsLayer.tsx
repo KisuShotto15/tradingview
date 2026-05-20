@@ -57,7 +57,7 @@ export function DrawingsLayer({
 
   if (!chart || !candleSeries) return null;
 
-  const visible = drawings.filter((d) => d.symbol === symbol);
+  const visible = drawings.filter((d) => d.symbol === symbol && !d.hidden);
 
   const clipH = mainPaneHeight ?? height;
   const clipW = chartAreaWidth && chartAreaWidth > 0 ? chartAreaWidth : width;
