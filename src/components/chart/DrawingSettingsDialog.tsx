@@ -30,7 +30,7 @@ const KIND_TITLE: Record<string, string> = {
   short: "Short position",
 };
 
-type Tab = "style" | "coordinates" | "visibility";
+type Tab = "style" | "coordinates";
 
 export function DrawingSettingsDialog() {
   const editingId = useDrawingsStore((s) => s.editingId);
@@ -92,26 +92,52 @@ function Form({
   onCancel: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("style");
-  const [color, setColor] = useState<string>(drawing.color ?? "#2962ff");
+  const [color, setColor] = useState<string>(drawing.color ?? "#d1d4dc");
   const [lineWidth, setLineWidth] = useState<number>(drawing.lineWidth ?? 1);
+  const isPosition = drawing.kind === "long" || drawing.kind === "short";
+  const [stopColor, setStopColor] = useState<string>(
+    isPosition ? ((drawing as { stopColor?: string }).stopColor ?? "#ef5350") : "#ef5350",
+  );
+  const [targetColor, setTargetColor] = useState<string>(
+    isPosition ? ((drawing as { targetColor?: string }).targetColor ?? "#26a69a") : "#26a69a",
+  );
+  const [textColor, setTextColor] = useState<string>(
+    isPosition ? ((drawing as { textColor?: string }).textColor ?? "#d1d4dc") : "#d1d4dc",
+  );
+  const [showLabels, setShowLabels] = useState<boolean>(
+    isPosition ? ((drawing as { showLabels?: boolean }).showLabels ?? false) : false,
+  );
 
   useEffect(() => {
-    setColor(drawing.color ?? "#2962ff");
+    setColor(drawing.color ?? "#d1d4dc");
     setLineWidth(drawing.lineWidth ?? 1);
+    if (drawing.kind === "long" || drawing.kind === "short") {
+      setStopColor(drawing.stopColor ?? "#ef5350");
+      setTargetColor(drawing.targetColor ?? "#26a69a");
+      setTextColor(drawing.textColor ?? "#d1d4dc");
+      setShowLabels(drawing.showLabels ?? false);
+    }
   }, [drawing]);
 
   function apply() {
     const patch: Partial<Drawing> = {} as Partial<Drawing>;
     patch.color = color;
     patch.lineWidth = lineWidth;
+    if (isPosition) {
+      (patch as Record<string, unknown>).stopColor = stopColor;
+      (patch as Record<string, unknown>).targetColor = targetColor;
+      (patch as Record<string, unknown>).textColor = textColor;
+      (patch as Record<string, unknown>).showLabels = showLabels;
+    }
     onApply(patch);
   }
 
+  const tabs: Tab[] = ["style", "coordinates"];
+
   return (
     <div className="flex flex-col gap-3">
-      {/* Tabs */}
       <div className="flex border-b border-tv-border">
-        {(["style", "coordinates"] as const).map((t) => (
+        {tabs.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -129,34 +155,46 @@ function Form({
 
       {tab === "style" && (
         <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-tv-text">Color</span>
-            <ColorPicker value={color} onChange={setColor} />
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-tv-text">Line width</span>
-            <div className="flex items-center gap-1">
-              {[1, 2, 3, 4].map((w) => (
-                <button
-                  key={w}
-                  onClick={() => setLineWidth(w)}
-                  className={cn(
-                    "flex h-7 w-7 items-center justify-center rounded border text-[10px]",
-                    lineWidth === w
-                      ? "border-tv-blue bg-tv-blue/15 text-tv-blue"
-                      : "border-tv-border text-tv-text-muted hover:bg-tv-panel-hover",
-                  )}
-                >
-                  {w}
-                </button>
-              ))}
-            </div>
-          </div>
-          <p className="text-[10px] text-tv-text-muted">
-            Color and line width are saved as defaults for the next
-            {" "}
-            {KIND_TITLE[drawing.kind]?.toLowerCase() ?? drawing.kind}.
-          </p>
+          {isPosition ? (
+            <>
+              <ColorRow label="Entry line" value={color} onChange={setColor} />
+              <ColorRow label="Stop color" value={stopColor} onChange={setStopColor} />
+              <ColorRow label="Target color" value={targetColor} onChange={setTargetColor} />
+              <ColorRow label="Text color" value={textColor} onChange={setTextColor} />
+              <label className="flex cursor-pointer items-center justify-between gap-3">
+                <span className="text-xs text-tv-text">Always show labels</span>
+                <input
+                  type="checkbox"
+                  checked={showLabels}
+                  onChange={(e) => setShowLabels(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-tv-blue"
+                />
+              </label>
+            </>
+          ) : (
+            <>
+              <ColorRow label="Color" value={color} onChange={setColor} />
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-tv-text">Line width</span>
+                <div className="flex items-center gap-1">
+                  {[1, 2, 3, 4].map((w) => (
+                    <button
+                      key={w}
+                      onClick={() => setLineWidth(w)}
+                      className={cn(
+                        "flex h-7 w-7 items-center justify-center rounded border text-[10px]",
+                        lineWidth === w
+                          ? "border-tv-blue bg-tv-blue/15 text-tv-blue"
+                          : "border-tv-border text-tv-text-muted hover:bg-tv-panel-hover",
+                      )}
+                    >
+                      {w}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -185,10 +223,27 @@ function Form({
             onClick={apply}
             className="bg-tv-blue hover:bg-tv-blue/90"
           >
-            Apply
+            Ok
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ColorRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-xs text-tv-text">{label}</span>
+      <ColorPicker value={value} onChange={onChange} />
     </div>
   );
 }

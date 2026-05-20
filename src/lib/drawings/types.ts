@@ -93,6 +93,10 @@ export interface LongPositionDrawing extends BaseDrawing {
   target: number;
   timeA: number;
   timeB: number;
+  stopColor?: string;
+  targetColor?: string;
+  textColor?: string;
+  showLabels?: boolean;
 }
 
 export interface ShortPositionDrawing extends BaseDrawing {
@@ -102,6 +106,10 @@ export interface ShortPositionDrawing extends BaseDrawing {
   target: number;
   timeA: number;
   timeB: number;
+  stopColor?: string;
+  targetColor?: string;
+  textColor?: string;
+  showLabels?: boolean;
 }
 
 export type Drawing =

@@ -1,11 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import {
   MousePointer2,
   Minus,
-  ArrowDownToLine,
-  ArrowUpToLine,
   Bell,
   BellOff,
   CalendarRange,
@@ -34,9 +32,35 @@ import { useDrawings } from "@/lib/supabase/use-drawings";
 import type { Drawing, AlertConfig } from "@/lib/drawings/types";
 import { cn } from "@/lib/utils";
 
+type AnyIcon = LucideIcon | React.FC<{ className?: string }>;
+
+function LongPositionIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="2" y="4" width="16" height="5.5" fill="#26a69a" fillOpacity="0.35" />
+      <rect x="2" y="10.5" width="16" height="5.5" fill="#ef5350" fillOpacity="0.35" />
+      <line x1="2" y1="10" x2="18" y2="10" stroke="#d1d4dc" strokeWidth="1.4" />
+      <line x1="2" y1="4" x2="18" y2="4" stroke="#26a69a" strokeWidth="1" />
+      <line x1="2" y1="16" x2="18" y2="16" stroke="#ef5350" strokeWidth="1" />
+    </svg>
+  );
+}
+
+function ShortPositionIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="2" y="4" width="16" height="5.5" fill="#ef5350" fillOpacity="0.35" />
+      <rect x="2" y="10.5" width="16" height="5.5" fill="#26a69a" fillOpacity="0.35" />
+      <line x1="2" y1="10" x2="18" y2="10" stroke="#d1d4dc" strokeWidth="1.4" />
+      <line x1="2" y1="4" x2="18" y2="4" stroke="#ef5350" strokeWidth="1" />
+      <line x1="2" y1="16" x2="18" y2="16" stroke="#26a69a" strokeWidth="1" />
+    </svg>
+  );
+}
+
 interface ToolDef {
   key: DrawingTool;
-  icon: LucideIcon;
+  icon: AnyIcon;
   label: string;
   hint?: string;
 }
@@ -85,8 +109,8 @@ const TOOL_GROUPS: ToolGroup[] = [
   {
     label: "Trade",
     tools: [
-      { key: "long", icon: ArrowUpToLine, label: "Long position", hint: "Click entry, then target. Stop auto-set; drag handles to edit" },
-      { key: "short", icon: ArrowDownToLine, label: "Short position", hint: "Click entry, then target. Stop auto-set; drag handles to edit" },
+      { key: "long", icon: LongPositionIcon, label: "Long position", hint: "Click entry, then target. Stop auto-set; drag handles to edit" },
+      { key: "short", icon: ShortPositionIcon, label: "Short position", hint: "Click entry, then target. Stop auto-set; drag handles to edit" },
     ],
   },
   {

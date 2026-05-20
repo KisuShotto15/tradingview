@@ -45,10 +45,19 @@ export function PositionDraw({
   container,
 }: Props) {
   const isLong = drawing.kind === "long";
-  const profitColor = "#26a69a";
-  const lossColor = "#ef5350";
+
+  const profitColor = isLong
+    ? (drawing.targetColor ?? "#26a69a")
+    : (drawing.stopColor ?? "#ef5350");
+  const lossColor = isLong
+    ? (drawing.stopColor ?? "#ef5350")
+    : (drawing.targetColor ?? "#26a69a");
+
   const profitFill = `${profitColor}26`;
   const lossFill = `${lossColor}26`;
+  const entryColor = drawing.color ?? "#d1d4dc";
+  const labelColor = drawing.textColor ?? "#d1d4dc";
+
   const { updateLive, commit } = useDrawings();
   const snapshotRef = useRef<PositionDrawing | null>(null);
 
@@ -87,7 +96,6 @@ export function PositionDraw({
     };
   }
 
-  // Drag the entire position (entry+stop+target+timeA+timeB)
   const dragShape = useDragShape<PositionDrawing>(
     chart,
     candleSeries,
@@ -114,6 +122,7 @@ export function PositionDraw({
 
   const left = Math.min(xA, xB);
   const right = Math.max(xA, xB);
+  const width = right - left;
 
   const profitY1 = Math.min(yEntry, yTarget);
   const profitY2 = Math.max(yEntry, yTarget);
@@ -123,7 +132,8 @@ export function PositionDraw({
   const risk = Math.abs(drawing.entry - drawing.stop);
   const reward = Math.abs(drawing.target - drawing.entry);
   const rr = risk === 0 ? 0 : reward / risk;
-  const rrLabel = `RR ${rr.toFixed(2)}`;
+
+  const showLabels = selected || (drawing.showLabels ?? false);
 
   function onZoneMouseDown(e: React.MouseEvent) {
     if (selected) {
@@ -135,54 +145,159 @@ export function PositionDraw({
   }
   const zoneCursor = selected ? "move" : "pointer";
 
+  // Stats box: price diff + RR, shown centered in profit zone when selected
+  const profitCenterY = (profitY1 + profitY2) / 2;
+  const lossCenterY = (lossY1 + lossY2) / 2;
+  const pctProfit = drawing.entry === 0 ? 0 : (reward / Math.abs(drawing.entry)) * 100;
+  const pctLoss = drawing.entry === 0 ? 0 : (risk / Math.abs(drawing.entry)) * 100;
+
   return (
     <g>
+      {/* Profit zone */}
       <rect
         x={left}
         y={profitY1}
-        width={right - left}
+        width={width}
         height={profitY2 - profitY1}
         fill={profitFill}
-        stroke="none"
+        stroke={selected ? profitColor : "none"}
+        strokeWidth={selected ? 0.5 : 0}
         style={{ pointerEvents: "all", cursor: zoneCursor }}
         onMouseDown={onZoneMouseDown}
         onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
+      {/* Loss zone */}
       <rect
         x={left}
         y={lossY1}
-        width={right - left}
+        width={width}
         height={lossY2 - lossY1}
         fill={lossFill}
-        stroke="none"
+        stroke={selected ? lossColor : "none"}
+        strokeWidth={selected ? 0.5 : 0}
         style={{ pointerEvents: "all", cursor: zoneCursor }}
         onMouseDown={onZoneMouseDown}
         onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
-      <line x1={left} x2={right} y1={yEntry} y2={yEntry} stroke="#d1d4dc" strokeWidth={1} style={{ pointerEvents: "none" }} />
-      <line x1={left} x2={right} y1={yStop} y2={yStop} stroke={lossColor} strokeWidth={1} strokeDasharray="3,3" style={{ pointerEvents: "none" }} />
-      <line x1={left} x2={right} y1={yTarget} y2={yTarget} stroke={profitColor} strokeWidth={1} strokeDasharray="3,3" style={{ pointerEvents: "none" }} />
 
-      <text x={left + 6} y={yEntry - 3} fill="#d1d4dc" fontSize={10} fontFamily="var(--font-mono), monospace" style={{ pointerEvents: "none" }}>
-        {`Entry  ${formatPrice(drawing.entry)}`}
-      </text>
-      <text x={left + 6} y={yTarget - 3} fill={profitColor} fontSize={10} fontFamily="var(--font-mono), monospace" style={{ pointerEvents: "none" }}>
-        {`Target  ${formatPrice(drawing.target)}  · ${rrLabel}`}
-      </text>
-      <text x={left + 6} y={yStop - 3} fill={lossColor} fontSize={10} fontFamily="var(--font-mono), monospace" style={{ pointerEvents: "none" }}>
-        {`Stop  ${formatPrice(drawing.stop)}`}
-      </text>
+      {/* Entry line — always visible */}
+      <line
+        x1={left} x2={right} y1={yEntry} y2={yEntry}
+        stroke={entryColor} strokeWidth={1.5}
+        style={{ pointerEvents: "none" }}
+      />
 
-      <rect x={right - 50} y={yEntry - 8} width={44} height={16} fill={isLong ? profitColor : lossColor} rx={2} style={{ pointerEvents: "none" }} />
-      <text x={right - 28} y={yEntry + 3} textAnchor="middle" fill="#ffffff" fontSize={10} fontFamily="var(--font-mono), monospace" style={{ pointerEvents: "none" }}>
+      {/* Stop / Target lines — only when selected */}
+      {showLabels && (
+        <>
+          <line
+            x1={left} x2={right} y1={yStop} y2={yStop}
+            stroke={lossColor} strokeWidth={1} strokeDasharray="4,3"
+            style={{ pointerEvents: "none" }}
+          />
+          <line
+            x1={left} x2={right} y1={yTarget} y2={yTarget}
+            stroke={profitColor} strokeWidth={1} strokeDasharray="4,3"
+            style={{ pointerEvents: "none" }}
+          />
+        </>
+      )}
+
+      {/* LONG / SHORT badge — always visible */}
+      <rect
+        x={right - 52} y={yEntry - 9} width={46} height={17}
+        fill={isLong ? profitColor : lossColor} rx={2}
+        style={{ pointerEvents: "none" }}
+      />
+      <text
+        x={right - 29} y={yEntry + 3.5}
+        textAnchor="middle" fill="#ffffff" fontSize={10}
+        fontFamily="var(--font-mono), monospace"
+        fontWeight={600}
+        style={{ pointerEvents: "none" }}
+      >
         {isLong ? "LONG" : "SHORT"}
       </text>
 
+      {/* Stats labels — only when selected */}
+      {showLabels && (
+        <>
+          {/* Entry label */}
+          <text
+            x={left + 6} y={yEntry - 5}
+            fill={labelColor} fontSize={10}
+            fontFamily="var(--font-mono), monospace"
+            style={{ pointerEvents: "none" }}
+          >
+            {`Entry  ${formatPrice(drawing.entry)}`}
+          </text>
+
+          {/* Target label */}
+          <text
+            x={left + 6} y={profitY1 + 14}
+            fill={profitColor} fontSize={10}
+            fontFamily="var(--font-mono), monospace"
+            style={{ pointerEvents: "none" }}
+          >
+            {`${formatPrice(drawing.target)}  (+${pctProfit.toFixed(2)}%)`}
+          </text>
+
+          {/* Stop label */}
+          <text
+            x={left + 6} y={lossY2 - 5}
+            fill={lossColor} fontSize={10}
+            fontFamily="var(--font-mono), monospace"
+            style={{ pointerEvents: "none" }}
+          >
+            {`${formatPrice(drawing.stop)}  (-${pctLoss.toFixed(2)}%)`}
+          </text>
+
+          {/* RR badge — center of profit zone */}
+          {profitY2 - profitY1 > 24 && (
+            <g style={{ pointerEvents: "none" }}>
+              <rect
+                x={(left + right) / 2 - 28} y={profitCenterY - 9}
+                width={56} height={17}
+                fill={profitColor} rx={2} opacity={0.85}
+              />
+              <text
+                x={(left + right) / 2} y={profitCenterY + 3}
+                textAnchor="middle" fill="#ffffff" fontSize={9}
+                fontFamily="var(--font-mono), monospace"
+              >
+                {`RR ${rr.toFixed(2)}`}
+              </text>
+            </g>
+          )}
+
+          {/* Loss RR info — center of loss zone */}
+          {lossY2 - lossY1 > 24 && (
+            <g style={{ pointerEvents: "none" }}>
+              <rect
+                x={(left + right) / 2 - 28} y={lossCenterY - 9}
+                width={56} height={17}
+                fill={lossColor} rx={2} opacity={0.7}
+              />
+              <text
+                x={(left + right) / 2} y={lossCenterY + 3}
+                textAnchor="middle" fill="#ffffff" fontSize={9}
+                fontFamily="var(--font-mono), monospace"
+              >
+                {`1 : ${rr.toFixed(2)}`}
+              </text>
+            </g>
+          )}
+        </>
+      )}
+
       {selected && (
         <>
-          <DrawHandle x={(left + right) / 2} y={yEntry} color="#d1d4dc" selected onMouseDown={makeYDrag("entry")} />
+          <DrawHandle x={(left + right) / 2} y={yEntry} color={entryColor} selected onMouseDown={makeYDrag("entry")} />
           <DrawHandle x={(left + right) / 2} y={yStop} color={lossColor} selected onMouseDown={makeYDrag("stop")} />
           <DrawHandle x={(left + right) / 2} y={yTarget} color={profitColor} selected onMouseDown={makeYDrag("target")} />
+          {/* Time handles */}
+          <DrawHandle x={xA} y={yEntry} color={entryColor} selected onMouseDown={makeYDrag("entry")} />
+          <DrawHandle x={xB} y={yEntry} color={entryColor} selected onMouseDown={makeYDrag("entry")} />
         </>
       )}
     </g>
