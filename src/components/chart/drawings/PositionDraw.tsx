@@ -118,6 +118,29 @@ export function PositionDraw({
     };
   }
 
+  function onRightHandleDrag(e: React.MouseEvent) {
+    if (!chart || !container) return;
+    e.preventDefault();
+    e.stopPropagation();
+    snap();
+    function onMove(ev: MouseEvent) {
+      const rect = container!.getBoundingClientRect();
+      const x = ev.clientX - rect.left;
+      const t = chart!.timeScale().coordinateToTime(x);
+      if (t === null) return;
+      updateLive(drawing.id, { timeB: Number(t) } as Partial<Drawing>);
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      commitEnd();
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "ew-resize";
+  }
+
   const dragShape = useDragShape<PositionDrawing>(
     chart,
     candleSeries,
@@ -237,21 +260,6 @@ export function PositionDraw({
         </>
       )}
 
-      {/* LONG / SHORT badge at entry — always visible */}
-      <rect
-        x={right - 52} y={yEntry - 9} width={46} height={17}
-        fill={isLong ? profitColor : lossColor} rx={2}
-        style={{ pointerEvents: "none" }}
-      />
-      <text
-        x={right - 29} y={yEntry + 3.5}
-        textAnchor="middle" fill="#ffffff" fontSize={10}
-        fontFamily="var(--font-mono), monospace" fontWeight={600}
-        style={{ pointerEvents: "none" }}
-      >
-        {isLong ? "LONG" : "SHORT"}
-      </text>
-
       {/* Entry price label at entry line */}
       {showLabels && (
         <text
@@ -313,11 +321,20 @@ export function PositionDraw({
 
       {selected && (
         <>
+          {/* Vertical price handles (mid-x of zone) */}
           <DrawHandle x={(left + right) / 2} y={yEntry} color={entryColor} selected onMouseDown={makeYDrag("entry")} />
           <DrawHandle x={(left + right) / 2} y={yStop} color={lossColor} selected onMouseDown={makeYDrag("stop")} />
           <DrawHandle x={(left + right) / 2} y={yTarget} color={profitColor} selected onMouseDown={makeYDrag("target")} />
+          {/* Left edge handle */}
           <DrawHandle x={xA} y={yEntry} color={entryColor} selected onMouseDown={makeYDrag("entry")} />
-          <DrawHandle x={xB} y={yEntry} color={entryColor} selected onMouseDown={makeYDrag("entry")} />
+          {/* Right-center horizontal resize handle */}
+          <DrawHandle
+            x={xB}
+            y={(Math.min(profitY1, lossY1) + Math.max(profitY2, lossY2)) / 2}
+            color={entryColor}
+            selected
+            onMouseDown={onRightHandleDrag}
+          />
         </>
       )}
     </g>

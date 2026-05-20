@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Eye, EyeOff, Settings2, Trash2, TrendingUp } from "lucide-react";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { useDrawings } from "@/lib/supabase/use-drawings";
@@ -14,9 +14,6 @@ interface Props {
   onOpenSettings: () => void;
 }
 
-const TOOLBAR_DEFAULT_X = 50;
-const TOOLBAR_DEFAULT_Y = 50;
-
 export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props) {
   const selectedId = useDrawingsStore((s) => s.selectedId);
   const drawings = useDrawingsStore((s) => s.drawings);
@@ -24,21 +21,21 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
 
   const { update, remove } = useDrawings();
 
-  // Toolbar position (relative to chart container)
-  const [pos, setPos] = useState({ x: TOOLBAR_DEFAULT_X, y: TOOLBAR_DEFAULT_Y });
+  // Toolbar position (relative to chart container). Starts off-screen.
+  const [pos, setPos] = useState({ x: -9999, y: 12 });
   const dragRef = useRef<{ ox: number; oy: number; px: number; py: number } | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
-  // Reset position when a new drawing is selected
+  // After the toolbar renders (width known), snap to top-right corner on new selection
   const prevIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (selectedId && selectedId !== prevIdRef.current) {
-      setPos({ x: TOOLBAR_DEFAULT_X, y: TOOLBAR_DEFAULT_Y });
-    }
+  useLayoutEffect(() => {
+    if (!selectedId || selectedId === prevIdRef.current) return;
     prevIdRef.current = selectedId;
-  }, [selectedId]);
+    const tw = toolbarRef.current?.offsetWidth ?? 0;
+    setPos({ x: Math.max(0, containerSize.width - tw - 16), y: 12 });
+  });
 
-  // Keep toolbar inside container when container resizes
+  // Keep toolbar inside container when it resizes
   useEffect(() => {
     const el = toolbarRef.current;
     if (!el) return;
