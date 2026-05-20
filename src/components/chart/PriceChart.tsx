@@ -1926,6 +1926,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         width={containerSize.width}
         height={containerSize.height}
         mainPaneHeight={paneOffsets[0]?.height ?? containerSize.height}
+        chartAreaWidth={chartRef.current ? chartRef.current.timeScale().width() : containerSize.width}
         renderTick={renderTick}
       />
       {indicators.squeeze && paneOffsets[squeezePaneIdx] && (
@@ -1944,6 +1945,22 @@ export function PriceChart({ symbol, timeframe }: Props) {
             red: squeezeStyle.momentumDecNeg,
             maroon: squeezeStyle.momentumIncNeg,
           }}
+          chartAreaWidth={chartRef.current ? chartRef.current.timeScale().width() : containerSize.width}
+          screenBlend={
+            indicators.adx &&
+            (indicatorOverlays.adx === "squeeze" || indicatorOverlays.squeeze === "adx") &&
+            (() => {
+              const hostKey: IndicatorKey =
+                indicatorOverlays.squeeze === "adx" ? "adx" : "squeeze";
+              const zOrder = paneZOrder[hostKey];
+              return (
+                !zOrder ||
+                !zOrder.includes("adx") ||
+                !zOrder.includes("squeeze") ||
+                zOrder.indexOf("adx") > zOrder.indexOf("squeeze")
+              );
+            })()
+          }
         />
       )}
       {previewState && (

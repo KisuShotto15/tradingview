@@ -27,6 +27,8 @@ interface Props {
   height: number;
   /** Height of pane 0 (main chart). Drawings are clipped to this area. */
   mainPaneHeight?: number;
+  /** Width of the chart drawing area (excludes right price scale). */
+  chartAreaWidth?: number;
   /** Bumped whenever the chart pans/zooms so we re-render pixel coords */
   renderTick: number;
 }
@@ -39,6 +41,7 @@ export function DrawingsLayer({
   width,
   height,
   mainPaneHeight,
+  chartAreaWidth,
   renderTick,
 }: Props) {
   const drawings = useDrawingsStore((s) => s.drawings);
@@ -57,6 +60,7 @@ export function DrawingsLayer({
   const visible = drawings.filter((d) => d.symbol === symbol);
 
   const clipH = mainPaneHeight ?? height;
+  const clipW = chartAreaWidth && chartAreaWidth > 0 ? chartAreaWidth : width;
   return (
     <svg
       className="pointer-events-none absolute inset-0 z-10 h-full w-full"
@@ -64,7 +68,7 @@ export function DrawingsLayer({
     >
       <defs>
         <clipPath id="drawings-main-pane">
-          <rect x="0" y="0" width={width} height={clipH} />
+          <rect x="0" y="0" width={clipW} height={clipH} />
         </clipPath>
       </defs>
       <g clipPath="url(#drawings-main-pane)">

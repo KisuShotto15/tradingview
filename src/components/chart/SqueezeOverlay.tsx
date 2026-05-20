@@ -13,7 +13,10 @@ interface Props {
   visible: boolean;
   paneTop: number;
   paneHeight: number;
-  opacity?: number;
+  /** Width of the chart drawing area (excludes right price scale). Used to clip bars. */
+  chartAreaWidth?: number;
+  /** When true the bars use screen blend-mode so the ADX line shows through. */
+  screenBlend?: boolean;
 }
 
 type Pt = { x: number; y: number };
@@ -60,7 +63,8 @@ export function SqueezeOverlay({
   visible,
   paneTop,
   paneHeight,
-  opacity = 1,
+  chartAreaWidth,
+  screenBlend = false,
 }: Props) {
   if (!chart || !squeezeSeries || !visible || pts.length === 0) return null;
 
@@ -133,15 +137,23 @@ export function SqueezeOverlay({
 
   void width;
   void height;
+  const clipW = chartAreaWidth ?? 99999;
 
   return (
     <svg
       className="pointer-events-none absolute z-[5]"
-      style={{ top: paneTop, height: paneHeight, left: 0, right: 0, width: "100%" }}
+      style={{
+        top: paneTop,
+        height: paneHeight,
+        left: 0,
+        right: 0,
+        width: "100%",
+        mixBlendMode: screenBlend ? "screen" : undefined,
+      }}
     >
       <defs>
         <clipPath id="sqz-pane">
-          <rect x="0" y="0" width="100%" height={paneHeight} />
+          <rect x="0" y="0" width={clipW} height={paneHeight} />
         </clipPath>
       </defs>
       <g clipPath="url(#sqz-pane)">
