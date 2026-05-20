@@ -292,6 +292,7 @@ interface ChartState {
   addLabelToWatchlist: (watchlistId: string, label: string, beforeId?: string) => void;
   removeWatchlistItem: (watchlistId: string, itemId: string) => void;
   moveWatchlistItem: (watchlistId: string, itemId: string, delta: -1 | 1) => void;
+  reorderWatchlistItems: (watchlistId: string, fromId: string, toId: string) => void;
   renameWatchlistItem: (watchlistId: string, itemId: string, value: string) => void;
   setTool: (t: DrawingTool) => void;
   setSymbolDialogOpen: (v: boolean) => void;
@@ -659,6 +660,19 @@ export const useChartStore = create<ChartState>()(
             if (target < 0 || target >= w.items.length) return w;
             const next = [...w.items];
             [next[idx], next[target]] = [next[target], next[idx]];
+            return { ...w, items: next };
+          }),
+        })),
+      reorderWatchlistItems: (watchlistId, fromId, toId) =>
+        set((state) => ({
+          watchlists: state.watchlists.map((w) => {
+            if (w.id !== watchlistId) return w;
+            const from = w.items.findIndex((i) => i.id === fromId);
+            const to = w.items.findIndex((i) => i.id === toId);
+            if (from === -1 || to === -1 || from === to) return w;
+            const next = [...w.items];
+            const [moved] = next.splice(from, 1);
+            next.splice(from < to ? to : to, 0, moved);
             return { ...w, items: next };
           }),
         })),

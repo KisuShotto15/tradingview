@@ -16,6 +16,7 @@ import {
   type SeriesMarker,
   type Time,
   type UTCTimestamp,
+  type MouseEventParams,
 } from "lightweight-charts";
 import { fetchKlines } from "@/lib/binance/rest";
 import { getBinanceWS } from "@/lib/binance/ws";
@@ -209,6 +210,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const [squeezePts, setSqueezePts] = useState<SqueezePoint[]>([]);
   const measureRef = useRef(measure);
   measureRef.current = measure;
+  const latestCrosshairParamRef = useRef<MouseEventParams<Time> | null>(null);
+  const paneOffsetsRef = useRef(paneOffsets);
+  paneOffsetsRef.current = paneOffsets;
+  const indicatorPaneIdxRef = useRef<Record<"rsi" | "macd" | "adx" | "squeeze" | "vumanchu", number>>(
+    { rsi: 1, macd: 2, adx: 3, squeeze: 4, vumanchu: 5 },
+  );
 
   // Drive alerts off the live price tick
   useAlertMonitor(symbol, lastPrice?.value ?? null);
@@ -534,6 +541,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
     // Crosshair handler
     chart.subscribeCrosshairMove((param) => {
+      latestCrosshairParamRef.current = param;
       // Compute the cursor's (time, price) — used by placement preview + magnet
       let cursorTime: number | null = null;
       let cursorPrice: number | null = null;
@@ -685,6 +693,80 @@ export function PriceChart({ symbol, timeframe }: Props) {
       macdSignalRef.current = null;
       macdHistRef.current = null;
     };
+  }, []);
+
+  // Double-click to open indicator settings
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    function onDblClick(e: MouseEvent) {
+      if (toolRef.current !== "cursor") return;
+      const rect = el!.getBoundingClientRect();
+      const relY = e.clientY - rect.top;
+
+      const offsets = paneOffsetsRef.current;
+      let clickedPane = 0;
+      for (let i = 0; i < offsets.length; i++) {
+        if (relY >= offsets[i].top && relY < offsets[i].top + offsets[i].height) {
+          clickedPane = i;
+          break;
+        }
+      }
+
+      const state = useChartStore.getState();
+
+      if (clickedPane === 0) {
+        // Main pane: open EMA settings if click is near a line (within 10px)
+        const param = latestCrosshairParamRef.current;
+        if (!param) return;
+        for (const [id, series] of emaSeriesMapRef.current) {
+          const data = param.seriesData.get(series);
+          if (data && "value" in data) {
+            const yCoord = series.priceToCoordinate(data.value as number);
+            if (yCoord !== null && Math.abs(yCoord - relY) <= 10) {
+              state.setSettingsTarget({ kind: "ema", id });
+              return;
+            }
+          }
+        }
+        return;
+      }
+
+      // Sub-pane: find host indicator
+      const idxMap = indicatorPaneIdxRef.current;
+      let hostKey: IndicatorKey | null = null;
+      for (const k of ["rsi", "macd", "adx", "squeeze", "vumanchu"] as const) {
+        if (idxMap[k] === clickedPane && state.indicators[k]) {
+          const target = state.indicatorOverlays[k];
+          if (!target || target === "own" || !state.indicators[target as IndicatorKey]) {
+            hostKey = k;
+            break;
+          }
+        }
+      }
+      if (!hostKey) return;
+
+      // If ADX is in this pane (possibly as guest), check proximity to its line
+      if (idxMap.adx === clickedPane && state.indicators.adx && adxRef.current) {
+        const param = latestCrosshairParamRef.current;
+        if (param) {
+          const data = param.seriesData.get(adxRef.current);
+          if (data && "value" in data) {
+            const yCoord = adxRef.current.priceToCoordinate(data.value as number);
+            if (yCoord !== null && Math.abs(yCoord - relY) <= 10) {
+              state.setSettingsTarget("adx");
+              return;
+            }
+          }
+        }
+      }
+
+      state.setSettingsTarget(hostKey);
+    }
+
+    el.addEventListener("dblclick", onDblClick);
+    return () => el.removeEventListener("dblclick", onDblClick);
   }, []);
 
   // Manage volume — overlay at the bottom of the main pane
@@ -1803,6 +1885,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
     return out as Record<"rsi" | "macd" | "adx" | "squeeze" | "vumanchu", number>;
   })();
+  indicatorPaneIdxRef.current = indicatorPaneIdx;
   const rsiPaneIdx = indicatorPaneIdx.rsi;
   const macdPaneIdx = indicatorPaneIdx.macd;
   const adxPaneIdx = indicatorPaneIdx.adx;

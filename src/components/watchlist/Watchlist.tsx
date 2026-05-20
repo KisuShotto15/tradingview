@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
+  ChevronRight,
   ChevronsDown,
   ChevronsUp,
+  GripVertical,
   ListPlus,
   Pencil,
   Plus,
@@ -42,6 +44,7 @@ export function Watchlist() {
   const addLabelToWatchlist = useChartStore((s) => s.addLabelToWatchlist);
   const removeWatchlistItem = useChartStore((s) => s.removeWatchlistItem);
   const moveWatchlistItem = useChartStore((s) => s.moveWatchlistItem);
+  const reorderWatchlistItems = useChartStore((s) => s.reorderWatchlistItems);
   const renameWatchlistItem = useChartStore((s) => s.renameWatchlistItem);
   const symbol = useChartStore((s) => s.symbol);
   const setSymbol = useChartStore((s) => s.setSymbol);
@@ -63,6 +66,13 @@ export function Watchlist() {
   } | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+
+  // Drag & drop state
+  const draggedId = useRef<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  // Collapsed label sections
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (symbols.length === 0) {
@@ -187,6 +197,53 @@ export function Watchlist() {
     setContextMenu({ x: e.clientX, y: e.clientY, itemId });
   }
 
+  function toggleCollapse(labelId: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(labelId)) next.delete(labelId);
+      else next.add(labelId);
+      return next;
+    });
+  }
+
+  // Build visible items respecting collapsed sections
+  const visibleItems = useMemo(() => {
+    let hidingUnder: string | null = null;
+    return items.filter((item) => {
+      if (item.type === "label") {
+        hidingUnder = collapsed.has(item.id) ? item.id : null;
+        return true;
+      }
+      return hidingUnder === null;
+    });
+  }, [items, collapsed]);
+
+  // Drag handlers
+  function handleDragStart(id: string) {
+    draggedId.current = id;
+  }
+
+  function handleDragOver(e: React.DragEvent, id: string) {
+    e.preventDefault();
+    if (draggedId.current !== id) setDragOverId(id);
+  }
+
+  function handleDrop(targetId: string) {
+    if (!active || !draggedId.current || draggedId.current === targetId) {
+      draggedId.current = null;
+      setDragOverId(null);
+      return;
+    }
+    reorderWatchlistItems(active.id, draggedId.current, targetId);
+    draggedId.current = null;
+    setDragOverId(null);
+  }
+
+  function handleDragEnd() {
+    draggedId.current = null;
+    setDragOverId(null);
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-1 border-b border-tv-border px-2 py-2">
@@ -242,19 +299,41 @@ export function Watchlist() {
           className="flex flex-col"
           onContextMenu={(e) => openContextMenu(e, null)}
         >
-          {items.map((item) => {
+          {visibleItems.map((item) => {
+            const isDragTarget = dragOverId === item.id;
+
             if (item.type === "label") {
+              const isCollapsed = collapsed.has(item.id);
               return (
                 <div
                   key={item.id}
+                  draggable
+                  onDragStart={() => handleDragStart(item.id)}
+                  onDragOver={(e) => handleDragOver(e, item.id)}
+                  onDrop={() => handleDrop(item.id)}
+                  onDragEnd={handleDragEnd}
                   onContextMenu={(e) => {
                     e.stopPropagation();
                     openContextMenu(e, item.id);
                   }}
                   onDoubleClick={() => startRename(item.id, item.value)}
-                  className="group flex items-center gap-1 border-y border-tv-border bg-tv-bg/50 px-3 py-1"
+                  className={cn(
+                    "group flex cursor-grab items-center gap-1 border-y border-tv-border bg-tv-bg/50 px-1 py-1 active:cursor-grabbing",
+                    isDragTarget && "border-t-2 border-t-tv-blue",
+                  )}
                 >
-                  <Type className="h-2.5 w-2.5 text-tv-text-dim" />
+                  <GripVertical className="h-3 w-3 shrink-0 text-tv-text-dim opacity-0 transition-opacity group-hover:opacity-100" />
+                  <button
+                    onClick={() => toggleCollapse(item.id)}
+                    className="shrink-0 text-tv-text-dim hover:text-tv-text"
+                    aria-label={isCollapsed ? "Expand section" : "Collapse section"}
+                  >
+                    {isCollapsed ? (
+                      <ChevronRight className="h-3 w-3" />
+                    ) : (
+                      <ChevronDown className="h-3 w-3" />
+                    )}
+                  </button>
                   {renamingId === item.id ? (
                     <input
                       autoFocus
@@ -275,6 +354,7 @@ export function Watchlist() {
                 </div>
               );
             }
+
             const s = item.value;
             const row = rows[s];
             const isActive = s === symbol;
@@ -282,18 +362,25 @@ export function Watchlist() {
             return (
               <div
                 key={item.id}
+                draggable
+                onDragStart={() => handleDragStart(item.id)}
+                onDragOver={(e) => handleDragOver(e, item.id)}
+                onDrop={() => handleDrop(item.id)}
+                onDragEnd={handleDragEnd}
                 onClick={() => setSymbol(s)}
                 onContextMenu={(e) => {
                   e.stopPropagation();
                   openContextMenu(e, item.id);
                 }}
                 className={cn(
-                  "group grid cursor-pointer grid-cols-[1fr_auto_auto] items-center gap-2 px-3 py-1.5 text-xs transition-colors",
+                  "group grid cursor-pointer grid-cols-[auto_1fr_auto_auto] items-center gap-1 px-1 py-1.5 text-xs transition-colors",
                   "hover:bg-tv-panel-hover",
                   isActive && "bg-tv-panel-hover",
+                  isDragTarget && "border-t-2 border-t-tv-blue",
                 )}
               >
-                <div className="flex items-center gap-2">
+                <GripVertical className="h-3 w-3 shrink-0 cursor-grab text-tv-text-dim opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing" />
+                <div className="flex min-w-0 items-center gap-1">
                   <span className="font-medium text-tv-text">
                     {s.replace("USDT", "")}
                   </span>
