@@ -395,8 +395,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
           useChartStore.getState().timeframe,
         );
         // Default width: ~10% of visible bars, between 5 and 30 bars
-        const visibleBars = useChartStore.getState().visibleBars;
-        const widthBars = Math.max(5, Math.min(30, Math.round(visibleBars * 0.1)));
+        const liveRange = chart.timeScale().getVisibleLogicalRange();
+        const liveVisibleBars = liveRange
+          ? Math.round(liveRange.to - liveRange.from)
+          : useChartStore.getState().visibleBars;
+        const widthBars = Math.max(5, Math.min(30, Math.round(liveVisibleBars * 0.1)));
         const timeB = time + widthBars * intervalSec;
         const defaults = useChartStore.getState().toolDefaults[kind] ?? {};
         void drawingsApiRef.current.add({
@@ -2025,7 +2028,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         mainPaneHeight={paneOffsets[0]?.height ?? containerSize.height}
         renderTick={renderTick}
       />
-      <BuySellOverlay />
+
       {indicators.squeeze && paneOffsets[squeezePaneIdx] && (
         <SqueezeOverlay
           chart={chartRef.current}
@@ -2180,17 +2183,28 @@ export function PriceChart({ symbol, timeframe }: Props) {
         style={{ top: (paneOffsets[0]?.top ?? 0) + 12, left: 12 }}
         className="pointer-events-none absolute z-10 flex flex-col gap-1 text-xs tabular-nums"
       >
-        {/* Row 1: symbol info + OHLC stats inline on hover (fixed height, never wraps) */}
-        <div className="flex h-5 flex-nowrap items-center gap-x-3 overflow-hidden whitespace-nowrap">
-          <div className="flex shrink-0 items-center gap-2 text-[13px] font-semibold">
-            <span className="text-tv-text">{symbol}</span>
-            <span className="text-tv-text-muted">·</span>
-            <span className="uppercase text-tv-text-muted">{timeframe}</span>
-            <span className="text-tv-text-muted">·</span>
-            <span className="text-tv-text-muted">Binance</span>
-          </div>
+        {/* Row 1: symbol · timeframe · Binance + live price inline; OHLC on hover */}
+        <div className="flex flex-nowrap items-center gap-x-2 overflow-hidden whitespace-nowrap text-[12px]">
+          <span className="font-semibold text-tv-text">{symbol}</span>
+          <span className="text-tv-text-muted">·</span>
+          <span className="font-semibold uppercase text-tv-text-muted">{timeframe}</span>
+          <span className="text-tv-text-muted">·</span>
+          <span className="font-semibold text-tv-text-muted">Binance</span>
+          {!hover && lastPrice && (
+            <>
+              <span className={`font-semibold tabular-nums ${greenOrRed(lastPrice.pct)}`}>
+                {formatPrice(lastPrice.value)}
+              </span>
+              <span className={`text-[10px] ${greenOrRed(lastPrice.pct)}`}>
+                {lastPrice.pct >= 0 ? "+" : ""}{lastPrice.pct.toFixed(2)}%
+              </span>
+            </>
+          )}
+          {!hover && !lastPrice && (
+            <span className="text-[10px] text-tv-text-muted">Loading…</span>
+          )}
           {hover && (
-            <div className="flex items-center gap-x-3 text-[11px]">
+            <div className="flex items-center gap-x-2 text-[11px]">
               <span className="text-tv-text-muted">
                 O <span className={greenOrRed(hover.c - hover.o)}>{formatPrice(hover.o)}</span>
               </span>
@@ -2204,8 +2218,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
                 C <span className={greenOrRed(hover.c - hover.o)}>{formatPrice(hover.c)}</span>
               </span>
               <span className={greenOrRed(hover.pct)}>
-                {hover.pct >= 0 ? "+" : ""}
-                {hover.pct.toFixed(2)}%
+                {hover.pct >= 0 ? "+" : ""}{hover.pct.toFixed(2)}%
               </span>
               <span className="text-tv-text-muted">
                 Vol <span className="text-tv-text">{formatVolume(hover.v)}</span>
@@ -2214,22 +2227,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
           )}
         </div>
 
-        {/* Row 2: big live price (always present — reserves space even while loading) */}
-        <div className="flex h-7 items-center gap-2">
-          {lastPrice ? (
-            <>
-              <span className={`text-lg font-semibold tabular-nums ${greenOrRed(lastPrice.pct)}`}>
-                {formatPrice(lastPrice.value)}
-              </span>
-              <span className={`text-xs ${greenOrRed(lastPrice.pct)}`}>
-                {lastPrice.pct >= 0 ? "+" : ""}
-                {lastPrice.pct.toFixed(2)}%
-              </span>
-            </>
-          ) : (
-            <span className="text-xs text-tv-text-muted">Loading…</span>
-          )}
-        </div>
+        {/* Row 2: quick-trade buttons (only when exchange is connected) */}
+        <BuySellOverlay />
 
         {/* Indicator pills for the main pane (collapsible) */}
         <div className="mt-1 flex flex-col items-start gap-1">

@@ -38,11 +38,11 @@ export function BuySellOverlay() {
   if (!apiKey) return null;
 
   return (
-    <div className="absolute bottom-10 right-2 z-30 flex flex-col gap-1.5">
+    <div className="pointer-events-auto flex items-center gap-1">
       <button
         onClick={() => setTradingPanelOpen(!tradingPanelOpen)}
         className={cn(
-          "rounded border px-2 py-1 text-[10px] font-medium transition-colors",
+          "rounded border px-1.5 py-0.5 text-[9px] font-medium transition-colors",
           tradingPanelOpen
             ? "border-tv-blue bg-tv-blue/20 text-tv-blue"
             : "border-tv-border bg-tv-panel/80 text-tv-text-muted hover:border-tv-blue hover:text-tv-blue",
@@ -55,32 +55,24 @@ export function BuySellOverlay() {
         onDoubleClick={() => quickOrder("BUY")}
         title="Double-click for market buy"
         className={cn(
-          "rounded px-3 py-1.5 text-[11px] font-semibold text-white transition-all",
-          flash === "buy"
-            ? "scale-95 bg-tv-blue/60"
-            : "bg-tv-blue hover:bg-tv-blue/80",
+          "flex flex-col items-center rounded px-2 py-0.5 text-[9px] font-semibold text-white transition-all",
+          flash === "buy" ? "scale-95 bg-tv-blue/60" : "bg-tv-blue hover:bg-tv-blue/80",
         )}
       >
-        <div className="leading-tight">Buy</div>
-        {ask && (
-          <div className="text-[9px] font-normal opacity-80">{formatPrice(ask)}</div>
-        )}
+        <span>Buy</span>
+        {ask && <span className="font-normal opacity-80">{formatPrice(ask)}</span>}
       </button>
 
       <button
         onDoubleClick={() => quickOrder("SELL")}
         title="Double-click for market sell"
         className={cn(
-          "rounded px-3 py-1.5 text-[11px] font-semibold text-white transition-all",
-          flash === "sell"
-            ? "scale-95 bg-tv-red/60"
-            : "bg-tv-red hover:bg-tv-red/80",
+          "flex flex-col items-center rounded px-2 py-0.5 text-[9px] font-semibold text-white transition-all",
+          flash === "sell" ? "scale-95 bg-tv-red/60" : "bg-tv-red hover:bg-tv-red/80",
         )}
       >
-        <div className="leading-tight">Sell</div>
-        {bid && (
-          <div className="text-[9px] font-normal opacity-80">{formatPrice(bid)}</div>
-        )}
+        <span>Sell</span>
+        {bid && <span className="font-normal opacity-80">{formatPrice(bid)}</span>}
       </button>
     </div>
   );
