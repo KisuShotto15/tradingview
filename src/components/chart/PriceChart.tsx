@@ -44,6 +44,8 @@ import { MeasureOverlay } from "./MeasureOverlay";
 import { DrawingsLayer } from "./drawings/DrawingsLayer";
 import { PlacementPreview, MagnetIndicator } from "./PlacementPreview";
 import { SqueezeOverlay } from "./SqueezeOverlay";
+import { OrderLinesLayer } from "@/components/trading/OrderLinesLayer";
+import { BuySellOverlay } from "@/components/trading/BuySellOverlay";
 import { FloatingContextToolbar } from "./FloatingContextToolbar";
 import type { SqueezePoint } from "@/lib/indicators/squeeze";
 import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
@@ -2013,6 +2015,15 @@ export function PriceChart({ symbol, timeframe }: Props) {
         chartAreaWidth={chartRef.current ? chartRef.current.timeScale().width() : containerSize.width}
         renderTick={renderTick}
       />
+      <OrderLinesLayer
+        chart={chartRef.current}
+        candleSeries={candleSeriesRef.current}
+        container={containerRef.current}
+        width={containerSize.width}
+        mainPaneHeight={paneOffsets[0]?.height ?? containerSize.height}
+        renderTick={renderTick}
+      />
+      <BuySellOverlay />
       {indicators.squeeze && paneOffsets[squeezePaneIdx] && (
         <SqueezeOverlay
           chart={chartRef.current}

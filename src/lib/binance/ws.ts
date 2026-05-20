@@ -40,7 +40,19 @@ interface MiniTickerMsg {
   };
 }
 
-type WSMsg = KlineMsg | MiniTickerMsg;
+interface BookTickerMsg {
+  stream: string;
+  data: {
+    u: number;
+    s: string;
+    b: string;
+    B: string;
+    a: string;
+    A: string;
+  };
+}
+
+type WSMsg = KlineMsg | MiniTickerMsg | BookTickerMsg;
 
 export interface KlineSubscription {
   symbol: string;
@@ -59,6 +71,7 @@ class BinanceWSConn {
   private nextId = 1;
   private klineSubs = new Map<string, KlineSubscription>();
   private tickerSubs = new Map<string, (m: MiniTickerMsg["data"]) => void>();
+  private bookTickerSubs = new Map<string, (m: { bid: number; ask: number }) => void>();
   private connected = false;
   private closing = false;
 
@@ -76,6 +89,7 @@ class BinanceWSConn {
         streams.push(`${cleanSym(s.symbol).toLowerCase()}@kline_${s.interval}`);
       });
       this.tickerSubs.forEach((_v, k) => streams.push(k));
+      this.bookTickerSubs.forEach((_v, k) => streams.push(k));
       if (streams.length > 0) {
         this.send({ method: "SUBSCRIBE", params: streams, id: this.nextId++ });
       }
@@ -130,6 +144,12 @@ class BinanceWSConn {
     } else if (msg.stream.includes("@miniTicker")) {
       const handler = this.tickerSubs.get(msg.stream);
       if (handler) handler((msg as MiniTickerMsg).data);
+    } else if (msg.stream.includes("@bookTicker")) {
+      const handler = this.bookTickerSubs.get(msg.stream);
+      if (handler) {
+        const d = (msg as BookTickerMsg).data;
+        handler({ bid: parseFloat(d.b), ask: parseFloat(d.a) });
+      }
     }
   }
 
@@ -182,6 +202,25 @@ class BinanceWSConn {
     };
   }
 
+  subscribeBookTicker(
+    symbol: string,
+    onTick: (data: { bid: number; ask: number }) => void,
+  ): () => void {
+    const stream = `${cleanSym(symbol).toLowerCase()}@bookTicker`;
+    this.bookTickerSubs.set(stream, onTick);
+    if (this.connected) {
+      this.send({ method: "SUBSCRIBE", params: [stream], id: this.nextId++ });
+    } else if (!this.ws) {
+      this.connect();
+    }
+    return () => {
+      this.bookTickerSubs.delete(stream);
+      if (this.connected) {
+        this.send({ method: "UNSUBSCRIBE", params: [stream], id: this.nextId++ });
+      }
+    };
+  }
+
   close() {
     this.closing = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
@@ -219,6 +258,14 @@ export class BinanceWS {
     if (perpSyms.length > 0)
       unsubs.push(this.futures.subscribeMiniTickers(perpSyms, onTick));
     return () => unsubs.forEach((u) => u());
+  }
+
+  subscribeBookTicker(
+    symbol: string,
+    onTick: (data: { bid: number; ask: number }) => void,
+  ): () => void {
+    const conn = isPerp(symbol) ? this.futures : this.spot;
+    return conn.subscribeBookTicker(symbol, onTick);
   }
 
   close() {

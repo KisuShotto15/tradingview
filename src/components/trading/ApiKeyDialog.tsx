@@ -1,0 +1,178 @@
+"use client";
+
+import { useState } from "react";
+import { KeyRound, PlugZap, X } from "lucide-react";
+import { useTradingStore } from "@/lib/store/trading-store";
+import { cn } from "@/lib/utils";
+
+export function ApiKeyDialog({ onClose }: { onClose: () => void }) {
+  const { apiKey, apiSecret, testnet, setCredentials, fetchBalance } = useTradingStore();
+  const setConnected = useTradingStore((s) => s.setConnected);
+  const symbol = "BTCUSDT";
+
+  const [key, setKey] = useState(apiKey);
+  const [secret, setSecret] = useState(apiSecret);
+  const [tn, setTn] = useState(testnet);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<"ok" | "fail" | null>(null);
+
+  async function testConnection() {
+    setTesting(true);
+    setTestResult(null);
+    setCredentials(key, secret, tn);
+    // Temporarily set store values and try fetching balance
+    useTradingStore.setState({ apiKey: key, apiSecret: secret, testnet: tn });
+    try {
+      const perp = symbol.endsWith(".P");
+      const params = new URLSearchParams({
+        apiKey: key,
+        apiSecret: secret,
+        testnet: String(tn),
+        isPerp: String(perp),
+      });
+      const res = await fetch(`/api/trade/balance?${params}`);
+      if (res.ok) {
+        setTestResult("ok");
+        setConnected(true);
+        await fetchBalance(symbol);
+      } else {
+        setTestResult("fail");
+        setConnected(false);
+      }
+    } catch {
+      setTestResult("fail");
+      setConnected(false);
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  function save() {
+    setCredentials(key, secret, tn);
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="w-[400px] rounded-lg border border-tv-border bg-tv-panel shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-tv-border px-4 py-3">
+          <div className="flex items-center gap-2">
+            <KeyRound className="h-4 w-4 text-tv-blue" />
+            <span className="text-sm font-semibold text-tv-text">Binance API Credentials</span>
+          </div>
+          <button onClick={onClose} className="text-tv-text-muted hover:text-tv-text">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4 p-4">
+          {/* Testnet toggle */}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-tv-text-muted">Network</span>
+            <div className="flex gap-1 rounded-md border border-tv-border p-0.5">
+              <button
+                onClick={() => setTn(true)}
+                className={cn(
+                  "rounded px-3 py-1 text-xs transition-colors",
+                  tn
+                    ? "bg-tv-blue text-white"
+                    : "text-tv-text-muted hover:bg-tv-panel-hover",
+                )}
+              >
+                Testnet
+              </button>
+              <button
+                onClick={() => setTn(false)}
+                className={cn(
+                  "rounded px-3 py-1 text-xs transition-colors",
+                  !tn
+                    ? "bg-tv-blue text-white"
+                    : "text-tv-text-muted hover:bg-tv-panel-hover",
+                )}
+              >
+                Mainnet
+              </button>
+            </div>
+          </div>
+
+          {!tn && (
+            <div className="rounded border border-tv-red/40 bg-tv-red/10 px-3 py-2 text-xs text-tv-red">
+              Warning: Mainnet uses real funds. Make sure your API key has only the necessary permissions.
+            </div>
+          )}
+
+          {/* API Key */}
+          <div className="space-y-1">
+            <label className="text-xs text-tv-text-muted">API Key</label>
+            <input
+              type="text"
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              placeholder="Enter your Binance API Key"
+              className="w-full rounded border border-tv-border bg-tv-bg px-3 py-2 text-xs text-tv-text outline-none focus:border-tv-blue"
+            />
+          </div>
+
+          {/* API Secret */}
+          <div className="space-y-1">
+            <label className="text-xs text-tv-text-muted">API Secret</label>
+            <input
+              type="password"
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              placeholder="Enter your Binance API Secret"
+              className="w-full rounded border border-tv-border bg-tv-bg px-3 py-2 text-xs text-tv-text outline-none focus:border-tv-blue"
+            />
+          </div>
+
+          <p className="text-[10px] text-tv-text-dim">
+            Keys are stored locally in your browser. Enable &quot;Futures Trading&quot; permission on your API key.
+          </p>
+
+          {/* Test result */}
+          {testResult && (
+            <div
+              className={cn(
+                "rounded px-3 py-2 text-xs",
+                testResult === "ok"
+                  ? "bg-tv-green/15 text-tv-green"
+                  : "bg-tv-red/15 text-tv-red",
+              )}
+            >
+              {testResult === "ok"
+                ? "Connected successfully!"
+                : "Connection failed. Check your API key and permissions."}
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2 border-t border-tv-border px-4 py-3">
+          <button
+            onClick={testConnection}
+            disabled={!key || !secret || testing}
+            className="flex items-center gap-1.5 rounded border border-tv-border px-3 py-1.5 text-xs text-tv-text transition-colors hover:bg-tv-panel-hover disabled:opacity-50"
+          >
+            <PlugZap className="h-3.5 w-3.5" />
+            {testing ? "Testing…" : "Test connection"}
+          </button>
+          <div className="flex-1" />
+          <button
+            onClick={onClose}
+            className="rounded px-3 py-1.5 text-xs text-tv-text-muted hover:bg-tv-panel-hover"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={!key || !secret}
+            className="rounded bg-tv-blue px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-tv-blue/80 disabled:opacity-50"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
