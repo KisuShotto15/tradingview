@@ -162,6 +162,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const adxStyle = useChartStore((s) => s.adxStyle);
   const squeezeStyle = useChartStore((s) => s.squeezeStyle);
   const indicatorOverlays = useChartStore((s) => s.indicatorOverlays);
+  const paneZOrder = useChartStore((s) => s.paneZOrder);
+  const setPaneZOrder = useChartStore((s) => s.setPaneZOrder);
   const logScale = useChartStore((s) => s.logScale);
   const indicatorLogScale = useChartStore((s) => s.indicatorLogScale);
   const pillsCollapsed = useChartStore((s) => s.pillsCollapsed);
@@ -944,26 +946,35 @@ export function PriceChart({ symbol, timeframe }: Props) {
         chartRef.current.panes()[0]?.setStretchFactor(3);
       } catch {}
       updateSqueeze();
-      // If ADX shares this pane (overlaid on Squeeze or vice-versa), re-add ADX
-      // series AFTER the Squeeze histogram so ADX lines render on top of the
-      // filled histogram bars (last-added series renders on top in LW-charts).
+      // When ADX and Squeeze share a pane, enforce the configured visual z-order.
+      // Default: ADX (guest) on top. Controlled via paneZOrder[hostKey].
       if (indicators.adx && panelIndexFor("adx") === paneIndex) {
-        const adxSt = useChartStore.getState().adxStyle;
-        const adxScaleId = "adx-overlay";
-        if (adxRef.current) { try { chartRef.current.removeSeries(adxRef.current); } catch {} adxRef.current = null; }
-        if (adxPlusDIRef.current) { try { chartRef.current.removeSeries(adxPlusDIRef.current); } catch {} adxPlusDIRef.current = null; }
-        if (adxMinusDIRef.current) { try { chartRef.current.removeSeries(adxMinusDIRef.current); } catch {} adxMinusDIRef.current = null; }
-        if (adxKeyLevelRef.current) { try { chartRef.current.removeSeries(adxKeyLevelRef.current); } catch {} adxKeyLevelRef.current = null; }
-        adxRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.adxColor, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId }, paneIndex);
-        adxPlusDIRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.plusDiColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId }, paneIndex);
-        adxMinusDIRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.minusDiColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId }, paneIndex);
-        adxKeyLevelRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.keyLevelColor, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId }, paneIndex);
-        updateADX();
+        const hostKey: IndicatorKey = indicatorOverlays.squeeze === "adx" ? "adx" : "squeeze";
+        const zOrder = paneZOrder[hostKey];
+        // Default: ADX on top (index > squeeze). Explicit order overrides when both keys present.
+        const adxShouldBeOnTop =
+          !zOrder || !zOrder.includes("adx") || !zOrder.includes("squeeze")
+            ? true
+            : zOrder.indexOf("adx") > zOrder.indexOf("squeeze");
+        if (adxShouldBeOnTop) {
+          const adxSt = useChartStore.getState().adxStyle;
+          const adxScaleId = "adx-overlay";
+          if (adxRef.current) { try { chartRef.current.removeSeries(adxRef.current); } catch {} adxRef.current = null; }
+          if (adxPlusDIRef.current) { try { chartRef.current.removeSeries(adxPlusDIRef.current); } catch {} adxPlusDIRef.current = null; }
+          if (adxMinusDIRef.current) { try { chartRef.current.removeSeries(adxMinusDIRef.current); } catch {} adxMinusDIRef.current = null; }
+          if (adxKeyLevelRef.current) { try { chartRef.current.removeSeries(adxKeyLevelRef.current); } catch {} adxKeyLevelRef.current = null; }
+          adxRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.adxColor, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId }, paneIndex);
+          adxPlusDIRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.plusDiColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId }, paneIndex);
+          adxMinusDIRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.minusDiColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId }, paneIndex);
+          adxKeyLevelRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.keyLevelColor, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId }, paneIndex);
+          updateADX();
+        }
+        // If !adxShouldBeOnTop: Squeeze was added last in this effect → Squeeze already on top
       }
     }
     requestAnimationFrame(() => recomputePaneOffsets());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicators.squeeze, indicators.rsi, indicators.macd, indicators.adx, indicatorOverlays]);
+  }, [indicators.squeeze, indicators.rsi, indicators.macd, indicators.adx, indicatorOverlays, paneZOrder]);
 
   // ── VuManChu Cipher B pane ───────────────────────────────────────────────
   useEffect(() => {
@@ -2179,14 +2190,25 @@ export function PriceChart({ symbol, timeframe }: Props) {
         const guests = subPaneEntries.filter(
           (e) => indicatorOverlays[e.key] === p.key && !ownedSubPaneKeySet.has(e.key),
         );
+        const allPaneEntries = [p, ...guests];
+        const allPaneKeys = allPaneEntries.map((e) => e.key);
+        const hasMultiple = allPaneKeys.length > 1;
+        const savedOrder = paneZOrder[p.key];
+        const effectiveZOrder =
+          savedOrder && allPaneKeys.every((k) => savedOrder.includes(k))
+            ? savedOrder
+            : allPaneKeys; // default: host first, guests on top
         return (
           <div
             key={p.key}
             style={{ top: offset.top + 6, left: 12 }}
             className="pointer-events-none absolute z-10 flex flex-col items-start gap-1"
           >
-            {[p, ...guests].map((entry) => {
+            {allPaneEntries.map((entry) => {
               const isGuest = indicatorOverlays[entry.key] && indicatorOverlays[entry.key] !== "own";
+              const posInOrder = effectiveZOrder.indexOf(entry.key);
+              const isOnTop = posInOrder === effectiveZOrder.length - 1;
+              const isOnBottom = posInOrder === 0;
               return (
                 <div key={entry.key} className="pointer-events-auto flex items-center gap-0.5">
                   {/* Drag handle — uses pointer events (not HTML5 DnD) for reliability */}
@@ -2208,6 +2230,33 @@ export function PriceChart({ symbol, timeframe }: Props) {
                     >
                       ⊞
                     </button>
+                  )}
+                  {/* Visual order buttons — only when pane has multiple indicators */}
+                  {hasMultiple && (
+                    <div className="flex flex-col">
+                      <button
+                        title="Bring to front"
+                        disabled={isOnTop}
+                        onClick={() => {
+                          const newOrder = [...effectiveZOrder.filter((k) => k !== entry.key), entry.key];
+                          setPaneZOrder(p.key, newOrder);
+                        }}
+                        className={`flex h-2.5 w-3.5 items-center justify-center rounded text-[8px] leading-none ${isOnTop ? "cursor-default text-white/15" : "text-white/40 hover:bg-white/10 hover:text-white/80"}`}
+                      >
+                        ▲
+                      </button>
+                      <button
+                        title="Send to back"
+                        disabled={isOnBottom}
+                        onClick={() => {
+                          const newOrder = [entry.key, ...effectiveZOrder.filter((k) => k !== entry.key)];
+                          setPaneZOrder(p.key, newOrder);
+                        }}
+                        className={`flex h-2.5 w-3.5 items-center justify-center rounded text-[8px] leading-none ${isOnBottom ? "cursor-default text-white/15" : "text-white/40 hover:bg-white/10 hover:text-white/80"}`}
+                      >
+                        ▼
+                      </button>
+                    </div>
                   )}
                   <IndicatorPill
                     name={entry.name}

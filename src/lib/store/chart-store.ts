@@ -225,6 +225,12 @@ interface ChartState {
    * pane). E.g. { adx: "squeeze" } overlays ADX on the Squeeze pane.
    */
   indicatorOverlays: Partial<Record<IndicatorKey, IndicatorKey | "own">>;
+  /**
+   * Per-pane visual render order. Key = the pane host's IndicatorKey.
+   * Value = array of all indicator keys in that pane ordered bottom-to-top
+   * (last element renders on top). Unset = default [host, ...guests].
+   */
+  paneZOrder: Partial<Record<IndicatorKey, IndicatorKey[]>>;
 
   /**
    * Per-drawing-kind defaults (color, lineWidth, lineStyle). Applied to new
@@ -270,6 +276,7 @@ interface ChartState {
   setVisibleBars: (n: number) => void;
   setPillsCollapsed: (v: boolean) => void;
   setIndicatorOverlay: (key: IndicatorKey, target: IndicatorKey | "own") => void;
+  setPaneZOrder: (host: IndicatorKey, order: IndicatorKey[]) => void;
   setToolDefault: (
     kind: string,
     patch: { color?: string; lineWidth?: number; lineStyle?: number },
@@ -349,6 +356,7 @@ export const useChartStore = create<ChartState>()(
       visibleBars: 150,
       pillsCollapsed: false,
       indicatorOverlays: {},
+      paneZOrder: {},
       toolDefaults: {},
       ...initialWatchlists(),
       chartColors: { ...DEFAULT_CHART_COLORS },
@@ -539,6 +547,9 @@ export const useChartStore = create<ChartState>()(
         }
       },
 
+      setPaneZOrder: (host, order) =>
+        set((st) => ({ paneZOrder: { ...st.paneZOrder, [host]: order } })),
+
       applySnapshot: (snap) => {
         withoutHistory(() => {
           const patch: Partial<ChartState> = {};
@@ -702,6 +713,7 @@ export const useChartStore = create<ChartState>()(
         visibleBars: s.visibleBars,
         pillsCollapsed: s.pillsCollapsed,
         indicatorOverlays: s.indicatorOverlays,
+        paneZOrder: s.paneZOrder,
         toolDefaults: s.toolDefaults,
         watchlists: s.watchlists,
         activeWatchlistId: s.activeWatchlistId,
