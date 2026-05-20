@@ -231,6 +231,8 @@ interface ChartState {
    * (last element renders on top). Unset = default [host, ...guests].
    */
   paneZOrder: Partial<Record<IndicatorKey, IndicatorKey[]>>;
+  /** Timeframes shown in the quick-access bar. User-configurable. */
+  pinnedTimeframes: Timeframe[];
 
   /**
    * Per-drawing-kind defaults (color, lineWidth, lineStyle). Applied to new
@@ -277,6 +279,7 @@ interface ChartState {
   setPillsCollapsed: (v: boolean) => void;
   setIndicatorOverlay: (key: IndicatorKey, target: IndicatorKey | "own") => void;
   setPaneZOrder: (host: IndicatorKey, order: IndicatorKey[]) => void;
+  setPinnedTimeframes: (tfs: Timeframe[]) => void;
   setToolDefault: (
     kind: string,
     patch: { color?: string; lineWidth?: number; lineStyle?: number },
@@ -357,6 +360,7 @@ export const useChartStore = create<ChartState>()(
       pillsCollapsed: false,
       indicatorOverlays: {},
       paneZOrder: {},
+      pinnedTimeframes: ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"] as Timeframe[],
       toolDefaults: {},
       ...initialWatchlists(),
       chartColors: { ...DEFAULT_CHART_COLORS },
@@ -550,6 +554,8 @@ export const useChartStore = create<ChartState>()(
       setPaneZOrder: (host, order) =>
         set((st) => ({ paneZOrder: { ...st.paneZOrder, [host]: order } })),
 
+      setPinnedTimeframes: (pinnedTimeframes) => set({ pinnedTimeframes }),
+
       applySnapshot: (snap) => {
         withoutHistory(() => {
           const patch: Partial<ChartState> = {};
@@ -714,6 +720,7 @@ export const useChartStore = create<ChartState>()(
         pillsCollapsed: s.pillsCollapsed,
         indicatorOverlays: s.indicatorOverlays,
         paneZOrder: s.paneZOrder,
+        pinnedTimeframes: s.pinnedTimeframes,
         toolDefaults: s.toolDefaults,
         watchlists: s.watchlists,
         activeWatchlistId: s.activeWatchlistId,
