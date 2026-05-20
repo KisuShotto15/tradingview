@@ -6,11 +6,31 @@ import type { Timeframe } from "@/lib/binance/types";
 import { cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 
+/** All Binance-supported timeframes, ordered from shortest to longest. */
 const ALL_TIMEFRAMES: Timeframe[] = [
   "1m", "3m", "5m", "15m", "30m",
   "1h", "2h", "4h", "6h", "8h", "12h",
   "1d", "3d", "1w", "1M",
 ];
+
+/** Duration in seconds for each timeframe — used for sorted insertion. */
+const TF_SECONDS: Record<Timeframe, number> = {
+  "1m": 60,
+  "3m": 180,
+  "5m": 300,
+  "15m": 900,
+  "30m": 1800,
+  "1h": 3600,
+  "2h": 7200,
+  "4h": 14400,
+  "6h": 21600,
+  "8h": 28800,
+  "12h": 43200,
+  "1d": 86400,
+  "3d": 259200,
+  "1w": 604800,
+  "1M": 2592000,
+};
 
 const TF_LABEL: Record<Timeframe, string> = {
   "1m": "1m", "3m": "3m", "5m": "5m", "15m": "15m", "30m": "30m",
@@ -46,7 +66,9 @@ export function TimeframeSelector() {
   const available = ALL_TIMEFRAMES.filter((t) => !pinned.includes(t));
 
   function add(t: Timeframe) {
-    setPinned([...pinned, t]);
+    // Insert in sorted order by duration
+    const next = [...pinned, t].sort((a, b) => TF_SECONDS[a] - TF_SECONDS[b]);
+    setPinned(next);
     setTf(t);
     setDropdownOpen(false);
   }
@@ -90,7 +112,7 @@ export function TimeframeSelector() {
         </div>
       ))}
 
-      {/* Add timeframe */}
+      {/* Add timeframe dropdown */}
       <div ref={dropdownRef} className="relative">
         <button
           onClick={() => setDropdownOpen((o) => !o)}
@@ -99,7 +121,7 @@ export function TimeframeSelector() {
           title="Add timeframe"
         >
           <Plus className="h-3 w-3" />
-          <span className="hidden sm:inline">Add custom interval...</span>
+          <span className="hidden sm:inline">Add interval</span>
         </button>
 
         {dropdownOpen && available.length > 0 && (
