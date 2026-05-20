@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Eye, EyeOff, Settings2, Trash2, TrendingUp } from "lucide-react";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { useDrawings } from "@/lib/supabase/use-drawings";
+import { useChartStore, type DrawingTool } from "@/lib/store/chart-store";
 import { ColorPicker } from "@/components/ui/color-picker";
 import { cn } from "@/lib/utils";
 import type { Drawing } from "@/lib/drawings/types";
@@ -63,7 +64,14 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
 
   const isPosition = drawing.kind === "long" || drawing.kind === "short";
 
-  function patch(p: Partial<Drawing>) { void update(drawing!.id, p); }
+  function patch(p: Partial<Drawing>) {
+    void update(drawing!.id, p);
+    // Keep tool defaults in sync so next drawing reuses the same style
+    useChartStore.getState().setToolDefault(
+      drawing!.kind as DrawingTool,
+      p as Parameters<ReturnType<typeof useChartStore.getState>["setToolDefault"]>[1],
+    );
+  }
 
   return (
     <div

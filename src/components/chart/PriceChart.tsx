@@ -391,11 +391,13 @@ export function PriceChart({ symbol, timeframe }: Props) {
         const dist = Math.abs(entry) * 0.02 || 1;
         const target = kind === "long" ? entry + dist : entry - dist;
         const stop = kind === "long" ? entry - dist : entry + dist;
-        // Default width: 20 bars to the right
         const intervalSec = timeframeToSeconds(
           useChartStore.getState().timeframe,
         );
-        const timeB = time + 20 * intervalSec;
+        // Default width: ~10% of visible bars, between 5 and 30 bars
+        const visibleBars = useChartStore.getState().visibleBars;
+        const widthBars = Math.max(5, Math.min(30, Math.round(visibleBars * 0.1)));
+        const timeB = time + widthBars * intervalSec;
         const defaults = useChartStore.getState().toolDefaults[kind] ?? {};
         void drawingsApiRef.current.add({
           id: generateId(),

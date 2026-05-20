@@ -55,16 +55,18 @@ export function DrawingSettingsDialog() {
             drawing={drawing}
             onApply={(patch) => {
               void update(drawing.id, patch);
-              // Persist the style as default for this tool
-              const stylePatch: {
-                color?: string;
-                lineWidth?: number;
-              } = {};
+              // Persist style as default so next drawing of this kind reuses it
+              const stylePatch: Record<string, unknown> = {};
               if (patch.color !== undefined) stylePatch.color = patch.color;
-              if (patch.lineWidth !== undefined)
-                stylePatch.lineWidth = patch.lineWidth;
+              if (patch.lineWidth !== undefined) stylePatch.lineWidth = patch.lineWidth;
+              // Position-specific fields
+              const p = patch as Record<string, unknown>;
+              if (p.stopColor !== undefined) stylePatch.stopColor = p.stopColor;
+              if (p.targetColor !== undefined) stylePatch.targetColor = p.targetColor;
+              if (p.textColor !== undefined) stylePatch.textColor = p.textColor;
+              if (p.showLabels !== undefined) stylePatch.showLabels = p.showLabels;
               if (Object.keys(stylePatch).length > 0) {
-                setToolDefault(drawing.kind, stylePatch);
+                setToolDefault(drawing.kind, stylePatch as Parameters<typeof setToolDefault>[1]);
               }
               setEditing(null);
             }}
