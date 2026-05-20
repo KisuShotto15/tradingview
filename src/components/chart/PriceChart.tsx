@@ -1943,6 +1943,22 @@ export function PriceChart({ symbol, timeframe }: Props) {
             red: squeezeStyle.momentumDecNeg,
             maroon: squeezeStyle.momentumIncNeg,
           }}
+          opacity={(() => {
+            // When ADX shares the Squeeze pane and is set "to front", dim the SVG
+            // bars so the ADX canvas line reads as visually on top.
+            const adxSharedWithSqueeze =
+              indicators.adx &&
+              (indicatorOverlays.adx === "squeeze" || indicatorOverlays.squeeze === "adx");
+            if (!adxSharedWithSqueeze) return 1;
+            const hostKey: IndicatorKey =
+              indicatorOverlays.squeeze === "adx" ? "adx" : "squeeze";
+            const zOrder = paneZOrder[hostKey];
+            const adxOnTop =
+              !zOrder || !zOrder.includes("adx") || !zOrder.includes("squeeze")
+                ? true
+                : zOrder.indexOf("adx") > zOrder.indexOf("squeeze");
+            return adxOnTop ? 0.5 : 1;
+          })()}
         />
       )}
       {previewState && (

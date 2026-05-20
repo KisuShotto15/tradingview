@@ -13,6 +13,7 @@ interface Props {
   visible: boolean;
   paneTop: number;
   paneHeight: number;
+  opacity?: number;
 }
 
 type Pt = { x: number; y: number };
@@ -59,6 +60,7 @@ export function SqueezeOverlay({
   visible,
   paneTop,
   paneHeight,
+  opacity = 1,
 }: Props) {
   if (!chart || !squeezeSeries || !visible || pts.length === 0) return null;
 
@@ -134,8 +136,8 @@ export function SqueezeOverlay({
 
   return (
     <svg
-      className="pointer-events-none absolute z-[5]"
-      style={{ top: paneTop, height: paneHeight, left: 0, right: 0, width: "100%" }}
+      className="pointer-events-none absolute z-[5] transition-opacity duration-200"
+      style={{ top: paneTop, height: paneHeight, left: 0, right: 0, width: "100%", opacity }}
     >
       <defs>
         <clipPath id="sqz-pane">
