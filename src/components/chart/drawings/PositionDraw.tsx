@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type {
   LongPositionDrawing,
@@ -76,6 +76,8 @@ export function PositionDraw({
   const profitFill = `${profitColor}20`;
   const lossFill = `${lossColor}20`;
   const entryColor = drawing.color ?? "#d1d4dc";
+
+  const [hovered, setHovered] = useState(false);
 
   const { updateLive, commit } = useDrawings();
   const snapshotRef = useRef<PositionDrawing | null>(null);
@@ -205,6 +207,8 @@ export function PositionDraw({
         x={left} y={profitY1} width={zoneWidth} height={profitZoneH}
         fill={profitFill}
         style={{ pointerEvents: "all", cursor: zoneCursor }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         onMouseDown={onZoneMouseDown}
         onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
@@ -213,6 +217,8 @@ export function PositionDraw({
         x={left} y={lossY1} width={zoneWidth} height={lossZoneH}
         fill={lossFill}
         style={{ pointerEvents: "all", cursor: zoneCursor }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         onMouseDown={onZoneMouseDown}
         onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
@@ -220,7 +226,7 @@ export function PositionDraw({
       {/* Entry line */}
       <line
         x1={left} x2={right} y1={yEntry} y2={yEntry}
-        stroke={entryColor} strokeWidth={1.5}
+        stroke={entryColor} strokeWidth={drawing.lineWidth ?? 1.5}
         style={{ pointerEvents: "none" }}
       />
 
@@ -272,21 +278,17 @@ export function PositionDraw({
         </g>
       )}
 
-      {/* Handles — only when selected */}
-      {selected && (
+      {/* Handles — visible on hover or when selected */}
+      {(hovered || selected) && (
         <>
-          {/* Entry: left corner */}
-          <DrawHandle x={left} y={yEntry} color={entryColor} selected onMouseDown={makeYDrag("entry")} />
-          {/* Stop: left corner */}
-          <DrawHandle x={left} y={yStop} color={lossColor} selected onMouseDown={makeYDrag("stop")} />
-          {/* Target: left corner */}
-          <DrawHandle x={left} y={yTarget} color={profitColor} selected onMouseDown={makeYDrag("target")} />
-          {/* Right resize handle */}
+          <DrawHandle x={left} y={yEntry} color={entryColor} selected={selected} onMouseDown={makeYDrag("entry")} />
+          <DrawHandle x={left} y={yStop} color={lossColor} selected={selected} onMouseDown={makeYDrag("stop")} />
+          <DrawHandle x={left} y={yTarget} color={profitColor} selected={selected} onMouseDown={makeYDrag("target")} />
           <DrawHandle
             x={xB}
             y={(Math.min(profitY1, lossY1) + Math.max(profitY2, lossY2)) / 2}
             color={entryColor}
-            selected
+            selected={selected}
             onMouseDown={onRightHandleDrag}
           />
         </>
