@@ -1734,7 +1734,14 @@ export function PriceChart({ symbol, timeframe }: Props) {
             to: lastIdx + 4,
           });
         }
-        requestAnimationFrame(() => recomputePaneOffsets());
+        // Recompute pane offsets in multiple frames: lightweight-charts needs
+        // at least two render cycles after setData() to settle pane heights.
+        // The setTimeout backup catches cases where the first frames are still early.
+        requestAnimationFrame(() => {
+          recomputePaneOffsets();
+          requestAnimationFrame(() => recomputePaneOffsets());
+        });
+        setTimeout(() => recomputePaneOffsets(), 200);
 
         if (klines.length > 0) {
           const last = klines[klines.length - 1];
