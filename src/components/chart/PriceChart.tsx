@@ -394,12 +394,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
         const intervalSec = timeframeToSeconds(
           useChartStore.getState().timeframe,
         );
-        // Default width: ~10% of visible bars, between 5 and 30 bars
-        const liveRange = chart.timeScale().getVisibleLogicalRange();
-        const liveVisibleBars = liveRange
-          ? Math.round(liveRange.to - liveRange.from)
-          : useChartStore.getState().visibleBars;
-        const widthBars = Math.max(5, Math.min(30, Math.round(liveVisibleBars * 0.1)));
+        // Default width: fixed pixel target so the box looks the same regardless of zoom/timeframe
+        const tsOpts = chart.timeScale().options() as { barSpacing?: number };
+        const barSpacing = tsOpts.barSpacing ?? 8;
+        const widthBars = Math.max(3, Math.round(72 / barSpacing));
         const timeB = time + widthBars * intervalSec;
         const defaults = useChartStore.getState().toolDefaults[kind] ?? {};
         void drawingsApiRef.current.add({
