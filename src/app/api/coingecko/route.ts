@@ -1,0 +1,147 @@
+import { NextResponse } from "next/server";
+
+/**
+ * CoinGecko proxy for crypto dominance and total market cap series.
+ *
+ * Implementation notes:
+ *  - CoinGecko's free `/global` endpoint gives CURRENT dominance percentages.
+ *  - For historical dominance we approximate it as
+ *        coin_market_cap[t] / SUM(top_N_coins_market_cap[t])
+ *    using each coin's `/coins/{id}/market_chart` series. The top-N set is the
+ *    top 10 by current cap which captures ≥ 90% of total market cap.
+ *  - For "total", "total2", "total3" we return the summed top-N series with the
+ *    respective exclusions.
+ *
+ * Query: ?coin=bitcoin&days=365            → BTC dominance series (%)
+ *        ?coin=total&days=365              → total market cap (USD)
+ *        ?coin=total2&days=365             → total mcap excluding BTC
+ *        ?coin=total3&days=365             → total mcap excluding BTC and ETH
+ * Returns: { candles: Candle[] }
+ */
+
+interface Candle {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  isFinal: boolean;
+}
+
+interface MarketChart {
+  market_caps: Array<[number, number]>;
+}
+
+const CG_BASE = "https://api.coingecko.com/api/v3";
+
+/** Top-N coin IDs used to approximate total crypto market cap. */
+const TOP_COINS = [
+  "bitcoin",
+  "ethereum",
+  "tether",
+  "binancecoin",
+  "solana",
+  "usd-coin",
+  "ripple",
+  "staked-ether",
+  "dogecoin",
+  "cardano",
+];
+
+async function fetchMarketCaps(coinId: string, days: number): Promise<Array<[number, number]>> {
+  const url = `${CG_BASE}/coins/${encodeURIComponent(coinId)}/market_chart` +
+    `?vs_currency=usd&days=${days}&interval=daily`;
+  const res = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; chart-proxy/1.0)" },
+    next: { revalidate: 300 }, // 5 min server cache
+  });
+  if (!res.ok) throw new Error(`CoinGecko ${coinId} ${res.status}`);
+  const data = (await res.json()) as MarketChart;
+  return data.market_caps ?? [];
+}
+
+/** Align multiple series on their common timestamps (CoinGecko uses ms epochs). */
+function alignSeries(
+  seriesById: Record<string, Array<[number, number]>>,
+): { time: number; values: Record<string, number> }[] {
+  const ids = Object.keys(seriesById);
+  if (ids.length === 0) return [];
+  // Use the first series as the time axis; others are looked up by index since
+  // CoinGecko returns aligned daily samples.
+  const base = seriesById[ids[0]];
+  const out: { time: number; values: Record<string, number> }[] = [];
+  for (let i = 0; i < base.length; i++) {
+    const t = base[i][0];
+    const values: Record<string, number> = {};
+    let ok = true;
+    for (const id of ids) {
+      const point = seriesById[id][i];
+      if (!point || typeof point[1] !== "number") {
+        ok = false;
+        break;
+      }
+      values[id] = point[1];
+    }
+    if (ok) out.push({ time: t, values });
+  }
+  return out;
+}
+
+function toCandle(timeMs: number, value: number): Candle {
+  const t = Math.floor(timeMs / 1000);
+  return { time: t, open: value, high: value, low: value, close: value, volume: 0, isFinal: true };
+}
+
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const coin = url.searchParams.get("coin")?.trim().toLowerCase();
+  const days = Math.max(1, Math.min(3650, parseInt(url.searchParams.get("days") ?? "365", 10) || 365));
+  if (!coin) return NextResponse.json({ error: "Missing coin" }, { status: 400 });
+
+  try {
+    // For total/total2/total3 we sum the top-N coin caps (with exclusions).
+    const exclude: Set<string> =
+      coin === "total" ? new Set()
+      : coin === "total2" ? new Set(["bitcoin"])
+      : coin === "total3" ? new Set(["bitcoin", "ethereum"])
+      : new Set();
+    const isAggregate = coin === "total" || coin === "total2" || coin === "total3";
+
+    if (isAggregate) {
+      const ids = TOP_COINS.filter((c) => !exclude.has(c));
+      const seriesById: Record<string, Array<[number, number]>> = {};
+      await Promise.all(ids.map(async (id) => {
+        seriesById[id] = await fetchMarketCaps(id, days);
+      }));
+      const aligned = alignSeries(seriesById);
+      const candles = aligned.map(({ time, values }) => {
+        let sum = 0;
+        for (const id of ids) sum += values[id] ?? 0;
+        return toCandle(time, sum);
+      });
+      return NextResponse.json({ candles });
+    }
+
+    // Dominance series for a specific coin: caps[coin] / sum(top_N caps)
+    const ids = Array.from(new Set([coin, ...TOP_COINS]));
+    const seriesById: Record<string, Array<[number, number]>> = {};
+    await Promise.all(ids.map(async (id) => {
+      seriesById[id] = await fetchMarketCaps(id, days);
+    }));
+    const aligned = alignSeries(seriesById);
+    const candles = aligned.map(({ time, values }) => {
+      let total = 0;
+      for (const id of TOP_COINS) total += values[id] ?? 0;
+      const own = values[coin] ?? 0;
+      const pct = total > 0 ? (own / total) * 100 : 0;
+      return toCandle(time, pct);
+    });
+    return NextResponse.json({ candles });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "fetch failed" },
+      { status: 500 },
+    );
+  }
+}

@@ -19,6 +19,18 @@ import {
 import { useChartStore } from "@/lib/store/chart-store";
 import { cn } from "@/lib/utils";
 import type { SymbolInfo } from "@/lib/binance/types";
+import { CATALOG } from "@/lib/symbols/catalog";
+
+/** Catalog entries presented as SymbolInfo so they slot into the existing list UI. */
+const CATALOG_AS_SYMBOLS: (SymbolInfo & { category: string; description: string })[] =
+  CATALOG.map((e) => ({
+    symbol: e.ticker,
+    baseAsset: e.ticker,
+    quoteAsset: e.category,
+    status: "TRADING",
+    category: e.category,
+    description: e.description,
+  }));
 
 export function SymbolSelector() {
   const symbol = useChartStore((s) => s.symbol);
@@ -42,7 +54,13 @@ export function SymbolSelector() {
 
   useEffect(() => {
     if (open && allSymbols.length === 0) {
-      fetchExchangeSymbols().then(setAllSymbols).catch(console.error);
+      fetchExchangeSymbols()
+        .then((binance) => setAllSymbols([...CATALOG_AS_SYMBOLS, ...binance]))
+        .catch((err) => {
+          console.error(err);
+          // Even if Binance fails, the catalog symbols should still be selectable.
+          setAllSymbols([...CATALOG_AS_SYMBOLS]);
+        });
     }
   }, [open, allSymbols.length]);
 

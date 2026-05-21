@@ -18,14 +18,13 @@ import {
   type UTCTimestamp,
   type MouseEventParams,
 } from "lightweight-charts";
-import { fetchKlines } from "@/lib/binance/rest";
 import { getBinanceWS } from "@/lib/binance/ws";
 import {
-  fetchSyntheticKlines,
-  isSyntheticExpression,
   extractSymbols,
   evaluateCandleAt,
 } from "@/lib/binance/synthetic";
+import { fetchCandles } from "@/lib/data/fetch";
+import { resolveSource } from "@/lib/symbols/source";
 import { ema, rsi, macd } from "@/lib/indicators";
 import { adx as adxCalc } from "@/lib/indicators/adx";
 import { squeezeMomentum } from "@/lib/indicators/squeeze";
@@ -1690,10 +1689,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
     async function load() {
       try {
-        const synthetic = isSyntheticExpression(symbol);
-        const klines = synthetic
-          ? await fetchSyntheticKlines(symbol, timeframe, 1000)
-          : await fetchKlines(symbol, timeframe, 1000);
+        const source = resolveSource(symbol);
+        const synthetic = source.kind === "synthetic";
+        const klines = await fetchCandles(symbol, timeframe, 1000);
         if (cancelled) return;
         candlesRef.current = klines;
         globalCandlesRef.current = klines;
@@ -1750,6 +1748,56 @@ export function PriceChart({ symbol, timeframe }: Props) {
             value: last.close,
             pct: prev.close === 0 ? 0 : ((last.close - prev.close) / prev.close) * 100,
           });
+        }
+
+        // Non-Binance sources: poll for fresh data periodically.
+        if (source.kind === "yahoo" || source.kind === "fred" || source.kind === "coingecko") {
+          const intervalMs =
+            source.kind === "yahoo" ? 5000
+            : source.kind === "coingecko" ? 60_000
+            : 3_600_000; // FRED updates at most daily
+          const timer = setInterval(async () => {
+            try {
+              const fresh = await fetchCandles(symbol, timeframe, 1000);
+              if (cancelled || !candleSeriesRef.current || fresh.length === 0) return;
+              candlesRef.current = fresh;
+              globalCandlesRef.current = fresh;
+              candleSeriesRef.current.setData(
+                fresh.map((k) => ({
+                  time: k.time as UTCTimestamp,
+                  open: k.open,
+                  high: k.high,
+                  low: k.low,
+                  close: k.close,
+                })),
+              );
+              if (volumeSeriesRef.current) {
+                volumeSeriesRef.current.setData(
+                  fresh.map((k) => ({
+                    time: k.time as UTCTimestamp,
+                    value: k.volume,
+                    color: k.close >= k.open ? `${TV_COLORS.green}66` : `${TV_COLORS.red}66`,
+                  })),
+                );
+              }
+              updateEMAs();
+              updateRSI();
+              updateMACD();
+              updateADX();
+              updateSqueeze();
+              updateVumanchu();
+              const last = fresh[fresh.length - 1];
+              const prev = fresh[fresh.length - 2] ?? last;
+              setLastPrice({
+                value: last.close,
+                pct: prev.close === 0 ? 0 : ((last.close - prev.close) / prev.close) * 100,
+              });
+            } catch (e) {
+              console.error("Polling refresh failed:", e);
+            }
+          }, intervalMs);
+          unsub = () => clearInterval(timer);
+          return;
         }
 
         const ws = getBinanceWS();
