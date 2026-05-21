@@ -35,9 +35,9 @@ interface Props {
 
 /** Pill shown outside the zone (above or below). */
 function OuterPill({
-  cx, y, text, color, above,
+  cx, y, text, color, textColor, above,
 }: {
-  cx: number; y: number; text: string; color: string; above: boolean;
+  cx: number; y: number; text: string; color: string; textColor: string; above: boolean;
 }) {
   const charW = 6.2;
   const padX = 10;
@@ -55,7 +55,7 @@ function OuterPill({
       <text
         x={cx} y={pillY + h / 2 + 4}
         textAnchor="middle"
-        fill="#000000" fontSize={10} fontWeight="700"
+        fill={textColor} fontSize={10} fontWeight="700"
         fontFamily="var(--font-mono), monospace"
       >
         {text}
@@ -253,11 +253,11 @@ export function PositionDraw({
         <>
           <OuterPill
             cx={left + zoneWidth / 2} y={topY}
-            text={topPillText} color={topPillColor} above
+            text={topPillText} color={topPillColor} textColor={drawing.textColor ?? "#000000"} above
           />
           <OuterPill
             cx={left + zoneWidth / 2} y={bottomY}
-            text={bottomPillText} color={bottomPillColor} above={false}
+            text={bottomPillText} color={bottomPillColor} textColor={drawing.textColor ?? "#000000"} above={false}
           />
         </>
       )}
