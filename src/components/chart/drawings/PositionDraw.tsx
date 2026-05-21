@@ -33,26 +33,20 @@ interface Props {
   container: HTMLElement | null;
 }
 
-/** Estimate SVG text box width given string and font size in px (monospace). */
-function textBoxWidth(text: string, fontSize: number, padX = 8): number {
-  return Math.max(text.length * fontSize * 0.62 + padX * 2, 60);
-}
-
-/** Rounded-rect label with colored fill and white text. */
-function StatsBubble({
-  x, y, w, h = 20, text, fill, textSize = 10, anchor = "start",
+/** Tiny price pill at the right edge of a horizontal line. */
+function PricePill({
+  x, y, text, color,
 }: {
-  x: number; y: number; w: number; h?: number;
-  text: string; fill: string; textSize?: number; anchor?: "start" | "middle" | "end";
+  x: number; y: number; text: string; color: string;
 }) {
-  const tx = anchor === "start" ? x + 7 : anchor === "end" ? x + w - 7 : x + w / 2;
+  const w = text.length * 5.8 + 12;
   return (
     <g style={{ pointerEvents: "none" }}>
-      <rect x={x} y={y} width={w} height={h} fill={fill} rx={3} />
+      <rect x={x - w - 2} y={y - 8} width={w} height={15} fill={color} rx={2} opacity={0.85} />
       <text
-        x={tx} y={y + h / 2 + textSize * 0.38}
-        textAnchor={anchor === "start" ? "start" : anchor === "end" ? "end" : "middle"}
-        fill="#ffffff" fontSize={textSize}
+        x={x - w / 2 - 2} y={y + 3}
+        textAnchor="middle"
+        fill="#fff" fontSize={9}
         fontFamily="var(--font-mono), monospace"
       >
         {text}
@@ -79,8 +73,8 @@ export function PositionDraw({
 
   const profitColor = drawing.targetColor ?? "#26a69a";
   const lossColor = drawing.stopColor ?? "#ef5350";
-  const profitFill = `${profitColor}26`;
-  const lossFill = `${lossColor}26`;
+  const profitFill = `${profitColor}20`;
+  const lossFill = `${lossColor}20`;
   const entryColor = drawing.color ?? "#d1d4dc";
 
   const { updateLive, commit } = useDrawings();
@@ -117,7 +111,7 @@ export function PositionDraw({
       }
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
-      document.body.style.cursor = "grabbing";
+      document.body.style.cursor = "ns-resize";
     };
   }
 
@@ -130,7 +124,6 @@ export function PositionDraw({
     function onMove(ev: MouseEvent) {
       const rect = container!.getBoundingClientRect();
       const x = ev.clientX - rect.left;
-      // Use xToTime so dragging into the future (right offset area) works
       const t = xToTime(chart!, x, globalCandlesRef.current, intervalSec);
       if (t === null) return;
       updateLive(drawing.id, { timeB: t } as Partial<Drawing>);
@@ -197,142 +190,106 @@ export function PositionDraw({
   }
   const zoneCursor = selected ? "move" : "pointer";
 
-  // Outside stats bubbles
-  const profitText = isLong
-    ? `${formatPrice(drawing.target)}  (+${pctProfit.toFixed(2)}%)`
-    : `${formatPrice(drawing.target)}  (-${pctProfit.toFixed(2)}%)`;
-  const lossText = isLong
-    ? `${formatPrice(drawing.stop)}  (-${pctLoss.toFixed(2)}%)`
-    : `${formatPrice(drawing.stop)}  (+${pctLoss.toFixed(2)}%)`;
-
-  const bubbleH = 22;
-  const profitBubbleW = Math.min(textBoxWidth(profitText, 10), zoneWidth);
-  const lossBubbleW = Math.min(textBoxWidth(lossText, 10), zoneWidth);
-
-  // RR badge inside profit zone (center)
+  // Zone centers for text
   const profitCenterY = (profitY1 + profitY2) / 2;
-  const rrText = `${formatPrice(reward)}  ·  RR ${rr.toFixed(2)}`;
-  const rrBubbleW = Math.min(textBoxWidth(rrText, 9), zoneWidth - 8);
-
-  // 1:RR badge inside loss zone (center)
   const lossCenterY = (lossY1 + lossY2) / 2;
-  const lossRrText = `${formatPrice(risk)}  ·  1 : ${rr.toFixed(2)}`;
-  const lossRrBubbleW = Math.min(textBoxWidth(lossRrText, 9), zoneWidth - 8);
+  const textX = left + zoneWidth / 2;
+
+  const profitZoneH = profitY2 - profitY1;
+  const lossZoneH = lossY2 - lossY1;
 
   return (
     <g>
       {/* Profit zone */}
       <rect
-        x={left} y={profitY1} width={zoneWidth} height={profitY2 - profitY1}
+        x={left} y={profitY1} width={zoneWidth} height={profitZoneH}
         fill={profitFill}
-        stroke={selected ? profitColor : "none"}
-        strokeWidth={selected ? 0.5 : 0}
         style={{ pointerEvents: "all", cursor: zoneCursor }}
         onMouseDown={onZoneMouseDown}
         onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
       {/* Loss zone */}
       <rect
-        x={left} y={lossY1} width={zoneWidth} height={lossY2 - lossY1}
+        x={left} y={lossY1} width={zoneWidth} height={lossZoneH}
         fill={lossFill}
-        stroke={selected ? lossColor : "none"}
-        strokeWidth={selected ? 0.5 : 0}
         style={{ pointerEvents: "all", cursor: zoneCursor }}
         onMouseDown={onZoneMouseDown}
         onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
 
-      {/* Entry line — always visible */}
+      {/* Entry line */}
       <line
         x1={left} x2={right} y1={yEntry} y2={yEntry}
         stroke={entryColor} strokeWidth={1.5}
         style={{ pointerEvents: "none" }}
       />
+      {/* Stop line */}
+      <line
+        x1={left} x2={right} y1={yStop} y2={yStop}
+        stroke={lossColor} strokeWidth={1} strokeDasharray="4,3" opacity={0.7}
+        style={{ pointerEvents: "none" }}
+      />
+      {/* Target line */}
+      <line
+        x1={left} x2={right} y1={yTarget} y2={yTarget}
+        stroke={profitColor} strokeWidth={1} strokeDasharray="4,3" opacity={0.7}
+        style={{ pointerEvents: "none" }}
+      />
 
-      {/* Stop / Target dashed lines — when labels shown */}
-      {showLabels && (
-        <>
-          <line
-            x1={left} x2={right} y1={yStop} y2={yStop}
-            stroke={lossColor} strokeWidth={1} strokeDasharray="4,3"
-            style={{ pointerEvents: "none" }}
-          />
-          <line
-            x1={left} x2={right} y1={yTarget} y2={yTarget}
-            stroke={profitColor} strokeWidth={1} strokeDasharray="4,3"
-            style={{ pointerEvents: "none" }}
-          />
-        </>
-      )}
+      {/* Price pills on the right edge */}
+      <PricePill x={right} y={yEntry} text={formatPrice(drawing.entry)} color={entryColor} />
+      <PricePill x={right} y={yStop} text={formatPrice(drawing.stop)} color={lossColor} />
+      <PricePill x={right} y={yTarget} text={formatPrice(drawing.target)} color={profitColor} />
 
-      {/* Entry price label at entry line */}
-      {showLabels && (
-        <text
-          x={left + 6} y={yEntry - 5}
-          fill={entryColor} fontSize={9.5}
-          fontFamily="var(--font-mono), monospace"
-          style={{ pointerEvents: "none" }}
-        >
-          {`Entry  ${formatPrice(drawing.entry)}`}
-        </text>
-      )}
-
-      {/* Stats labels — outside zones + inside RR bubbles */}
-      {showLabels && (
-        <>
-          {/* TOP bubble: profit stats — OUTSIDE the profit zone, above it */}
-          <StatsBubble
-            x={left} y={profitY1 - bubbleH - 3}
-            w={profitBubbleW} h={bubbleH}
-            text={profitText}
-            fill={`${profitColor}cc`}
-          />
-
-          {/* BOTTOM bubble: loss stats — OUTSIDE the loss zone, below it */}
-          <StatsBubble
-            x={left} y={lossY2 + 3}
-            w={lossBubbleW} h={bubbleH}
-            text={lossText}
-            fill={`${lossColor}99`}
-          />
-
-          {/* RR bubble inside profit zone (only if zone is tall enough) */}
-          {profitY2 - profitY1 > 30 && (
-            <StatsBubble
-              x={(left + right) / 2 - rrBubbleW / 2}
-              y={profitCenterY - 11}
-              w={rrBubbleW} h={22}
-              text={rrText}
-              fill={`${profitColor}cc`}
-              textSize={9}
-              anchor="middle"
-            />
+      {/* Stats text inside zones — only when there's enough space */}
+      {showLabels && profitZoneH > 28 && (
+        <g style={{ pointerEvents: "none" }}>
+          <text
+            x={textX} y={profitCenterY + (profitZoneH > 52 ? -7 : 4)}
+            textAnchor="middle" fill={profitColor}
+            fontSize={11} fontWeight="600"
+            fontFamily="var(--font-mono), monospace"
+            opacity={0.9}
+          >
+            {isLong ? "+" : "-"}{pctProfit.toFixed(2)}%
+          </text>
+          {profitZoneH > 52 && (
+            <text
+              x={textX} y={profitCenterY + 10}
+              textAnchor="middle" fill={profitColor}
+              fontSize={9} opacity={0.55}
+              fontFamily="var(--font-mono), monospace"
+            >
+              RR {rr.toFixed(2)}
+            </text>
           )}
-
-          {/* Loss stats bubble inside loss zone */}
-          {lossY2 - lossY1 > 30 && (
-            <StatsBubble
-              x={(left + right) / 2 - lossRrBubbleW / 2}
-              y={lossCenterY - 11}
-              w={lossRrBubbleW} h={22}
-              text={lossRrText}
-              fill={`${lossColor}88`}
-              textSize={9}
-              anchor="middle"
-            />
-          )}
-        </>
+        </g>
       )}
 
+      {showLabels && lossZoneH > 28 && (
+        <g style={{ pointerEvents: "none" }}>
+          <text
+            x={textX} y={lossCenterY + 4}
+            textAnchor="middle" fill={lossColor}
+            fontSize={11} fontWeight="600"
+            fontFamily="var(--font-mono), monospace"
+            opacity={0.9}
+          >
+            {isLong ? "-" : "+"}{pctLoss.toFixed(2)}%
+          </text>
+        </g>
+      )}
+
+      {/* Handles — only when selected */}
       {selected && (
         <>
-          {/* Vertical price handles (mid-x of zone) */}
-          <DrawHandle x={(left + right) / 2} y={yEntry} color={entryColor} selected onMouseDown={makeYDrag("entry")} />
-          <DrawHandle x={(left + right) / 2} y={yStop} color={lossColor} selected onMouseDown={makeYDrag("stop")} />
-          <DrawHandle x={(left + right) / 2} y={yTarget} color={profitColor} selected onMouseDown={makeYDrag("target")} />
-          {/* Left edge handle */}
-          <DrawHandle x={xA} y={yEntry} color={entryColor} selected onMouseDown={makeYDrag("entry")} />
-          {/* Right-center horizontal resize handle */}
+          {/* Entry: left corner */}
+          <DrawHandle x={left} y={yEntry} color={entryColor} selected onMouseDown={makeYDrag("entry")} />
+          {/* Stop: left corner */}
+          <DrawHandle x={left} y={yStop} color={lossColor} selected onMouseDown={makeYDrag("stop")} />
+          {/* Target: left corner */}
+          <DrawHandle x={left} y={yTarget} color={profitColor} selected onMouseDown={makeYDrag("target")} />
+          {/* Right resize handle */}
           <DrawHandle
             x={xB}
             y={(Math.min(profitY1, lossY1) + Math.max(profitY2, lossY2)) / 2}
