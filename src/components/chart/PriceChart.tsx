@@ -395,7 +395,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           priceTop !== null && priceBot !== null
             ? Math.abs((priceTop as number) - (priceBot as number))
             : null;
-        const dist = visibleRange ? visibleRange * 0.08 : Math.abs(entry) * 0.005 || 1;
+        const dist = visibleRange ? visibleRange * 0.16 : Math.abs(entry) * 0.01 || 1;
         const target = kind === "long" ? entry + dist : entry - dist;
         const stop = kind === "long" ? entry - dist : entry + dist;
         const intervalSec = timeframeToSeconds(
@@ -404,7 +404,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         // Default width: fixed pixel target so the box looks the same regardless of zoom/timeframe
         const tsOpts = chart.timeScale().options() as { barSpacing?: number };
         const barSpacing = tsOpts.barSpacing ?? 8;
-        const widthBars = Math.max(3, Math.round(72 / barSpacing));
+        const widthBars = Math.max(3, Math.round(144 / barSpacing));
         const timeB = time + widthBars * intervalSec;
         const defaults = useChartStore.getState().toolDefaults[kind] ?? {};
         void drawingsApiRef.current.add({
