@@ -55,7 +55,7 @@ function OuterPill({
       <text
         x={cx} y={pillY + h / 2 + 4}
         textAnchor="middle"
-        fill="#ffffff" fontSize={10} fontWeight="600"
+        fill="#000000" fontSize={10} fontWeight="700"
         fontFamily="var(--font-mono), monospace"
       >
         {text}
