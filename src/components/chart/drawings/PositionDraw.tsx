@@ -33,20 +33,29 @@ interface Props {
   container: HTMLElement | null;
 }
 
-/** Tiny price pill at the right edge of a horizontal line. */
-function PricePill({
-  x, y, text, color,
+/** Pill shown outside the zone (above or below). */
+function OuterPill({
+  cx, y, text, color, above,
 }: {
-  x: number; y: number; text: string; color: string;
+  cx: number; y: number; text: string; color: string; above: boolean;
 }) {
-  const w = text.length * 5.8 + 12;
+  const charW = 6.2;
+  const padX = 10;
+  const h = 18;
+  const w = Math.max(text.length * charW + padX * 2, 60);
+  const pillY = above ? y - h - 5 : y + 5;
   return (
     <g style={{ pointerEvents: "none" }}>
-      <rect x={x - w - 2} y={y - 8} width={w} height={15} fill={color} rx={2} opacity={0.85} />
+      <rect
+        x={cx - w / 2} y={pillY}
+        width={w} height={h}
+        fill={color} rx={6}
+        opacity={0.92}
+      />
       <text
-        x={x - w / 2 - 2} y={y + 3}
+        x={cx} y={pillY + h / 2 + 4}
         textAnchor="middle"
-        fill="#fff" fontSize={9}
+        fill="#ffffff" fontSize={10} fontWeight="600"
         fontFamily="var(--font-mono), monospace"
       >
         {text}
@@ -180,59 +189,57 @@ export function PositionDraw({
   const pctProfit = drawing.entry === 0 ? 0 : (reward / Math.abs(drawing.entry)) * 100;
   const pctLoss = drawing.entry === 0 ? 0 : (risk / Math.abs(drawing.entry)) * 100;
 
-  const showLabels = selected || (drawing.showLabels ?? false);
+  // Pill labels
+  const targetPillText = `${formatPrice(drawing.target)}  ${isLong ? "+" : "-"}${pctProfit.toFixed(2)}%`;
+  const stopPillText = `${formatPrice(drawing.stop)}  ${isLong ? "-" : "+"}${pctLoss.toFixed(2)}%`;
 
-  function onZoneMouseDown(e: React.MouseEvent) {
-    if (selected) {
-      dragShape(e);
-    } else {
-      e.stopPropagation();
-      onSelect();
-    }
-  }
-  const zoneCursor = selected ? "move" : "pointer";
-
-  // Zone centers for text
+  // Zone centers for inner text
   const profitCenterY = (profitY1 + profitY2) / 2;
   const lossCenterY = (lossY1 + lossY2) / 2;
   const textX = left + zoneWidth / 2;
-
   const profitZoneH = profitY2 - profitY1;
   const lossZoneH = lossY2 - lossY1;
 
-  // Bounding box that covers the full drawing + handle radius (8px) so
-  // moving the cursor onto a handle doesn't trigger onMouseLeave.
+  // Which is top / bottom
+  const topY = Math.min(profitY1, lossY1);
+  const bottomY = Math.max(profitY2, lossY2);
+  const topPillColor = isLong ? profitColor : lossColor;
+  const topPillText = isLong ? targetPillText : stopPillText;
+  const bottomPillColor = isLong ? lossColor : profitColor;
+  const bottomPillText = isLong ? stopPillText : targetPillText;
+
+  // Bounding hover rect
   const handleR = 8;
-  const boundTop = Math.min(profitY1, lossY1) - handleR;
-  const boundBottom = Math.max(profitY2, lossY2) + handleR;
+  const pillH = 23;
+  const boundTop = topY - pillH - handleR;
+  const boundBottom = bottomY + pillH + handleR;
   const boundLeft = left - handleR;
+
+  function onZoneMouseDown(e: React.MouseEvent) {
+    e.stopPropagation();
+    onSelect();
+    // Drag immediately — no need to click twice
+    dragShape(e);
+  }
 
   return (
     <g
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Invisible bounding rect — sole hover detector for the whole drawing */}
+      {/* Bounding rect — hover + drag target for the whole drawing */}
       <rect
         x={boundLeft} y={boundTop}
         width={zoneWidth + handleR * 2} height={boundBottom - boundTop}
         fill="transparent"
-        style={{ pointerEvents: "all", cursor: zoneCursor }}
+        style={{ pointerEvents: "all", cursor: "move" }}
         onMouseDown={onZoneMouseDown}
         onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
-      {/* Profit zone */}
-      <rect
-        x={left} y={profitY1} width={zoneWidth} height={profitZoneH}
-        fill={profitFill}
-        style={{ pointerEvents: "none" }}
-      />
-      {/* Loss zone */}
-      <rect
-        x={left} y={lossY1} width={zoneWidth} height={lossZoneH}
-        fill={lossFill}
-        style={{ pointerEvents: "none" }}
-      />
+
+      {/* Colored zones */}
+      <rect x={left} y={profitY1} width={zoneWidth} height={profitZoneH} fill={profitFill} style={{ pointerEvents: "none" }} />
+      <rect x={left} y={lossY1} width={zoneWidth} height={lossZoneH} fill={lossFill} style={{ pointerEvents: "none" }} />
 
       {/* Entry line */}
       <line
@@ -241,32 +248,37 @@ export function PositionDraw({
         style={{ pointerEvents: "none" }}
       />
 
-      {/* Price pills on the right edge — only when selected */}
-      {selected && (
+      {/* Outer pills — above top zone, below bottom zone — visible on hover or selected */}
+      {(hovered || selected) && (
         <>
-          <PricePill x={right} y={yEntry} text={formatPrice(drawing.entry)} color={entryColor} />
-          <PricePill x={right} y={yStop} text={formatPrice(drawing.stop)} color={lossColor} />
-          <PricePill x={right} y={yTarget} text={formatPrice(drawing.target)} color={profitColor} />
+          <OuterPill
+            cx={left + zoneWidth / 2} y={topY}
+            text={topPillText} color={topPillColor} above
+          />
+          <OuterPill
+            cx={left + zoneWidth / 2} y={bottomY}
+            text={bottomPillText} color={bottomPillColor} above={false}
+          />
         </>
       )}
 
-      {/* Stats text inside zones — only when selected and zone is tall enough */}
-      {selected && profitZoneH > 28 && (
+      {/* Inner stats — only when selected and zone is tall enough */}
+      {selected && profitZoneH > 32 && (
         <g style={{ pointerEvents: "none" }}>
           <text
-            x={textX} y={profitCenterY + (profitZoneH > 52 ? -7 : 4)}
+            x={textX} y={profitCenterY + (profitZoneH > 56 ? -6 : 4)}
             textAnchor="middle" fill={profitColor}
-            fontSize={11} fontWeight="600"
+            fontSize={12} fontWeight="700"
             fontFamily="var(--font-mono), monospace"
-            opacity={0.9}
+            opacity={0.85}
           >
             {isLong ? "+" : "-"}{pctProfit.toFixed(2)}%
           </text>
-          {profitZoneH > 52 && (
+          {profitZoneH > 56 && (
             <text
-              x={textX} y={profitCenterY + 10}
+              x={textX} y={profitCenterY + 12}
               textAnchor="middle" fill={profitColor}
-              fontSize={9} opacity={0.55}
+              fontSize={9} opacity={0.45}
               fontFamily="var(--font-mono), monospace"
             >
               RR {rr.toFixed(2)}
@@ -274,22 +286,21 @@ export function PositionDraw({
           )}
         </g>
       )}
-
-      {selected && lossZoneH > 28 && (
+      {selected && lossZoneH > 32 && (
         <g style={{ pointerEvents: "none" }}>
           <text
             x={textX} y={lossCenterY + 4}
             textAnchor="middle" fill={lossColor}
-            fontSize={11} fontWeight="600"
+            fontSize={12} fontWeight="700"
             fontFamily="var(--font-mono), monospace"
-            opacity={0.9}
+            opacity={0.85}
           >
             {isLong ? "-" : "+"}{pctLoss.toFixed(2)}%
           </text>
         </g>
       )}
 
-      {/* Handles — visible on hover or when selected */}
+      {/* Handles — visible on hover or selected */}
       {(hovered || selected) && (
         <>
           <DrawHandle x={left} y={yEntry} color={entryColor} selected={selected} onMouseDown={makeYDrag("entry")} />

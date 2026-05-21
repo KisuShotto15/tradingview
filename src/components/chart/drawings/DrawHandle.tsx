@@ -14,9 +14,9 @@ export function DrawHandle({ x, y, color, selected, onMouseDown }: Props) {
     <circle
       cx={x}
       cy={y}
-      r={selected ? 6 : 4}
-      fill={selected ? "#ffffff" : color}
-      stroke={selected ? color : "#ffffff"}
+      r={5}
+      fill="#0d0d0d"
+      stroke="#4a1d8a"
       strokeWidth={1.5}
       style={{ pointerEvents: "all", cursor: "grab" }}
       onMouseDown={onMouseDown}
