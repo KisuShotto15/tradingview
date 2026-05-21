@@ -15,11 +15,13 @@ import {
   DEFAULT_CONFIG,
   DEFAULT_ADX_STYLE,
   DEFAULT_SQUEEZE_STYLE,
+  DEFAULT_KEY_LEVELS,
   type IndicatorKey,
   type IndicatorConfig,
   type AdxStyle,
   type UserEMA,
   type SqueezeStyle,
+  type KeyLevelsConfig,
 } from "@/lib/store/chart-store";
 
 const TITLES: Record<IndicatorKey, string> = {
@@ -29,6 +31,8 @@ const TITLES: Record<IndicatorKey, string> = {
   adx: "ADX",
   squeeze: "Squeeze Momentum",
   vumanchu: "VuManChu Cipher B",
+  obv: "On-Balance Volume",
+  keylevels: "Key Levels (W,M,Q,Y)",
 };
 
 export function IndicatorSettingsDialog() {
@@ -328,6 +332,12 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
           The volume indicator has no configurable parameters in this version.
         </p>
       )}
+      {target === "obv" && (
+        <p className="text-xs text-tv-text-muted">
+          OBV uses cumulative volume signed by close direction. No parameters.
+        </p>
+      )}
+      {target === "keylevels" && <KeyLevelsSettings />}
 
       <div className="mt-2 flex items-center justify-between">
         <Button
@@ -619,6 +629,177 @@ function SqueezeStyleSection() {
         className="mt-1 self-end text-[10px] text-tv-text-muted underline hover:text-tv-text"
       >
         Reset style
+      </button>
+    </div>
+  );
+}
+
+/* ── Key Levels ────────────────────────────────────────────────────────── */
+
+function KLCheck({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-tv-text">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-3 w-3 accent-tv-blue"
+      />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+function KLGroup({
+  title,
+  color,
+  onColor,
+  children,
+}: {
+  title: string;
+  color: string;
+  onColor: (c: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded border border-tv-border bg-tv-bg/40 p-2">
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-tv-text-muted">
+          {title}
+        </span>
+        <ColorPicker value={color} onChange={onColor} />
+      </div>
+      <div className="grid grid-cols-2 gap-x-2 gap-y-1">{children}</div>
+    </div>
+  );
+}
+
+function KeyLevelsSettings() {
+  const kl = useChartStore((s) => s.keyLevels);
+  const setKL = useChartStore((s) => s.setKeyLevels);
+
+  function patch<K extends keyof KeyLevelsConfig>(
+    section: K,
+    diff: Partial<KeyLevelsConfig[K]>,
+  ) {
+    setKL({ [section]: { ...(kl[section] as object), ...diff } } as Partial<KeyLevelsConfig>);
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-3 gap-2">
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-tv-text-muted">
+            Distance
+          </span>
+          <Input
+            type="number"
+            min={1}
+            max={200}
+            value={kl.distance}
+            onChange={(e) => {
+              const n = parseInt(e.target.value, 10);
+              if (!isNaN(n)) setKL({ distance: n });
+            }}
+            className="bg-tv-bg tabular-nums"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-tv-text-muted">
+            Text size
+          </span>
+          <select
+            value={kl.textSize}
+            onChange={(e) => setKL({ textSize: e.target.value as KeyLevelsConfig["textSize"] })}
+            className="rounded border border-tv-border bg-tv-bg px-2 py-1 text-xs text-tv-text"
+          >
+            <option value="Small">Small</option>
+            <option value="Medium">Medium</option>
+            <option value="Large">Large</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-tv-text-muted">
+            Line width
+          </span>
+          <select
+            value={kl.lineWidth}
+            onChange={(e) => setKL({ lineWidth: e.target.value as KeyLevelsConfig["lineWidth"] })}
+            className="rounded border border-tv-border bg-tv-bg px-2 py-1 text-xs text-tv-text"
+          >
+            <option value="Small">Small</option>
+            <option value="Medium">Medium</option>
+            <option value="Large">Large</option>
+          </select>
+        </label>
+      </div>
+
+      <KLCheck
+        label="Always show (extend lines into chart area)"
+        checked={kl.alwaysShow}
+        onChange={(v) => setKL({ alwaysShow: v })}
+      />
+
+      <KLGroup title="Daily" color={kl.daily.color} onColor={(c) => patch("daily", { color: c })}>
+        <KLCheck label="Daily Open" checked={kl.daily.open} onChange={(v) => patch("daily", { open: v })} />
+        <KLCheck label="Previous Daily Open" checked={kl.daily.prevOpen} onChange={(v) => patch("daily", { prevOpen: v })} />
+        <KLCheck label="Previous H/L" checked={kl.daily.prevHL} onChange={(v) => patch("daily", { prevHL: v })} />
+        <KLCheck label="Previous Mid" checked={kl.daily.prevMid} onChange={(v) => patch("daily", { prevMid: v })} />
+      </KLGroup>
+
+      <KLGroup title="Monday Range" color={kl.monday.color} onColor={(c) => patch("monday", { color: c })}>
+        <KLCheck label="Monday Range" checked={kl.monday.range} onChange={(v) => patch("monday", { range: v })} />
+        <KLCheck label="Monday Mid" checked={kl.monday.mid} onChange={(v) => patch("monday", { mid: v })} />
+      </KLGroup>
+
+      <KLGroup title="Weekly" color={kl.weekly.color} onColor={(c) => patch("weekly", { color: c })}>
+        <KLCheck label="Weekly Open" checked={kl.weekly.open} onChange={(v) => patch("weekly", { open: v })} />
+        <KLCheck label="Previous Weekly Open" checked={kl.weekly.prevOpen} onChange={(v) => patch("weekly", { prevOpen: v })} />
+        <KLCheck label="Previous H/L" checked={kl.weekly.prevHL} onChange={(v) => patch("weekly", { prevHL: v })} />
+        <KLCheck label="Previous Mid" checked={kl.weekly.prevMid} onChange={(v) => patch("weekly", { prevMid: v })} />
+      </KLGroup>
+
+      <KLGroup title="Monthly" color={kl.monthly.color} onColor={(c) => patch("monthly", { color: c })}>
+        <KLCheck label="Monthly Open" checked={kl.monthly.open} onChange={(v) => patch("monthly", { open: v })} />
+        <KLCheck label="Previous Monthly Open" checked={kl.monthly.prevOpen} onChange={(v) => patch("monthly", { prevOpen: v })} />
+        <KLCheck label="Previous H/L" checked={kl.monthly.prevHL} onChange={(v) => patch("monthly", { prevHL: v })} />
+        <KLCheck label="Previous Mid" checked={kl.monthly.prevMid} onChange={(v) => patch("monthly", { prevMid: v })} />
+      </KLGroup>
+
+      <KLGroup title="Quarterly" color={kl.quarterly.color} onColor={(c) => patch("quarterly", { color: c })}>
+        <KLCheck label="Quarterly Open" checked={kl.quarterly.open} onChange={(v) => patch("quarterly", { open: v })} />
+        <KLCheck label="Previous Quarterly Open" checked={kl.quarterly.prevOpen} onChange={(v) => patch("quarterly", { prevOpen: v })} />
+        <KLCheck label="Previous H/L" checked={kl.quarterly.prevHL} onChange={(v) => patch("quarterly", { prevHL: v })} />
+        <KLCheck label="Previous Mid" checked={kl.quarterly.prevMid} onChange={(v) => patch("quarterly", { prevMid: v })} />
+      </KLGroup>
+
+      <KLGroup title="Yearly" color={kl.yearly.color} onColor={(c) => patch("yearly", { color: c })}>
+        <KLCheck label="Yearly Open" checked={kl.yearly.open} onChange={(v) => patch("yearly", { open: v })} />
+        <KLCheck label="Previous Yearly Open" checked={kl.yearly.prevOpen} onChange={(v) => patch("yearly", { prevOpen: v })} />
+        <KLCheck label="Current H/L" checked={kl.yearly.currHL} onChange={(v) => patch("yearly", { currHL: v })} />
+        <KLCheck label="Current Mid" checked={kl.yearly.currMid} onChange={(v) => patch("yearly", { currMid: v })} />
+      </KLGroup>
+
+      <KLGroup title="4H" color={kl.fourHour.color} onColor={(c) => patch("fourHour", { color: c })}>
+        <KLCheck label="4H Open" checked={kl.fourHour.open} onChange={(v) => patch("fourHour", { open: v })} />
+        <KLCheck label="Previous H/L" checked={kl.fourHour.prevHL} onChange={(v) => patch("fourHour", { prevHL: v })} />
+        <KLCheck label="Previous Mid" checked={kl.fourHour.prevMid} onChange={(v) => patch("fourHour", { prevMid: v })} />
+      </KLGroup>
+
+      <button
+        type="button"
+        onClick={() => setKL(DEFAULT_KEY_LEVELS)}
+        className="mt-1 self-end text-[10px] text-tv-text-muted underline hover:text-tv-text"
+      >
+        Reset to defaults
       </button>
     </div>
   );

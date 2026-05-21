@@ -118,8 +118,9 @@ const MACRO: SymbolEntry[] = [
   { ticker: "T10Y2Y",   providerSymbol: "T10Y2Y",   source: "fred", category: "Macro", description: "10-Year minus 2-Year Treasury spread" },
   { ticker: "DFF",      providerSymbol: "DFF",      source: "fred", category: "Macro", description: "Federal Funds Effective Rate" },
   { ticker: "RRPONTSYD",providerSymbol: "RRPONTSYD",source: "fred", category: "Macro", description: "Overnight Reverse Repo (Fed RRP)" },
-  // USBCOI is not a standard FRED series; mapping to closest equivalent for now.
-  { ticker: "USBCOI",   providerSymbol: "USEPUINDXD", source: "fred", category: "Macro", description: "US Economic Policy Uncertainty Index" },
+  // USBCOI maps to the OECD US Business Confidence Index long-form FRED ticker.
+  { ticker: "USBCOI",   providerSymbol: "BSCICP03USM665S", source: "fred", category: "Macro", description: "US Business Confidence Index (OECD)" },
+  { ticker: "USEPU",    providerSymbol: "USEPUINDXD",     source: "fred", category: "Macro", description: "US Economic Policy Uncertainty Index" },
 ];
 
 /* ────────────────────────────────────────────────────────────────────────── */

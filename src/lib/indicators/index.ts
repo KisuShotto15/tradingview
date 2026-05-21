@@ -115,3 +115,22 @@ export function macd(
   void slowStartTime;
   return out;
 }
+
+/**
+ * On-Balance Volume — cumulative volume signed by close direction.
+ *  obv[0] = 0
+ *  obv[i] = obv[i-1] + sign(close[i] - close[i-1]) * volume[i]
+ */
+export function obv(candles: Candle[]): IndicatorPoint[] {
+  const out: IndicatorPoint[] = [];
+  if (candles.length === 0) return out;
+  let acc = 0;
+  out.push({ time: candles[0].time, value: acc });
+  for (let i = 1; i < candles.length; i++) {
+    const diff = candles[i].close - candles[i - 1].close;
+    const sign = diff > 0 ? 1 : diff < 0 ? -1 : 0;
+    acc += sign * candles[i].volume;
+    out.push({ time: candles[i].time, value: acc });
+  }
+  return out;
+}

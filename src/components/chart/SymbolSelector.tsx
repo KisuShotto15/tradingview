@@ -94,6 +94,28 @@ export function SymbolSelector() {
     setQuery("");
   }
 
+  /** Pick the most relevant match for the current query — used by Enter. */
+  function bestMatch(): string | null {
+    if (!trimmed) return null;
+    if (isExpression && expressionValid) return trimmed;
+    // 1) Exact ticker match wins
+    const exact = filtered.find((s) => s.symbol.toUpperCase() === trimmed);
+    if (exact) return exact.symbol;
+    // 2) baseAsset exact match (e.g. "BTC" → "BTCUSDT" first hit)
+    const baseExact = filtered.find((s) => s.baseAsset.toUpperCase() === trimmed);
+    if (baseExact) return baseExact.symbol;
+    // 3) First filtered result
+    return filtered[0]?.symbol ?? null;
+  }
+
+  function submitBestMatch() {
+    const m = bestMatch();
+    if (!m) return;
+    setSymbol(m);
+    setOpen(false);
+    setQuery("");
+  }
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger className="group flex items-center gap-2 rounded px-3 py-1.5 text-sm font-semibold hover:bg-tv-panel-hover">
@@ -112,10 +134,10 @@ export function SymbolSelector() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && isExpression && expressionValid) {
-                e.preventDefault();
-                selectExpression();
-              }
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              if (isExpression && expressionValid) selectExpression();
+              else submitBestMatch();
             }}
             className="bg-tv-bg"
           />

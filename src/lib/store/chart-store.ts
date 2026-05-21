@@ -12,7 +12,9 @@ export type IndicatorKey =
   | "volume"
   | "adx"
   | "squeeze"
-  | "vumanchu";
+  | "vumanchu"
+  | "obv"
+  | "keylevels";
 
 export type DrawingTool =
   | "cursor"
@@ -66,6 +68,35 @@ export const DEFAULT_CONFIG: IndicatorConfig = {
   vumanchuMfiPeriod: 60,
 };
 
+export interface KeyLevelsConfig {
+  distance: number;          // bars to extend lines to the right
+  textSize: "Small" | "Medium" | "Large";
+  lineWidth: "Small" | "Medium" | "Large";
+  alwaysShow: boolean;
+
+  daily:     { open: boolean; prevOpen: boolean; prevHL: boolean; prevMid: boolean; color: string };
+  monday:    { range: boolean; mid: boolean; color: string };
+  weekly:    { open: boolean; prevOpen: boolean; prevHL: boolean; prevMid: boolean; color: string };
+  monthly:   { open: boolean; prevOpen: boolean; prevHL: boolean; prevMid: boolean; color: string };
+  quarterly: { open: boolean; prevOpen: boolean; prevHL: boolean; prevMid: boolean; color: string };
+  yearly:    { open: boolean; prevOpen: boolean; currHL: boolean; currMid: boolean; color: string };
+  fourHour:  { open: boolean; prevHL: boolean; prevMid: boolean; color: string };
+}
+
+export const DEFAULT_KEY_LEVELS: KeyLevelsConfig = {
+  distance: 20,
+  textSize: "Medium",
+  lineWidth: "Small",
+  alwaysShow: false,
+  daily:     { open: true,  prevOpen: false, prevHL: false, prevMid: false, color: "#08bcd4" },
+  monday:    { range: true,  mid: true,                                     color: "#ffffff" },
+  weekly:    { open: true,  prevOpen: true,  prevHL: true,  prevMid: true,  color: "#ffeb3b" },
+  monthly:   { open: true,  prevOpen: true,  prevHL: true,  prevMid: true,  color: "#26a69a" },
+  quarterly: { open: true,  prevOpen: false, prevHL: false, prevMid: false, color: "#ffa726" },
+  yearly:    { open: true,  prevOpen: false, currHL: false, currMid: false, color: "#ef5350" },
+  fourHour:  { open: false,                  prevHL: false, prevMid: false, color: "#ab47bc" },
+};
+
 export interface AdxStyle {
   adxColor: string;
   plusDiColor: string;
@@ -95,6 +126,8 @@ export const INDICATOR_COLORS: Record<IndicatorKey, string> = {
   adx: "#ffb74d",
   squeeze: "#2962ff",
   vumanchu: "#4994ec",
+  obv: "#ffb74d",
+  keylevels: "#08bcd4",
 };
 
 /** A user-added EMA instance. Multiple can coexist. */
@@ -210,6 +243,7 @@ interface ChartState {
   userEMAs: UserEMA[];
   /** ADX indicator style overrides */
   adxStyle: AdxStyle;
+  keyLevels: KeyLevelsConfig;
   /** Squeeze indicator style overrides */
   squeezeStyle: SqueezeStyle;
   /** Logarithmic price scale (main pane only) */
@@ -220,6 +254,8 @@ interface ChartState {
   visibleBars: number;
   /** Whether the indicator pill list on the main pane is collapsed */
   pillsCollapsed: boolean;
+  /** When true, all sub-pane indicators (RSI/MACD/ADX/Squeeze/VuManChu/OBV) are hidden. */
+  subPanesHidden: boolean;
   /**
    * Maps an indicator to the indicator whose pane it shares ("own" = its own
    * pane). E.g. { adx: "squeeze" } overlays ADX on the Squeeze pane.
@@ -272,11 +308,14 @@ interface ChartState {
   updateUserEMA: (id: string, patch: Partial<UserEMA>) => void;
   toggleUserEMAHidden: (id: string) => void;
   setAdxStyle: (patch: Partial<AdxStyle>) => void;
+  setKeyLevels: (patch: Partial<KeyLevelsConfig>) => void;
   setSqueezeStyle: (patch: Partial<SqueezeStyle>) => void;
   setLogScale: (v: boolean) => void;
   setIndicatorLogScale: (key: IndicatorKey, v: boolean) => void;
   setVisibleBars: (n: number) => void;
   setPillsCollapsed: (v: boolean) => void;
+  setSubPanesHidden: (v: boolean) => void;
+  toggleSubPanesHidden: () => void;
   setIndicatorOverlay: (key: IndicatorKey, target: IndicatorKey | "own") => void;
   setPaneZOrder: (host: IndicatorKey, order: IndicatorKey[]) => void;
   setPinnedTimeframes: (tfs: Timeframe[]) => void;
@@ -339,6 +378,8 @@ export const useChartStore = create<ChartState>()(
         adx: false,
         squeeze: false,
         vumanchu: false,
+        obv: false,
+        keylevels: false,
       },
       hidden: {
         rsi: false,
@@ -347,6 +388,8 @@ export const useChartStore = create<ChartState>()(
         adx: false,
         squeeze: false,
         vumanchu: false,
+        obv: false,
+        keylevels: false,
       },
       config: { ...DEFAULT_CONFIG },
       userEMAs: [
@@ -354,11 +397,13 @@ export const useChartStore = create<ChartState>()(
         { id: randomId(), period: 50, color: EMA_PALETTE[1], lineWidth: 1, hidden: false },
       ],
       adxStyle: { ...DEFAULT_ADX_STYLE },
+      keyLevels: { ...DEFAULT_KEY_LEVELS },
       squeezeStyle: { ...DEFAULT_SQUEEZE_STYLE },
       logScale: false,
       indicatorLogScale: {},
       visibleBars: 150,
       pillsCollapsed: false,
+      subPanesHidden: false,
       indicatorOverlays: {},
       paneZOrder: {},
       pinnedTimeframes: ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"] as Timeframe[],
@@ -503,6 +548,20 @@ export const useChartStore = create<ChartState>()(
         }
       },
 
+      setKeyLevels: (patch) => set((st) => ({
+        keyLevels: {
+          ...st.keyLevels,
+          ...patch,
+          daily:     { ...st.keyLevels.daily,     ...(patch.daily     ?? {}) },
+          monday:    { ...st.keyLevels.monday,    ...(patch.monday    ?? {}) },
+          weekly:    { ...st.keyLevels.weekly,    ...(patch.weekly    ?? {}) },
+          monthly:   { ...st.keyLevels.monthly,   ...(patch.monthly   ?? {}) },
+          quarterly: { ...st.keyLevels.quarterly, ...(patch.quarterly ?? {}) },
+          yearly:    { ...st.keyLevels.yearly,    ...(patch.yearly    ?? {}) },
+          fourHour:  { ...st.keyLevels.fourHour,  ...(patch.fourHour  ?? {}) },
+        },
+      })),
+
       setSqueezeStyle: (patch) => {
         if (!isApplyingHistory) {
           const s = get();
@@ -539,6 +598,8 @@ export const useChartStore = create<ChartState>()(
 
       setVisibleBars: (visibleBars) => set({ visibleBars }),
       setPillsCollapsed: (pillsCollapsed) => set({ pillsCollapsed }),
+      setSubPanesHidden: (subPanesHidden) => set({ subPanesHidden }),
+      toggleSubPanesHidden: () => set((s) => ({ subPanesHidden: !s.subPanesHidden })),
 
       setIndicatorOverlay: (key, target) => {
         if (!isApplyingHistory) {
@@ -727,11 +788,13 @@ export const useChartStore = create<ChartState>()(
         config: s.config,
         userEMAs: s.userEMAs,
         adxStyle: s.adxStyle,
+        keyLevels: s.keyLevels,
         squeezeStyle: s.squeezeStyle,
         logScale: s.logScale,
         indicatorLogScale: s.indicatorLogScale,
         visibleBars: s.visibleBars,
         pillsCollapsed: s.pillsCollapsed,
+        subPanesHidden: s.subPanesHidden,
         indicatorOverlays: s.indicatorOverlays,
         paneZOrder: s.paneZOrder,
         pinnedTimeframes: s.pinnedTimeframes,

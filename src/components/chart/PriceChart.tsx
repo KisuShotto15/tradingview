@@ -25,7 +25,7 @@ import {
 } from "@/lib/binance/synthetic";
 import { fetchCandles } from "@/lib/data/fetch";
 import { resolveSource } from "@/lib/symbols/source";
-import { ema, rsi, macd } from "@/lib/indicators";
+import { ema, rsi, macd, obv } from "@/lib/indicators";
 import { adx as adxCalc } from "@/lib/indicators/adx";
 import { squeezeMomentum } from "@/lib/indicators/squeeze";
 import { vumanchu as vumanchuCalc } from "@/lib/indicators/vumanchu";
@@ -46,6 +46,8 @@ import { SqueezeOverlay } from "./SqueezeOverlay";
 import { OrderLinesLayer } from "@/components/trading/OrderLinesLayer";
 import { BuySellOverlay } from "@/components/trading/BuySellOverlay";
 import { FloatingContextToolbar } from "./FloatingContextToolbar";
+import { KeyLevelsOverlay } from "./KeyLevelsOverlay";
+import { computeKeyLevels } from "@/lib/indicators/keylevels";
 import type { SqueezePoint } from "@/lib/indicators/squeeze";
 import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
@@ -151,6 +153,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const vmcOsRef = useRef<ISeriesApi<"Line"> | null>(null);
   const vmcZeroRef = useRef<ISeriesApi<"Line"> | null>(null);
   const vmcMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  // OBV pane
+  const obvRef = useRef<ISeriesApi<"Line"> | null>(null);
   const candlesRef = useRef<Candle[]>([]);
   const firstPointRef = useRef<{ time: number; price: number } | null>(null);
   const placementPointsRef = useRef<Array<{ time: number; price: number }>>([]);
@@ -170,6 +174,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const logScale = useChartStore((s) => s.logScale);
   const indicatorLogScale = useChartStore((s) => s.indicatorLogScale);
   const pillsCollapsed = useChartStore((s) => s.pillsCollapsed);
+  const subPanesHidden = useChartStore((s) => s.subPanesHidden);
+  const keyLevelsCfg = useChartStore((s) => s.keyLevels);
   const chartColors = useChartStore((s) => s.chartColors);
   chartColorsRef.current = chartColors;
   const tool = useChartStore((s) => s.tool);
@@ -731,17 +737,20 @@ export function PriceChart({ symbol, timeframe }: Props) {
       if (clickedPane === 0) {
         // Main pane: open EMA settings if click is near a line (within 10px)
         const param = latestCrosshairParamRef.current;
-        if (!param) return;
-        for (const [id, series] of emaSeriesMapRef.current) {
-          const data = param.seriesData.get(series);
-          if (data && "value" in data) {
-            const yCoord = series.priceToCoordinate(data.value as number);
-            if (yCoord !== null && Math.abs(yCoord - relY) <= 10) {
-              state.setSettingsTarget({ kind: "ema", id });
-              return;
+        if (param) {
+          for (const [id, series] of emaSeriesMapRef.current) {
+            const data = param.seriesData.get(series);
+            if (data && "value" in data) {
+              const yCoord = series.priceToCoordinate(data.value as number);
+              if (yCoord !== null && Math.abs(yCoord - relY) <= 10) {
+                state.setSettingsTarget({ kind: "ema", id });
+                return;
+              }
             }
           }
         }
+        // Empty background dblclick → toggle sub-pane visibility (TradingView-style)
+        state.toggleSubPanesHidden();
         return;
       }
 
@@ -780,6 +789,39 @@ export function PriceChart({ symbol, timeframe }: Props) {
     el.addEventListener("dblclick", onDblClick);
     return () => el.removeEventListener("dblclick", onDblClick);
   }, []);
+
+  // Hide / show all sub-pane series when subPanesHidden toggles.
+  useEffect(() => {
+    const visible = !subPanesHidden;
+    const subPaneSeries = [
+      rsiRef.current,
+      rsi30Ref.current,
+      rsi70Ref.current,
+      macdRef.current,
+      macdSignalRef.current,
+      macdHistRef.current,
+      adxRef.current,
+      adxPlusDIRef.current,
+      adxMinusDIRef.current,
+      adxKeyLevelRef.current,
+      squeezeHistRef.current,
+      squeezeDotsRef.current,
+      vmcWt1Ref.current,
+      vmcWt2Ref.current,
+      vmcVwapRef.current,
+      vmcMfiRef.current,
+      vmcRsiRef.current,
+      vmcObRef.current,
+      vmcOsRef.current,
+      vmcZeroRef.current,
+      obvRef.current,
+    ];
+    for (const s of subPaneSeries) {
+      if (s) s.applyOptions({ visible });
+    }
+    // Recompute pane offsets so labels/overlays reposition correctly.
+    requestAnimationFrame(() => recomputePaneOffsets());
+  }, [subPanesHidden, renderTick]);
 
   // Manage volume — overlay at the bottom of the main pane
   useEffect(() => {
@@ -923,8 +965,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
    *   1: RSI, 2: MACD, 3: ADX, 4: Squeeze, 5: VuManChu
    * Each indicator falls into the next available index based on which higher-priority ones are enabled.
    */
-  function panelIndexFor(key: "rsi" | "macd" | "adx" | "squeeze" | "vumanchu"): number {
-    const order: Array<typeof key> = ["rsi", "macd", "adx", "squeeze", "vumanchu"];
+  function panelIndexFor(key: "rsi" | "macd" | "adx" | "squeeze" | "vumanchu" | "obv"): number {
+    const order: Array<typeof key> = ["rsi", "macd", "adx", "squeeze", "vumanchu", "obv"];
     const assigned: Record<string, number> = {};
     let idx = 1;
     for (const k of order) {
@@ -1195,6 +1237,35 @@ export function PriceChart({ symbol, timeframe }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [indicators.vumanchu, indicators.rsi, indicators.macd, indicators.adx, indicators.squeeze, indicatorOverlays]);
 
+  // ── OBV pane ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!chartRef.current) return;
+    if (obvRef.current) {
+      try { chartRef.current.removeSeries(obvRef.current); } catch {}
+      obvRef.current = null;
+    }
+    if (indicators.obv) {
+      const paneIndex = panelIndexFor("obv");
+      obvRef.current = chartRef.current.addSeries(
+        LineSeries,
+        {
+          color: INDICATOR_COLORS.obv,
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        },
+        paneIndex,
+      );
+      try {
+        chartRef.current.panes()[paneIndex]?.setStretchFactor(1);
+        chartRef.current.panes()[0]?.setStretchFactor(3);
+      } catch {}
+      updateOBV();
+    }
+    requestAnimationFrame(() => recomputePaneOffsets());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indicators.obv, indicators.rsi, indicators.macd, indicators.adx, indicators.squeeze, indicators.vumanchu, indicatorOverlays]);
+
   // Visibility — eye toggle (hidden state) + enabled state combined
   useEffect(() => {
     const v = (key: IndicatorKey) => indicators[key] && !hidden[key];
@@ -1217,6 +1288,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (squeezeHistRef.current) squeezeHistRef.current.applyOptions({ visible: v("squeeze") && sqSt.showMomentum });
     if (squeezeDotsRef.current) squeezeDotsRef.current.applyOptions({ visible: v("squeeze") });
     // VuManChu pane
+    if (obvRef.current) obvRef.current.applyOptions({ visible: v("obv") });
     if (vmcWt1Ref.current) vmcWt1Ref.current.applyOptions({ visible: v("vumanchu") });
     if (vmcWt2Ref.current) vmcWt2Ref.current.applyOptions({ visible: v("vumanchu") });
     if (vmcVwapRef.current) vmcVwapRef.current.applyOptions({ visible: v("vumanchu") });
@@ -1446,6 +1518,16 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
     const lastVol = c.at(-1)?.volume;
     setLastValues((prev) => ({ ...prev, volume: lastVol }));
+  }
+
+  function updateOBV() {
+    const c = candlesRef.current;
+    if (c.length === 0 || !obvRef.current) return;
+    const data = obv(c).map((p) => ({
+      time: p.time as UTCTimestamp,
+      value: p.value,
+    }));
+    obvRef.current.setData(data);
   }
 
   function updateRSI() {
@@ -1721,6 +1803,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         updateADX();
         updateSqueeze();
         updateVumanchu();
+        updateOBV();
         // Show the user's preferred number of recent bars (persisted across
         // loads). Bypasses lightweight-charts' default "fit all" which zooms
         // out way too far for 1000 bars.
@@ -1786,6 +1869,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
               updateADX();
               updateSqueeze();
               updateVumanchu();
+              updateOBV();
               const last = fresh[fresh.length - 1];
               const prev = fresh[fresh.length - 2] ?? last;
               setLastPrice({
@@ -1848,6 +1932,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
                 updateADX();
                 updateSqueeze();
                 updateVumanchu();
+              updateOBV();
                 const prev = arr[arr.length - 2] ?? lastCandle;
                 setLastPrice({
                   value: synth.close,
@@ -1897,6 +1982,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
             updateADX();
             updateSqueeze();
             updateVumanchu();
+            updateOBV();
             const prev = arr[arr.length - 2] ?? lastCandle;
             setLastPrice({
               value: k.close,
@@ -2088,6 +2174,20 @@ export function PriceChart({ symbol, timeframe }: Props) {
         mainPaneHeight={paneOffsets[0]?.height ?? containerSize.height}
         renderTick={renderTick}
       />
+
+      {indicators.keylevels && !hidden.keylevels && (
+        <KeyLevelsOverlay
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          levels={computeKeyLevels(candlesRef.current, keyLevelsCfg)}
+          chartAreaWidth={chartRef.current ? chartRef.current.timeScale().width() : containerSize.width}
+          chartHeight={containerSize.height}
+          mainPaneHeight={paneOffsets[0]?.height ?? containerSize.height}
+          textSize={keyLevelsCfg.textSize}
+          lineWidth={keyLevelsCfg.lineWidth}
+          rightMargin={keyLevelsCfg.distance}
+        />
+      )}
 
       {indicators.squeeze && paneOffsets[squeezePaneIdx] && (
         <SqueezeOverlay

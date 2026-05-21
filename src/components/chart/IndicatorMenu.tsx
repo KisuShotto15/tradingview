@@ -39,6 +39,8 @@ const ENTRIES: Entry[] = [
     group: "Momentum",
     label: () => "VuManChu Cipher B + Div",
   },
+  { key: "obv", group: "Volume", label: () => "On-Balance Volume (OBV)" },
+  { key: "keylevels", group: "Levels", label: () => "Key Levels (W,M,Q,Y)" },
 ];
 
 export function IndicatorMenu() {

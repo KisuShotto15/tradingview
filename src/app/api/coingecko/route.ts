@@ -35,30 +35,36 @@ interface MarketChart {
 
 const CG_BASE = "https://api.coingecko.com/api/v3";
 
-/** Top-N coin IDs used to approximate total crypto market cap. */
+/** Top-N coin IDs used to approximate total crypto market cap.
+ *  Kept small (5) to stay within CoinGecko free-tier rate limits. These 5
+ *  represent ~80% of total crypto market cap. */
 const TOP_COINS = [
   "bitcoin",
   "ethereum",
   "tether",
   "binancecoin",
   "solana",
-  "usd-coin",
-  "ripple",
-  "staked-ether",
-  "dogecoin",
-  "cardano",
 ];
 
 async function fetchMarketCaps(coinId: string, days: number): Promise<Array<[number, number]>> {
   const url = `${CG_BASE}/coins/${encodeURIComponent(coinId)}/market_chart` +
     `?vs_currency=usd&days=${days}&interval=daily`;
-  const res = await fetch(url, {
-    headers: { "User-Agent": "Mozilla/5.0 (compatible; chart-proxy/1.0)" },
-    next: { revalidate: 300 }, // 5 min server cache
-  });
-  if (!res.ok) throw new Error(`CoinGecko ${coinId} ${res.status}`);
-  const data = (await res.json()) as MarketChart;
-  return data.market_caps ?? [];
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; chart-proxy/1.0)" },
+      next: { revalidate: 300 }, // 5 min server cache
+    });
+    if (!res.ok) {
+      // Rate limited or other error: return empty so the aggregator skips this coin.
+      console.error(`CoinGecko ${coinId} ${res.status}`);
+      return [];
+    }
+    const data = (await res.json()) as MarketChart;
+    return data.market_caps ?? [];
+  } catch (err) {
+    console.error(`CoinGecko ${coinId} fetch error`, err);
+    return [];
+  }
 }
 
 /** Align multiple series on their common timestamps (CoinGecko uses ms epochs). */
@@ -111,9 +117,11 @@ export async function GET(req: Request) {
     if (isAggregate) {
       const ids = TOP_COINS.filter((c) => !exclude.has(c));
       const seriesById: Record<string, Array<[number, number]>> = {};
-      await Promise.all(ids.map(async (id) => {
+      // Sequential fetch (not parallel) to avoid burst rate-limiting on the
+      // CoinGecko free tier.
+      for (const id of ids) {
         seriesById[id] = await fetchMarketCaps(id, days);
-      }));
+      }
       const aligned = alignSeries(seriesById);
       const candles = aligned.map(({ time, values }) => {
         let sum = 0;
@@ -126,10 +134,16 @@ export async function GET(req: Request) {
     // Dominance series for a specific coin: caps[coin] / sum(top_N caps)
     const ids = Array.from(new Set([coin, ...TOP_COINS]));
     const seriesById: Record<string, Array<[number, number]>> = {};
-    await Promise.all(ids.map(async (id) => {
+    for (const id of ids) {
       seriesById[id] = await fetchMarketCaps(id, days);
-    }));
+    }
     const aligned = alignSeries(seriesById);
+    if (aligned.length === 0) {
+      return NextResponse.json(
+        { error: "CoinGecko returned no data (likely rate-limited)" },
+        { status: 503 },
+      );
+    }
     const candles = aligned.map(({ time, values }) => {
       let total = 0;
       for (const id of TOP_COINS) total += values[id] ?? 0;
