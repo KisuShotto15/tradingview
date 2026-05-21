@@ -223,18 +223,6 @@ export function PositionDraw({
         stroke={entryColor} strokeWidth={1.5}
         style={{ pointerEvents: "none" }}
       />
-      {/* Stop line */}
-      <line
-        x1={left} x2={right} y1={yStop} y2={yStop}
-        stroke={lossColor} strokeWidth={1} strokeDasharray="4,3" opacity={0.7}
-        style={{ pointerEvents: "none" }}
-      />
-      {/* Target line */}
-      <line
-        x1={left} x2={right} y1={yTarget} y2={yTarget}
-        stroke={profitColor} strokeWidth={1} strokeDasharray="4,3" opacity={0.7}
-        style={{ pointerEvents: "none" }}
-      />
 
       {/* Price pills on the right edge — only when selected */}
       {selected && (
