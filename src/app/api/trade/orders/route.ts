@@ -27,7 +27,10 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing credentials" }, { status: 400 });
     }
 
-    const params: Record<string, string> = { timestamp: Date.now().toString() };
+    const params: Record<string, string> = {
+      timestamp: Date.now().toString(),
+      recvWindow: "60000",
+    };
     if (symbol) params.symbol = symbol;
     const qs = new URLSearchParams(params).toString();
     const signature = sign(qs, apiSecret);

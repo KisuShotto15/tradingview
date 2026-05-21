@@ -15,36 +15,58 @@ export function ApiKeyDialog({ onClose }: { onClose: () => void }) {
   const [tn, setTn] = useState(testnet);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<"ok" | "fail" | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
+
+  async function tryBalance(isPerp: boolean): Promise<{ ok: boolean; error?: string }> {
+    const params = new URLSearchParams({
+      apiKey: key,
+      apiSecret: secret,
+      testnet: String(tn),
+      isPerp: String(isPerp),
+    });
+    try {
+      const res = await fetch(`/api/trade/balance?${params}`);
+      if (res.ok) return { ok: true };
+      const data = (await res.json().catch(() => ({}))) as { msg?: string; error?: string };
+      return { ok: false, error: data.msg ?? data.error ?? `HTTP ${res.status}` };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "network error" };
+    }
+  }
 
   async function testConnection() {
     setTesting(true);
     setTestResult(null);
+    setTestError(null);
     setCredentials(key, secret, tn);
-    // Temporarily set store values and try fetching balance
     useTradingStore.setState({ apiKey: key, apiSecret: secret, testnet: tn });
-    try {
-      const perp = symbol.endsWith(".P");
-      const params = new URLSearchParams({
-        apiKey: key,
-        apiSecret: secret,
-        testnet: String(tn),
-        isPerp: String(perp),
-      });
-      const res = await fetch(`/api/trade/balance?${params}`);
-      if (res.ok) {
-        setTestResult("ok");
-        setConnected(true);
-        await fetchBalance(symbol);
-      } else {
-        setTestResult("fail");
-        setConnected(false);
-      }
-    } catch {
-      setTestResult("fail");
-      setConnected(false);
-    } finally {
+
+    // The Binance spot testnet (testnet.binance.vision) and futures testnet
+    // (testnet.binancefuture.com) are SEPARATE: each requires its own API key.
+    // We try futures first since the UI is futures-oriented, then fall back to
+    // spot so users with spot-only keys can still connect.
+    const futuresResult = await tryBalance(true);
+    if (futuresResult.ok) {
+      setTestResult("ok");
+      setConnected(true);
+      await fetchBalance(symbol);
       setTesting(false);
+      return;
     }
+    const spotResult = await tryBalance(false);
+    if (spotResult.ok) {
+      setTestResult("ok");
+      setConnected(true);
+      await fetchBalance(symbol);
+      setTesting(false);
+      return;
+    }
+    setTestResult("fail");
+    setConnected(false);
+    // Show the more informative of the two errors (prefer the futures one
+    // since that is the recommended setup).
+    setTestError(futuresResult.error ?? spotResult.error ?? null);
+    setTesting(false);
   }
 
   function save() {
@@ -142,7 +164,9 @@ export function ApiKeyDialog({ onClose }: { onClose: () => void }) {
             >
               {testResult === "ok"
                 ? "Connected successfully!"
-                : "Connection failed. Check your API key and permissions."}
+                : testError
+                  ? `Connection failed: ${testError}`
+                  : "Connection failed. Check your API key and permissions."}
             </div>
           )}
         </div>

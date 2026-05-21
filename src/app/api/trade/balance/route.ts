@@ -22,7 +22,12 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing credentials" }, { status: 400 });
     }
 
-    const qs = new URLSearchParams({ timestamp: Date.now().toString() }).toString();
+    // recvWindow=60000 makes the request tolerant of up to 60 s of clock skew
+    // between this server and Binance's clocks (max allowed by Binance).
+    const qs = new URLSearchParams({
+      timestamp: Date.now().toString(),
+      recvWindow: "60000",
+    }).toString();
     const signature = sign(qs, apiSecret);
 
     if (isPerp) {

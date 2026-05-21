@@ -30,6 +30,7 @@ export async function POST(req: Request) {
       type: rest.type,
       quantity: rest.quantity,
       timestamp: Date.now().toString(),
+      recvWindow: "60000",
     };
     if (rest.price) params.price = rest.price;
     if (rest.stopPrice) params.stopPrice = rest.stopPrice;
@@ -68,6 +69,7 @@ export async function DELETE(req: Request) {
       symbol,
       orderId: String(orderId),
       timestamp: Date.now().toString(),
+      recvWindow: "60000",
     }).toString();
     const signature = sign(qs, apiSecret);
     const url = `${base(isPerp, testnet)}/order?${qs}&signature=${signature}`;
