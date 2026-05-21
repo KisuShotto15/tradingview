@@ -387,8 +387,15 @@ export function PriceChart({ symbol, timeframe }: Props) {
         const time = resolvedTime;
         const kind = toolRef.current;
         const entry = price;
-        // Default: 2% move in the favorable direction; 1:1 R:R on the other side
-        const dist = Math.abs(entry) * 0.02 || 1;
+        // Default distance: ~8% of visible price range so the box is proportional on screen
+        const mainPaneH = paneOffsetsRef.current[0]?.height ?? 400;
+        const priceTop = candleSeriesRef.current?.coordinateToPrice(10) ?? null;
+        const priceBot = candleSeriesRef.current?.coordinateToPrice(mainPaneH - 10) ?? null;
+        const visibleRange =
+          priceTop !== null && priceBot !== null
+            ? Math.abs((priceTop as number) - (priceBot as number))
+            : null;
+        const dist = visibleRange ? visibleRange * 0.08 : Math.abs(entry) * 0.005 || 1;
         const target = kind === "long" ? entry + dist : entry - dist;
         const stop = kind === "long" ? entry - dist : entry + dist;
         const intervalSec = timeframeToSeconds(
