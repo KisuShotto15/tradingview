@@ -200,27 +200,38 @@ export function PositionDraw({
   const profitZoneH = profitY2 - profitY1;
   const lossZoneH = lossY2 - lossY1;
 
+  // Bounding box that covers the full drawing + handle radius (8px) so
+  // moving the cursor onto a handle doesn't trigger onMouseLeave.
+  const handleR = 8;
+  const boundTop = Math.min(profitY1, lossY1) - handleR;
+  const boundBottom = Math.max(profitY2, lossY2) + handleR;
+  const boundLeft = left - handleR;
+
   return (
-    <g>
+    <g
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Invisible bounding rect — sole hover detector for the whole drawing */}
+      <rect
+        x={boundLeft} y={boundTop}
+        width={zoneWidth + handleR * 2} height={boundBottom - boundTop}
+        fill="transparent"
+        style={{ pointerEvents: "all", cursor: zoneCursor }}
+        onMouseDown={onZoneMouseDown}
+        onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
+      />
       {/* Profit zone */}
       <rect
         x={left} y={profitY1} width={zoneWidth} height={profitZoneH}
         fill={profitFill}
-        style={{ pointerEvents: "all", cursor: zoneCursor }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        onMouseDown={onZoneMouseDown}
-        onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
+        style={{ pointerEvents: "none" }}
       />
       {/* Loss zone */}
       <rect
         x={left} y={lossY1} width={zoneWidth} height={lossZoneH}
         fill={lossFill}
-        style={{ pointerEvents: "all", cursor: zoneCursor }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        onMouseDown={onZoneMouseDown}
-        onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
+        style={{ pointerEvents: "none" }}
       />
 
       {/* Entry line */}
