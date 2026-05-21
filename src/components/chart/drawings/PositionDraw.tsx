@@ -241,8 +241,8 @@ export function PositionDraw({
       <PricePill x={right} y={yStop} text={formatPrice(drawing.stop)} color={lossColor} />
       <PricePill x={right} y={yTarget} text={formatPrice(drawing.target)} color={profitColor} />
 
-      {/* Stats text inside zones — only when there's enough space */}
-      {showLabels && profitZoneH > 28 && (
+      {/* Stats text inside zones — only when selected and zone is tall enough */}
+      {selected && profitZoneH > 28 && (
         <g style={{ pointerEvents: "none" }}>
           <text
             x={textX} y={profitCenterY + (profitZoneH > 52 ? -7 : 4)}
@@ -266,7 +266,7 @@ export function PositionDraw({
         </g>
       )}
 
-      {showLabels && lossZoneH > 28 && (
+      {selected && lossZoneH > 28 && (
         <g style={{ pointerEvents: "none" }}>
           <text
             x={textX} y={lossCenterY + 4}
