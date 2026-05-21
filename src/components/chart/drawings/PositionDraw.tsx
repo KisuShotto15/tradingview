@@ -236,10 +236,14 @@ export function PositionDraw({
         style={{ pointerEvents: "none" }}
       />
 
-      {/* Price pills on the right edge */}
-      <PricePill x={right} y={yEntry} text={formatPrice(drawing.entry)} color={entryColor} />
-      <PricePill x={right} y={yStop} text={formatPrice(drawing.stop)} color={lossColor} />
-      <PricePill x={right} y={yTarget} text={formatPrice(drawing.target)} color={profitColor} />
+      {/* Price pills on the right edge — only when selected */}
+      {selected && (
+        <>
+          <PricePill x={right} y={yEntry} text={formatPrice(drawing.entry)} color={entryColor} />
+          <PricePill x={right} y={yStop} text={formatPrice(drawing.stop)} color={lossColor} />
+          <PricePill x={right} y={yTarget} text={formatPrice(drawing.target)} color={profitColor} />
+        </>
+      )}
 
       {/* Stats text inside zones — only when selected and zone is tall enough */}
       {selected && profitZoneH > 28 && (
