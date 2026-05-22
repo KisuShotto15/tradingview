@@ -803,22 +803,26 @@ export function PriceChart({ symbol, timeframe }: Props) {
   }, []);
 
   // Collapse/expand sub-pane heights on dblclick toggle.
-  // Series visibility is handled in the visibility effect above (runs synchronously first),
-  // so by the next animation frame the legend headers are already gone.
   useEffect(() => {
     if (!chartRef.current) return;
-    const panes = chartRef.current.panes();
+    const chart = chartRef.current;
+    const panes = chart.panes();
     if (subPanesHidden) {
+      // Snapshot heights, then lock chart to just the main pane height.
       savedPaneHeightsRef.current = panes.map((p) => p.getHeight());
+      const mainH = panes[0]?.getHeight() ?? 300;
+      chart.applyOptions({ autoSize: false, height: mainH });
+      panes.forEach((p, i) => { if (i > 0) p.setHeight(0); });
+      requestAnimationFrame(() => recomputePaneOffsets());
+    } else {
+      // Restore full-container autoSize and individual pane heights.
+      chart.applyOptions({ autoSize: true });
       requestAnimationFrame(() => {
-        panes.forEach((p, i) => { if (i > 0) p.setHeight(0); });
+        chart.panes().forEach((p, i) => {
+          if (i > 0) p.setHeight(savedPaneHeightsRef.current[i] ?? 120);
+        });
         requestAnimationFrame(() => recomputePaneOffsets());
       });
-    } else {
-      panes.forEach((p, i) => {
-        if (i > 0) p.setHeight(savedPaneHeightsRef.current[i] ?? 120);
-      });
-      requestAnimationFrame(() => recomputePaneOffsets());
     }
   }, [subPanesHidden]);
 
@@ -2192,7 +2196,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         />
       )}
 
-      {indicators.squeeze && paneOffsets[squeezePaneIdx] && paneOffsets[squeezePaneIdx].height > 0 && (
+      {indicators.squeeze && !subPanesHidden && paneOffsets[squeezePaneIdx] && paneOffsets[squeezePaneIdx].height > 0 && (
         <SqueezeOverlay
           chart={chartRef.current}
           squeezeSeries={squeezeHistRef.current}
