@@ -2178,7 +2178,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         />
       )}
 
-      {indicators.squeeze && paneOffsets[squeezePaneIdx] && (
+      {indicators.squeeze && !subPanesHidden && paneOffsets[squeezePaneIdx] && (
         <SqueezeOverlay
           chart={chartRef.current}
           squeezeSeries={squeezeHistRef.current}
