@@ -3,8 +3,10 @@ import { NextResponse } from "next/server";
 
 const SPOT_PROD = "https://api.binance.com/api/v3";
 const SPOT_TEST = "https://testnet.binance.vision/api/v3";
-const PERP_PROD = "https://fapi.binance.com/fapi/v1";
-const PERP_TEST = "https://testnet.binancefuture.com/fapi/v1";
+// Note: Binance Futures versions endpoints individually. /fapi/v1 hosts most
+// market-data endpoints, but /balance lives at /fapi/v2 (v1 was removed).
+const PERP_PROD_V2 = "https://fapi.binance.com/fapi/v2";
+const PERP_TEST_V2 = "https://testnet.binancefuture.com/fapi/v2";
 
 function sign(data: string, secret: string) {
   return crypto.createHmac("sha256", secret).update(data).digest("hex");
@@ -31,7 +33,7 @@ export async function GET(req: Request) {
     const signature = sign(qs, apiSecret);
 
     if (isPerp) {
-      const base = testnet ? PERP_TEST : PERP_PROD;
+      const base = testnet ? PERP_TEST_V2 : PERP_PROD_V2;
       const res = await fetch(`${base}/balance?${qs}&signature=${signature}`, {
         headers: { "X-MBX-APIKEY": apiKey },
       });
