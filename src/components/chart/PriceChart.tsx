@@ -749,6 +749,17 @@ export function PriceChart({ symbol, timeframe }: Props) {
             }
           }
         }
+        // Open Key Levels settings if click is near a key level line (within 8px)
+        if (state.indicators.keylevels && !state.hidden.keylevels && candleSeriesRef.current) {
+          const levels = computeKeyLevels(candlesRef.current, state.keyLevels);
+          for (const lvl of levels) {
+            const yCoord = candleSeriesRef.current.priceToCoordinate(lvl.price);
+            if (yCoord !== null && Math.abs((yCoord as number) - relY) <= 8) {
+              state.setSettingsTarget("keylevels");
+              return;
+            }
+          }
+        }
         // Empty background dblclick → toggle sub-pane visibility (TradingView-style)
         state.toggleSubPanesHidden();
         return;
