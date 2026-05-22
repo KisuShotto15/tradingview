@@ -802,19 +802,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
     return () => el.removeEventListener("dblclick", onDblClick);
   }, []);
 
-  // Collapse/expand sub-panes on dblclick toggle.
+  // Save pane heights before collapsing so they can be restored.
   useEffect(() => {
     if (!chartRef.current) return;
-    const panes = chartRef.current.panes();
     if (subPanesHidden) {
-      // Save current heights then collapse sub-panes to 0.
-      savedPaneHeightsRef.current = panes.map((p) => p.getHeight());
-      panes.forEach((p, i) => { if (i > 0) p.setHeight(0); });
-    } else {
-      // Restore saved heights; fall back to 120px if no snapshot.
-      panes.forEach((p, i) => {
-        if (i > 0) p.setHeight(savedPaneHeightsRef.current[i] ?? 120);
-      });
+      savedPaneHeightsRef.current = chartRef.current.panes().map((p) => p.getHeight());
     }
     requestAnimationFrame(() => recomputePaneOffsets());
   }, [subPanesHidden]);
@@ -2148,8 +2140,13 @@ export function PriceChart({ symbol, timeframe }: Props) {
   }
   void renderTick;
 
+  const mainPaneH = paneOffsets[0]?.height ?? containerSize.height;
+
   return (
-    <div className="relative h-full w-full">
+    <div
+      className="relative w-full overflow-hidden"
+      style={{ height: subPanesHidden ? mainPaneH : "100%" }}
+    >
       <div ref={containerRef} className="h-full w-full" />
       <DrawingsLayer
         symbol={symbol}
