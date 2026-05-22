@@ -76,3 +76,22 @@ export interface CancelOrderParams {
   isPerp: boolean;
   orderId: number | string;
 }
+
+/** Sizing modes shown in the Bybit-style order panel dropdown. */
+export type SizingMode =
+  | "AMOUNT"
+  | "MARGIN_USD"
+  | "PCT_BALANCE"
+  | "RISK_USD"
+  | "RISK_PCT";
+
+/** Symbol filters resolved from /fapi/v1/exchangeInfo (cached). */
+export interface SymbolInfo {
+  symbol: string;
+  status: string;
+  pricePrecision: number;
+  quantityPrecision: number;
+  tickSize: number;
+  stepSize: number;
+  minNotional: number;
+}

@@ -11,19 +11,30 @@ import type {
   OrderType,
   TimeInForce,
   PlaceOrderParams,
+  SizingMode,
 } from "@/lib/binance/trading-types";
 
 export interface OrderForm {
   side: OrderSide;
   type: OrderType;
+  /** LIMIT / STOP_LIMIT price. */
   price: string;
-  quantity: string;
+  /** STOP_MARKET / STOP_LIMIT trigger price. */
+  stopPrice: string;
+  /** Canonical quantity in base asset (e.g. BTC). Single source of truth. */
+  qty: string;
+  /** Currently selected sizing mode. Determines which input is editable. */
+  sizingMode: SizingMode;
+  /** Raw text of the editable sizing input (parsed lazily). */
+  sizingInput: string;
   slEnabled: boolean;
   sl: string;
   tpEnabled: boolean;
   tp: string;
   timeInForce: TimeInForce;
   reduceOnly: boolean;
+  /** Leverage mirrored from the exchange. Editable via setLeverage(). */
+  leverage: number;
 }
 
 interface TradingState {
@@ -43,6 +54,8 @@ interface TradingState {
   tradingPanelOpen: boolean;
   isLoading: boolean;
   lastError: string | null;
+  /** OrderId currently being modified via drag-to-modify on the chart. */
+  modifyingOrderId: number | string | null;
 
   // Actions
   setCredentials: (apiKey: string, apiSecret: string, testnet: boolean) => void;
@@ -60,6 +73,18 @@ interface TradingState {
     overrides?: Partial<OrderForm>,
   ) => Promise<{ ok: boolean; error?: string }>;
   cancelOrder: (symbol: string, orderId: number | string) => Promise<void>;
+  /** Cancel an existing order and immediately re-post it at `newPrice`.
+   *  Used by drag-to-modify on the chart. */
+  modifyOrder: (
+    symbol: string,
+    order: Order,
+    newPrice: number,
+  ) => Promise<{ ok: boolean; error?: string }>;
+  /** POST to /api/trade/leverage to sync the exchange leverage. */
+  setLeverage: (
+    symbol: string,
+    leverage: number,
+  ) => Promise<{ ok: boolean; error?: string }>;
 }
 
 function defaultForm(): OrderForm {
@@ -67,13 +92,17 @@ function defaultForm(): OrderForm {
     side: "BUY",
     type: "LIMIT",
     price: "",
-    quantity: "",
+    stopPrice: "",
+    qty: "",
+    sizingMode: "AMOUNT",
+    sizingInput: "",
     slEnabled: false,
     sl: "",
     tpEnabled: false,
     tp: "",
     timeInForce: "GTC",
     reduceOnly: false,
+    leverage: 10,
   };
 }
 
@@ -91,6 +120,7 @@ export const useTradingStore = create<TradingState>()(
       tradingPanelOpen: false,
       isLoading: false,
       lastError: null,
+      modifyingOrderId: null,
 
       setCredentials: (apiKey, apiSecret, testnet) => {
         set({ apiKey, apiSecret, testnet, isConnected: false, lastError: null });
@@ -100,7 +130,15 @@ export const useTradingStore = create<TradingState>()(
       updateForm: (patch) =>
         set((s) => ({ form: { ...s.form, ...patch } })),
       resetForm: (price) =>
-        set({ form: { ...defaultForm(), price: price ? String(price) : "" } }),
+        set((s) => ({
+          form: {
+            ...defaultForm(),
+            // Preserve user's leverage & sizing preferences across resets.
+            leverage: s.form.leverage,
+            sizingMode: s.form.sizingMode,
+            price: price ? String(price) : "",
+          },
+        })),
 
       fetchBalance: async (symbol) => {
         const { apiKey, apiSecret, testnet } = get();
@@ -176,7 +214,14 @@ export const useTradingStore = create<TradingState>()(
           const res = await fetch(`/api/trade/positions?${params}`);
           if (!res.ok) return;
           const data = await res.json();
-          set({ positions: data as Position[] });
+          const positions = data as Position[];
+          set({ positions });
+          // Sync leverage from the first non-zero position so the panel
+          // mirrors what the exchange has.
+          const pos = positions.find((p) => p.positionAmt !== 0);
+          if (pos && pos.leverage) {
+            set((s) => ({ form: { ...s.form, leverage: pos.leverage } }));
+          }
         } catch {
           // silently fail
         }
@@ -199,10 +244,14 @@ export const useTradingStore = create<TradingState>()(
           isPerp: perp,
           side: f.side,
           type: f.type,
-          quantity: f.quantity,
+          quantity: f.qty,
           ...(f.type !== "MARKET" && f.price ? { price: f.price } : {}),
-          ...(["STOP", "STOP_LIMIT"].includes(f.type) && f.sl ? { stopPrice: f.sl } : {}),
-          ...(f.type !== "MARKET" ? { timeInForce: f.timeInForce } : {}),
+          ...(["STOP", "STOP_LIMIT", "STOP_MARKET"].includes(f.type) && f.stopPrice
+            ? { stopPrice: f.stopPrice }
+            : {}),
+          ...(f.type !== "MARKET" && f.type !== "STOP_MARKET"
+            ? { timeInForce: f.timeInForce }
+            : {}),
           ...(perp && f.reduceOnly ? { reduceOnly: true } : {}),
         };
 
@@ -229,7 +278,7 @@ export const useTradingStore = create<TradingState>()(
                 apiKey, apiSecret, testnet,
                 symbol: sym, isPerp: true,
                 side: slSide, type: "STOP_MARKET",
-                quantity: f.quantity, stopPrice: f.sl,
+                quantity: f.qty, stopPrice: f.sl,
                 reduceOnly: true, workingType: "MARK_PRICE",
               } satisfies PlaceOrderParams),
             });
@@ -245,14 +294,13 @@ export const useTradingStore = create<TradingState>()(
                 apiKey, apiSecret, testnet,
                 symbol: sym, isPerp: true,
                 side: tpSide, type: "TAKE_PROFIT_MARKET",
-                quantity: f.quantity, stopPrice: f.tp,
+                quantity: f.qty, stopPrice: f.tp,
                 reduceOnly: true, workingType: "MARK_PRICE",
               } satisfies PlaceOrderParams),
             });
           }
 
           set({ isLoading: false });
-          // Refresh orders + positions
           void get().fetchOrders(symbol);
           void get().fetchPositions(symbol);
           return { ok: true };
@@ -274,15 +322,125 @@ export const useTradingStore = create<TradingState>()(
         });
         void get().fetchOrders(symbol);
       },
+
+      modifyOrder: async (symbol, order, newPrice) => {
+        const { apiKey, apiSecret, testnet } = get();
+        if (!apiKey || !apiSecret) return { ok: false, error: "No credentials" };
+        const perp = isPerp(symbol);
+        const sym = cleanSym(symbol);
+        set({ modifyingOrderId: order.orderId, lastError: null });
+
+        // Cancel the original order first.
+        try {
+          const cancelRes = await fetch("/api/trade/order", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              apiKey, apiSecret, testnet,
+              symbol: sym, isPerp: perp, orderId: order.orderId,
+            }),
+          });
+          if (!cancelRes.ok) {
+            const err = (await cancelRes.json().catch(() => ({}))) as { msg?: string };
+            set({ modifyingOrderId: null, lastError: err.msg ?? "cancel failed" });
+            return { ok: false, error: err.msg ?? "cancel failed" };
+          }
+        } catch (e) {
+          set({ modifyingOrderId: null, lastError: String(e) });
+          return { ok: false, error: String(e) };
+        }
+
+        // Re-post with the same params but the new price.
+        // For trigger orders (STOP_MARKET / TAKE_PROFIT_MARKET) the relevant
+        // field is stopPrice; for LIMIT it's price.
+        const isTrigger =
+          order.type === "STOP_MARKET" || order.type === "TAKE_PROFIT_MARKET";
+        const body: PlaceOrderParams = {
+          apiKey, apiSecret, testnet,
+          symbol: sym, isPerp: perp,
+          side: order.side, type: order.type,
+          quantity: String(order.origQty),
+          ...(isTrigger ? { stopPrice: String(newPrice) } : { price: String(newPrice) }),
+          ...(order.timeInForce && !isTrigger ? { timeInForce: order.timeInForce } : {}),
+          ...(perp && order.reduceOnly ? { reduceOnly: true } : {}),
+          ...(isTrigger ? { workingType: "MARK_PRICE" } : {}),
+        };
+        try {
+          const res = await fetch("/api/trade/order", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const data = (await res.json().catch(() => ({}))) as { msg?: string };
+          set({ modifyingOrderId: null });
+          if (!res.ok) {
+            set({ lastError: data.msg ?? "replace failed" });
+            return { ok: false, error: data.msg ?? "replace failed" };
+          }
+          void get().fetchOrders(symbol);
+          return { ok: true };
+        } catch (e) {
+          set({ modifyingOrderId: null, lastError: String(e) });
+          return { ok: false, error: String(e) };
+        }
+      },
+
+      setLeverage: async (symbol, leverage) => {
+        const { apiKey, apiSecret, testnet } = get();
+        if (!apiKey || !apiSecret) return { ok: false, error: "No credentials" };
+        const sym = cleanSym(symbol);
+        // Optimistic update so the UI feels snappy.
+        set((s) => ({ form: { ...s.form, leverage } }));
+        try {
+          const res = await fetch("/api/trade/leverage", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ apiKey, apiSecret, testnet, symbol: sym, leverage }),
+          });
+          const data = (await res.json().catch(() => ({}))) as { msg?: string };
+          if (!res.ok) {
+            set({ lastError: data.msg ?? "leverage failed" });
+            return { ok: false, error: data.msg ?? "leverage failed" };
+          }
+          return { ok: true };
+        } catch (e) {
+          set({ lastError: String(e) });
+          return { ok: false, error: String(e) };
+        }
+      },
     }),
     {
       name: "trading-store",
+      version: 2,
       partialize: (s) => ({
         apiKey: s.apiKey,
         apiSecret: s.apiSecret,
         testnet: s.testnet,
         tradingPanelOpen: s.tradingPanelOpen,
+        // Persist sizing mode + leverage so they survive reloads.
+        sizingMode: s.form.sizingMode,
+        leverage: s.form.leverage,
       }),
+      // v1 → v2: legacy persisted state had no sizingMode/leverage at the
+      // top level. Just drop anything unknown and let defaults fill the gaps.
+      migrate: ((persistedState: unknown) => {
+        return (persistedState ?? {}) as ReturnType<typeof Object>;
+      }) as never,
+      onRehydrateStorage: () => (state) => {
+        // partialize stores sizingMode + leverage at the top level; reattach
+        // them to form on rehydrate.
+        if (!state) return;
+        const raw = state as unknown as Record<string, unknown>;
+        const sm = raw.sizingMode as SizingMode | undefined;
+        const lev = raw.leverage as number | undefined;
+        if (sm || lev !== undefined) {
+          state.form = {
+            ...state.form,
+            ...(sm ? { sizingMode: sm } : {}),
+            ...(lev !== undefined ? { leverage: lev } : {}),
+          };
+        }
+      },
     },
   ),
 );

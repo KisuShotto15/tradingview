@@ -1,12 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import { useTradingStore } from "@/lib/store/trading-store";
 import { useChartStore } from "@/lib/store/chart-store";
 import { isPerp } from "@/lib/binance/rest";
 import { formatPrice } from "@/lib/format";
-import { cn } from "@/lib/utils";
+import type { Order } from "@/lib/binance/trading-types";
+
+/** Bybit-style colors. Limit is always blue regardless of side. */
+const LIMIT_COLOR = "#2962ff";
+const TP_COLOR = "#26a69a";
+const SL_COLOR = "#fbc02d";
 
 interface Props {
   chart: IChartApi | null;
@@ -17,34 +22,80 @@ interface Props {
   renderTick: number;
 }
 
-interface DraggableLine {
+interface LineSpec {
+  kind: "LIMIT" | "TP" | "SL";
   price: number;
-  label: string;
-  color: string;
-  dashed: boolean;
-  onDrag: (price: number) => void;
+  /** Quantity in base asset shown on the pill. */
+  qty: number;
+  /** Side of the parent order — drives the +/- sign of P&L on TP/SL. */
+  side: "BUY" | "SELL";
+  /** Optional anchor entry price used to compute USD P&L for TP/SL pills. */
+  entryPrice?: number;
+  /** Drag handler. If undefined the line is read-only. */
+  onDrag?: (price: number) => void;
+  /** Optional commit when drag ends — used by drag-to-modify on open orders. */
+  onCommit?: (price: number) => void;
+  /** When true, render the line in a "modifying…" muted style. */
+  modifying?: boolean;
 }
 
-function OrderLine({
-  y,
-  width,
-  label,
-  color,
-  dashed,
-  onMouseDown,
+function colorOf(kind: LineSpec["kind"]): string {
+  switch (kind) {
+    case "LIMIT": return LIMIT_COLOR;
+    case "TP":    return TP_COLOR;
+    case "SL":    return SL_COLOR;
+  }
+}
+
+function pillText(line: LineSpec): { left: string; right: string } {
+  const qtyStr = line.qty > 0 ? line.qty.toString() : "";
+  if (line.kind === "LIMIT") {
+    return {
+      left: `${line.side} ${qtyStr}`.trim(),
+      right: `Limit ${formatPrice(line.price)}`,
+    };
+  }
+  if (line.entryPrice && line.qty > 0) {
+    const pnl =
+      line.kind === "TP"
+        ? Math.abs(line.price - line.entryPrice) * line.qty
+        : Math.abs(line.entryPrice - line.price) * line.qty;
+    const sign = line.kind === "TP" ? "+" : "−";
+    return {
+      left: qtyStr,
+      right: `${sign}${pnl.toFixed(2)} USD`,
+    };
+  }
+  return {
+    left: line.kind,
+    right: formatPrice(line.price),
+  };
+}
+
+interface DragState {
+  onDrag: (p: number) => void;
+  onCommit?: (p: number) => void;
+  lastPrice: number;
+}
+
+function LineRow({
+  line, y, width, modifying, onMouseDown,
 }: {
+  line: LineSpec;
   y: number;
   width: number;
-  label: string;
-  color: string;
-  dashed: boolean;
+  modifying: boolean;
   onMouseDown: (e: React.MouseEvent) => void;
 }) {
-  if (y < 0) return null;
-  const labelW = Math.max(label.length * 6.5 + 10, 70);
+  const color = colorOf(line.kind);
+  const dashed = line.kind !== "LIMIT";
+  const { left, right } = pillText(line);
+  const label = modifying ? "Modifying…" : `${left} · ${right}`;
+  const labelW = Math.max(label.length * 6.2 + 14, 90);
+
   return (
-    <g>
-      {/* Hit area */}
+    <g style={{ opacity: modifying ? 0.55 : 1 }}>
+      {/* Hit area for drag */}
       <line
         x1={0}
         x2={width}
@@ -52,49 +103,44 @@ function OrderLine({
         y2={y}
         stroke="transparent"
         strokeWidth={10}
-        style={{ pointerEvents: "stroke", cursor: "ns-resize" }}
+        style={{
+          pointerEvents: line.onDrag ? "stroke" : "none",
+          cursor: line.onDrag ? "ns-resize" : "default",
+        }}
         onMouseDown={onMouseDown}
       />
       {/* Visible line */}
       <line
         x1={0}
-        x2={width}
+        x2={width - labelW - 4}
         y1={y}
         y2={y}
         stroke={color}
-        strokeWidth={1}
-        strokeDasharray={dashed ? "6,4" : undefined}
+        strokeWidth={1.2}
+        strokeDasharray={dashed ? "5,4" : undefined}
         style={{ pointerEvents: "none" }}
       />
-      {/* Label pill on right */}
+      {/* Label pill */}
       <g style={{ pointerEvents: "none" }}>
         <rect
-          x={width - labelW - 4}
+          x={width - labelW - 2}
           y={y - 9}
           width={labelW}
-          height={17}
+          height={18}
           fill={color}
           rx={2}
         />
         <text
-          x={width - labelW / 2 - 4}
-          y={y + 3}
-          fill="#fff"
-          fontSize={9}
+          x={width - labelW / 2 - 2}
+          y={y + 4}
+          fill={line.kind === "SL" ? "#000" : "#fff"}
+          fontSize={10}
           fontFamily="var(--font-mono), monospace"
           textAnchor="middle"
         >
           {label}
         </text>
       </g>
-      {/* Drag handle dot */}
-      <circle
-        cx={width - labelW - 10}
-        cy={y}
-        r={4}
-        fill={color}
-        style={{ pointerEvents: "none" }}
-      />
     </g>
   );
 }
@@ -112,29 +158,31 @@ export function OrderLinesLayer({
   const form = useTradingStore((s) => s.form);
   const orders = useTradingStore((s) => s.orders);
   const updateForm = useTradingStore((s) => s.updateForm);
+  const modifyOrder = useTradingStore((s) => s.modifyOrder);
+  const modifyingOrderId = useTradingStore((s) => s.modifyingOrderId);
 
-  // Force re-render on chart pan/zoom
-  const [, setTick] = useState(0);
-  useEffect(() => setTick((t) => t + 1), [renderTick]);
+  // `renderTick` is already a prop from PriceChart — receiving it as a prop
+  // re-renders this component on every chart pan/zoom without an extra hook.
+  void renderTick;
 
-  const draggingRef = useRef<((price: number) => void) | null>(null);
-
-  function startDrag(e: React.MouseEvent, onDrag: (price: number) => void) {
-    e.preventDefault();
-    e.stopPropagation();
-    draggingRef.current = onDrag;
-  }
+  const dragRef = useRef<DragState | null>(null);
 
   useEffect(() => {
     function onMove(e: MouseEvent) {
-      if (!draggingRef.current || !candleSeries || !container) return;
+      if (!dragRef.current || !candleSeries || !container) return;
       const rect = container.getBoundingClientRect();
       const relY = e.clientY - rect.top;
       const price = candleSeries.coordinateToPrice(relY);
-      if (price !== null) draggingRef.current(price);
+      if (price !== null) {
+        const p = price as number;
+        dragRef.current.lastPrice = p;
+        dragRef.current.onDrag(p);
+      }
     }
     function onUp() {
-      draggingRef.current = null;
+      const s = dragRef.current;
+      dragRef.current = null;
+      if (s?.onCommit && isFinite(s.lastPrice)) s.onCommit(s.lastPrice);
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -144,41 +192,123 @@ export function OrderLinesLayer({
     };
   }, [candleSeries, container]);
 
+  function startDrag(
+    e: React.MouseEvent,
+    onDrag: (price: number) => void,
+    onCommit?: (price: number) => void,
+  ) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = { onDrag, onCommit, lastPrice: NaN };
+  }
+
   if (!chart || !candleSeries) return null;
 
   const perp = isPerp(symbol);
-  const hasEntry = form.type !== "MARKET" && parseFloat(form.price) > 0;
-  const hasSL = perp && form.slEnabled && parseFloat(form.sl) > 0;
-  const hasTP = perp && form.tpEnabled && parseFloat(form.tp) > 0;
+  const lines: LineSpec[] = [];
 
-  const previewLines: DraggableLine[] = [];
+  /* ── Preview lines from the form (while the panel is open) ───────── */
+  const entryPrice = parseFloat(form.price);
+  const slPrice = parseFloat(form.sl);
+  const tpPrice = parseFloat(form.tp);
+  const qtyNum = parseFloat(form.qty);
 
-  if (tradingPanelOpen && hasEntry) {
-    previewLines.push({
-      price: parseFloat(form.price),
-      label: `${form.side} @ ${formatPrice(parseFloat(form.price))}`,
-      color: form.side === "BUY" ? "#2962ff" : "#ef5350",
-      dashed: false,
+  const hasPreviewEntry = tradingPanelOpen && form.type !== "MARKET" && entryPrice > 0;
+  const hasPreviewSL = tradingPanelOpen && perp && form.slEnabled && slPrice > 0;
+  const hasPreviewTP = tradingPanelOpen && perp && form.tpEnabled && tpPrice > 0;
+
+  if (hasPreviewEntry) {
+    lines.push({
+      kind: "LIMIT",
+      price: entryPrice,
+      qty: qtyNum || 0,
+      side: form.side,
       onDrag: (p) => updateForm({ price: p.toFixed(2) }),
     });
   }
-  if (tradingPanelOpen && hasSL) {
-    previewLines.push({
-      price: parseFloat(form.sl),
-      label: `SL ${formatPrice(parseFloat(form.sl))}`,
-      color: "#ef5350",
-      dashed: true,
+  if (hasPreviewTP) {
+    lines.push({
+      kind: "TP",
+      price: tpPrice,
+      qty: qtyNum || 0,
+      side: form.side,
+      entryPrice: entryPrice || undefined,
+      onDrag: (p) => updateForm({ tp: p.toFixed(2) }),
+    });
+  }
+  if (hasPreviewSL) {
+    lines.push({
+      kind: "SL",
+      price: slPrice,
+      qty: qtyNum || 0,
+      side: form.side,
+      entryPrice: entryPrice || undefined,
       onDrag: (p) => updateForm({ sl: p.toFixed(2) }),
     });
   }
-  if (tradingPanelOpen && hasTP) {
-    previewLines.push({
-      price: parseFloat(form.tp),
-      label: `TP ${formatPrice(parseFloat(form.tp))}`,
-      color: "#26a69a",
-      dashed: true,
-      onDrag: (p) => updateForm({ tp: p.toFixed(2) }),
+
+  /* ── Lines for open orders on the exchange ──────────────────────── */
+  for (const order of orders) {
+    const price = order.stopPrice ?? order.price;
+    if (!price || price <= 0) continue;
+    const kind: LineSpec["kind"] =
+      order.type === "TAKE_PROFIT_MARKET" || order.type === "TAKE_PROFIT"
+        ? "TP"
+        : order.type === "STOP_MARKET" || order.type === "STOP" || order.type === "STOP_LIMIT"
+          ? "SL"
+          : "LIMIT";
+
+    const live = (p: number) => {
+      // Update form so the panel input mirrors the dragging line if it
+      // happens to be the same kind. No commit yet — that fires on mouseup.
+      void p;
+    };
+    const commit = async (p: number) => {
+      const newPrice = Math.abs(p - price) < 1e-9 ? price : p;
+      if (newPrice === price) return;
+      await modifyOrder(symbol, order as Order, newPrice);
+    };
+
+    lines.push({
+      kind,
+      price,
+      qty: order.origQty,
+      side: order.side,
+      entryPrice: undefined,
+      onDrag: live,
+      onCommit: commit,
+      modifying: modifyingOrderId === order.orderId,
     });
+  }
+
+  /* ── Shaded zones (only for preview, between entry↔TP and entry↔SL) ── */
+  const zones: { y1: number; y2: number; color: string; opacity: number }[] = [];
+  if (hasPreviewEntry) {
+    const yEntry = candleSeries.priceToCoordinate(entryPrice);
+    if (yEntry !== null) {
+      if (hasPreviewTP) {
+        const yTp = candleSeries.priceToCoordinate(tpPrice);
+        if (yTp !== null) {
+          zones.push({
+            y1: Math.min(yEntry as number, yTp as number),
+            y2: Math.max(yEntry as number, yTp as number),
+            color: TP_COLOR,
+            opacity: 0.10,
+          });
+        }
+      }
+      if (hasPreviewSL) {
+        const ySl = candleSeries.priceToCoordinate(slPrice);
+        if (ySl !== null) {
+          zones.push({
+            y1: Math.min(yEntry as number, ySl as number),
+            y2: Math.max(yEntry as number, ySl as number),
+            color: SL_COLOR,
+            opacity: 0.08,
+          });
+        }
+      }
+    }
   }
 
   return (
@@ -192,39 +322,36 @@ export function OrderLinesLayer({
         </clipPath>
       </defs>
       <g clipPath="url(#order-lines-clip)" style={{ pointerEvents: "all" }}>
-        {/* Preview lines (entry / SL / TP from form) */}
-        {previewLines.map((line, i) => {
-          const y = candleSeries.priceToCoordinate(line.price);
-          if (y === null || y < 0 || y > mainPaneHeight) return null;
-          return (
-            <OrderLine
-              key={`preview-${i}`}
-              y={y}
-              width={width}
-              label={line.label}
-              color={line.color}
-              dashed={line.dashed}
-              onMouseDown={(e) => startDrag(e, line.onDrag)}
-            />
-          );
-        })}
+        {/* Background shaded zones — drawn first so lines render on top */}
+        {zones.map((z, i) => (
+          <rect
+            key={`zone-${i}`}
+            x={0}
+            y={z.y1}
+            width={width}
+            height={Math.max(0, z.y2 - z.y1)}
+            fill={z.color}
+            opacity={z.opacity}
+            style={{ pointerEvents: "none" }}
+          />
+        ))}
 
-        {/* Open limit order lines */}
-        {orders.map((order) => {
-          const price = order.stopPrice ?? order.price;
-          if (!price || price <= 0) return null;
-          const y = candleSeries.priceToCoordinate(price);
-          if (y === null || y < 0 || y > mainPaneHeight) return null;
-          const isStop = order.type.includes("STOP") || order.type.includes("TAKE_PROFIT");
+        {/* Lines */}
+        {lines.map((line, i) => {
+          const y = candleSeries.priceToCoordinate(line.price);
+          if (y === null) return null;
+          const yPx = y as number;
+          if (yPx < 0 || yPx > mainPaneHeight) return null;
           return (
-            <OrderLine
-              key={`order-${order.orderId}`}
-              y={y}
+            <LineRow
+              key={`line-${i}-${line.kind}-${line.price}`}
+              line={line}
+              y={yPx}
               width={width}
-              label={`${order.side === "BUY" ? "B" : "S"} ${order.type.replace(/_/g, " ")} ${formatPrice(price)}`}
-              color={order.side === "BUY" ? "#2962ff" : "#ef5350"}
-              dashed={isStop}
-              onMouseDown={(e) => e.stopPropagation()}
+              modifying={line.modifying ?? false}
+              onMouseDown={(e) => {
+                if (line.onDrag) startDrag(e, line.onDrag, line.onCommit);
+              }}
             />
           );
         })}

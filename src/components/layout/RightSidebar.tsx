@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { BarChart2, List } from "lucide-react";
 import { Watchlist } from "@/components/watchlist/Watchlist";
-import { TradingPanel } from "@/components/trading/TradingPanel";
+import { OrderPanel } from "@/components/trading/OrderPanel/OrderPanel";
 import { cn } from "@/lib/utils";
 
 type Tab = "watchlist" | "trade";
@@ -46,7 +46,7 @@ export function RightSidebar() {
         <Watchlist />
       </div>
       <div className={cn("flex-1 overflow-hidden", tab !== "trade" && "hidden")}>
-        <TradingPanel />
+        <OrderPanel />
       </div>
     </aside>
   );

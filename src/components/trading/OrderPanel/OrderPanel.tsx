@@ -1,0 +1,680 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronUp, KeyRound, RefreshCw } from "lucide-react";
+import { useTradingStore } from "@/lib/store/trading-store";
+import { useChartStore } from "@/lib/store/chart-store";
+import { useBookTicker } from "@/lib/binance/use-book-ticker";
+import { useSymbolInfo } from "@/lib/trading/symbol-info";
+import {
+  qtyToSizings,
+  sizingToQty,
+  rrRatio,
+  modeRequiresSl,
+  ticksBetween,
+  type SizingCtx,
+} from "@/lib/trading/sizing";
+import { isPerp } from "@/lib/binance/rest";
+import { cn } from "@/lib/utils";
+import type { SizingMode, TimeInForce } from "@/lib/binance/trading-types";
+import { ApiKeyDialog } from "../ApiKeyDialog";
+import { OpenOrdersList } from "./OpenOrdersList";
+import { PositionsList } from "./PositionsList";
+
+const SIZING_LABELS: Record<SizingMode, string> = {
+  AMOUNT: "Amount",
+  MARGIN_USD: "Margin USD",
+  PCT_BALANCE: "% balance",
+  RISK_USD: "Risk, USD",
+  RISK_PCT: "Risk, % balance",
+};
+
+const TIF_OPTIONS: TimeInForce[] = ["GTC", "IOC", "FOK", "GTX"];
+
+const TIF_LABELS: Record<TimeInForce, string> = {
+  GTC: "Good-Till-Canceled",
+  IOC: "Immediate-Or-Cancel",
+  FOK: "Fill-Or-Kill",
+  GTX: "Post Only (GTX)",
+};
+
+export function OrderPanel() {
+  const symbol = useChartStore((s) => s.symbol);
+  const apiKey = useTradingStore((s) => s.apiKey);
+  const apiSecret = useTradingStore((s) => s.apiSecret);
+  const isConnected = useTradingStore((s) => s.isConnected);
+  const balance = useTradingStore((s) => s.balance);
+  const form = useTradingStore((s) => s.form);
+  const updateForm = useTradingStore((s) => s.updateForm);
+  const placeOrder = useTradingStore((s) => s.placeOrder);
+  const setLeverage = useTradingStore((s) => s.setLeverage);
+  const isLoading = useTradingStore((s) => s.isLoading);
+  const lastError = useTradingStore((s) => s.lastError);
+  const fetchBalance = useTradingStore((s) => s.fetchBalance);
+  const fetchOrders = useTradingStore((s) => s.fetchOrders);
+  const fetchPositions = useTradingStore((s) => s.fetchPositions);
+
+  const [keyDialogOpen, setKeyDialogOpen] = useState(false);
+
+  const symInfo = useSymbolInfo(symbol);
+  const { bid, ask } = useBookTicker(symbol);
+  const perp = isPerp(symbol);
+
+  // Refresh on mount + symbol change
+  useEffect(() => {
+    if (!apiKey || !apiSecret) return;
+    void fetchBalance(symbol);
+    void fetchOrders(symbol);
+    if (perp) void fetchPositions(symbol);
+  }, [apiKey, apiSecret, symbol, perp, fetchBalance, fetchOrders, fetchPositions]);
+
+  // Quote balance (USDT free)
+  const balanceUsd = useMemo(() => {
+    const usdt = balance.find((b) => b.asset === "USDT");
+    return usdt ? usdt.free : 0;
+  }, [balance]);
+
+  // Best price for the active form type
+  const referencePrice = useMemo(() => {
+    if (form.type === "MARKET") {
+      return form.side === "BUY" ? ask : bid;
+    }
+    return parseFloat(form.price) || ask || bid || 0;
+  }, [form.type, form.price, form.side, bid, ask]);
+
+  const sl = form.slEnabled && form.sl ? parseFloat(form.sl) : null;
+  const tp = form.tpEnabled && form.tp ? parseFloat(form.tp) : null;
+
+  const ctx: SizingCtx = useMemo(
+    () => ({
+      entry: referencePrice ?? 0,
+      sl,
+      leverage: form.leverage,
+      balanceUsd,
+      tickSize: symInfo.tickSize,
+      stepSize: symInfo.stepSize,
+    }),
+    [referencePrice, sl, form.leverage, balanceUsd, symInfo.tickSize, symInfo.stepSize],
+  );
+
+  // Derived sizing values from canonical qty
+  const qtyNum = parseFloat(form.qty) || 0;
+  const derived = useMemo(() => qtyToSizings(qtyNum, ctx), [qtyNum, ctx]);
+
+  // Risk/reward — only meaningful when both SL and TP are set
+  const rr = useMemo(
+    () => rrRatio(referencePrice ?? 0, sl, tp),
+    [referencePrice, sl, tp],
+  );
+
+  if (!apiKey || !apiSecret) {
+    return (
+      <>
+        <ConnectGate onConnect={() => setKeyDialogOpen(true)} />
+        {keyDialogOpen && <ApiKeyDialog onClose={() => setKeyDialogOpen(false)} />}
+      </>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden text-tv-text">
+      <PanelHeader symbol={symbol} testnet={useTradingStore.getState().testnet}
+        connected={isConnected} onSettings={() => setKeyDialogOpen(true)} />
+
+      <BidAskBar
+        bid={bid}
+        ask={ask}
+        side={form.side}
+        onPickSide={(side) => updateForm({ side })}
+      />
+
+      <OrderTypeTabs
+        value={form.type}
+        onChange={(t) => updateForm({ type: t })}
+      />
+
+      <div className="flex-1 overflow-y-auto px-3 py-2.5 space-y-3">
+        {form.type !== "MARKET" && (
+          <PriceInput
+            value={form.price}
+            onChange={(v) => updateForm({ price: v })}
+            placeholder={referencePrice ? referencePrice.toFixed(symInfo.pricePrecision) : "0.0"}
+            onSnapToBidAsk={() => {
+              const target = form.side === "BUY" ? bid : ask;
+              if (target) updateForm({ price: target.toFixed(symInfo.pricePrecision) });
+            }}
+            label="Price"
+            ticksLabel={ask ? `${form.side === "BUY" ? "Bid" : "Ask"} ${(form.side === "BUY" ? bid : ask)?.toFixed(symInfo.pricePrecision) ?? "—"}` : null}
+          />
+        )}
+
+        {(form.type === "STOP_LIMIT" || form.type === "STOP_MARKET") && (
+          <PriceInput
+            value={form.stopPrice}
+            onChange={(v) => updateForm({ stopPrice: v })}
+            placeholder={referencePrice ? referencePrice.toFixed(symInfo.pricePrecision) : "0.0"}
+            label="Stop / Trigger price"
+          />
+        )}
+
+        <SizingControl
+          mode={form.sizingMode}
+          input={form.sizingInput}
+          qtyNum={qtyNum}
+          derived={derived}
+          ctx={ctx}
+          onChangeMode={(mode) => {
+            // Recompute the visible input from canonical qty so it stays consistent.
+            const next = qtyToSizings(qtyNum, ctx);
+            updateForm({
+              sizingMode: mode,
+              sizingInput: formatForMode(next[mode], mode),
+            });
+            // Force SL on if mode requires it.
+            if (modeRequiresSl(mode) && !form.slEnabled) {
+              updateForm({ slEnabled: true });
+            }
+          }}
+          onChangeInput={(raw) => {
+            const value = parseFloat(raw);
+            if (isFinite(value) && value > 0) {
+              const newQty = sizingToQty(form.sizingMode, value, ctx);
+              updateForm({
+                sizingInput: raw,
+                qty: newQty > 0 ? newQty.toFixed(symInfo.quantityPrecision) : "",
+              });
+            } else {
+              updateForm({ sizingInput: raw, qty: "" });
+            }
+          }}
+        />
+
+        <ExitsSection
+          form={form}
+          tickSize={symInfo.tickSize}
+          pricePrecision={symInfo.pricePrecision}
+          qtyNum={qtyNum}
+          rr={rr}
+          referencePrice={referencePrice ?? 0}
+          onPatch={updateForm}
+        />
+
+        <ExtraSettings
+          tif={form.timeInForce}
+          reduceOnly={form.reduceOnly}
+          leverage={form.leverage}
+          perp={perp}
+          onTif={(v) => updateForm({ timeInForce: v })}
+          onReduceOnly={(v) => updateForm({ reduceOnly: v })}
+          onLeverage={(n) => void setLeverage(symbol, n)}
+        />
+
+        {lastError && (
+          <div className="rounded border border-tv-red/40 bg-tv-red/10 px-2 py-1.5 text-[10px] text-tv-red">
+            {lastError}
+          </div>
+        )}
+
+        {perp && <PositionsList symbol={symbol} />}
+        <OpenOrdersList symbol={symbol} />
+      </div>
+
+      <SubmitButton
+        symbol={symbol}
+        side={form.side}
+        type={form.type}
+        qty={form.qty}
+        price={form.price}
+        isLoading={isLoading}
+        onSubmit={() => placeOrder(symbol)}
+      />
+
+      {keyDialogOpen && <ApiKeyDialog onClose={() => setKeyDialogOpen(false)} />}
+    </div>
+  );
+}
+
+/* ───────────────────────── helpers ───────────────────────── */
+
+function formatForMode(n: number, mode: SizingMode): string {
+  if (!isFinite(n) || n <= 0) return "";
+  if (mode === "AMOUNT") return n.toFixed(6).replace(/\.?0+$/, "");
+  if (mode === "PCT_BALANCE" || mode === "RISK_PCT") return n.toFixed(2);
+  return n.toFixed(2);
+}
+
+/* ───────────────────────── sub-components ───────────────────────── */
+
+function ConnectGate({ onConnect }: { onConnect: () => void }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+      <KeyRound className="h-8 w-8 text-tv-text-muted" />
+      <p className="text-xs text-tv-text-muted">
+        Connect your Binance API to place orders directly from the chart.
+      </p>
+      <button
+        onClick={onConnect}
+        className="rounded bg-tv-blue px-3 py-1.5 text-xs font-semibold text-white hover:bg-tv-blue/90"
+      >
+        Connect API
+      </button>
+    </div>
+  );
+}
+
+function PanelHeader({
+  symbol, testnet, connected, onSettings,
+}: { symbol: string; testnet: boolean; connected: boolean; onSettings: () => void }) {
+  return (
+    <div className="flex items-center justify-between border-b border-tv-border bg-tv-panel px-3 py-2">
+      <div className="flex items-center gap-2 text-[11px] font-semibold">
+        <span>{symbol}</span>
+        <span className={cn(
+          "rounded px-1 py-0.5 text-[9px] font-bold",
+          testnet ? "bg-tv-yellow/20 text-tv-yellow" : "bg-tv-green/20 text-tv-green",
+        )}>
+          {testnet ? "TEST" : "LIVE"}
+        </span>
+        {connected && <span className="h-1.5 w-1.5 rounded-full bg-tv-green" />}
+      </div>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={onSettings}
+          title="API credentials"
+          className="rounded p-1 text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+        >
+          <KeyRound className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BidAskBar({
+  bid, ask, side, onPickSide,
+}: { bid: number | null; ask: number | null; side: "BUY" | "SELL"; onPickSide: (s: "BUY" | "SELL") => void }) {
+  return (
+    <div className="grid grid-cols-2 gap-px border-b border-tv-border bg-tv-border">
+      <button
+        onClick={() => onPickSide("SELL")}
+        className={cn(
+          "flex flex-col items-start gap-0.5 px-3 py-2 text-left transition-colors",
+          side === "SELL" ? "bg-tv-red/20" : "bg-tv-panel hover:bg-tv-panel-hover",
+        )}
+      >
+        <span className="text-[9px] uppercase tracking-wider text-tv-red">Sell</span>
+        <span className="font-mono text-sm font-semibold text-tv-red tabular-nums">
+          {bid ? bid.toFixed(2) : "—"}
+        </span>
+      </button>
+      <button
+        onClick={() => onPickSide("BUY")}
+        className={cn(
+          "flex flex-col items-end gap-0.5 px-3 py-2 text-right transition-colors",
+          side === "BUY" ? "bg-tv-blue/20" : "bg-tv-panel hover:bg-tv-panel-hover",
+        )}
+      >
+        <span className="text-[9px] uppercase tracking-wider text-tv-blue">Buy</span>
+        <span className="font-mono text-sm font-semibold text-tv-blue tabular-nums">
+          {ask ? ask.toFixed(2) : "—"}
+        </span>
+      </button>
+    </div>
+  );
+}
+
+function OrderTypeTabs({
+  value, onChange,
+}: { value: string; onChange: (t: "MARKET" | "LIMIT" | "STOP_MARKET" | "STOP_LIMIT") => void }) {
+  const tabs: Array<{ key: "MARKET" | "LIMIT" | "STOP_MARKET" | "STOP_LIMIT"; label: string }> = [
+    { key: "MARKET", label: "Market" },
+    { key: "LIMIT", label: "Limit" },
+    { key: "STOP_MARKET", label: "Stop" },
+    { key: "STOP_LIMIT", label: "Stop Limit" },
+  ];
+  return (
+    <div className="flex border-b border-tv-border bg-tv-panel">
+      {tabs.map((t) => (
+        <button
+          key={t.key}
+          onClick={() => onChange(t.key)}
+          className={cn(
+            "flex-1 border-b-2 px-2 py-1.5 text-[11px] font-medium transition-colors",
+            value === t.key
+              ? "border-tv-blue text-tv-text"
+              : "border-transparent text-tv-text-muted hover:text-tv-text",
+          )}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PriceInput({
+  value, onChange, placeholder, label, ticksLabel, onSnapToBidAsk,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  label: string;
+  ticksLabel?: string | null;
+  onSnapToBidAsk?: () => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] uppercase tracking-wider text-tv-text-muted">{label}</span>
+        {ticksLabel && <span className="text-[10px] text-tv-text-muted">{ticksLabel}</span>}
+      </div>
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          step="any"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full rounded border border-tv-border bg-tv-bg px-2 py-1.5 font-mono text-xs text-tv-text tabular-nums outline-none focus:border-tv-blue"
+        />
+        {onSnapToBidAsk && (
+          <button
+            onClick={onSnapToBidAsk}
+            title="Use bid/ask"
+            className="rounded p-1.5 text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SizingControl({
+  mode, input, qtyNum, derived, ctx, onChangeMode, onChangeInput,
+}: {
+  mode: SizingMode;
+  input: string;
+  qtyNum: number;
+  derived: Record<SizingMode, number>;
+  ctx: SizingCtx;
+  onChangeMode: (m: SizingMode) => void;
+  onChangeInput: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  void qtyNum;
+  void ctx;
+
+  function suffix(m: SizingMode): string {
+    if (m === "AMOUNT") return "BTC";
+    if (m === "MARGIN_USD") return "USD";
+    if (m === "RISK_USD") return "USD";
+    return "%";
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-tv-text-muted hover:text-tv-text"
+        >
+          {SIZING_LABELS[mode]}
+          {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        </button>
+      </div>
+      <div className="relative">
+        <input
+          type="number"
+          step="any"
+          value={input}
+          onChange={(e) => onChangeInput(e.target.value)}
+          placeholder="0"
+          className="w-full rounded border border-tv-border bg-tv-bg px-2 py-1.5 pr-10 font-mono text-xs text-tv-text tabular-nums outline-none focus:border-tv-blue"
+        />
+        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-tv-text-muted">
+          {suffix(mode)}
+        </span>
+      </div>
+      {open && (
+        <div className="rounded border border-tv-border bg-tv-bg/60">
+          {(Object.keys(SIZING_LABELS) as SizingMode[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => { onChangeMode(m); setOpen(false); }}
+              className={cn(
+                "flex w-full items-center justify-between px-2 py-1 text-[10px]",
+                m === mode
+                  ? "bg-tv-blue/15 text-tv-text"
+                  : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
+              )}
+            >
+              <span>{SIZING_LABELS[m]}</span>
+              <span className="font-mono tabular-nums">
+                {derived[m] > 0 ? derived[m].toFixed(m === "AMOUNT" ? 6 : 2) : "—"}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExitsSection({
+  form, tickSize, pricePrecision, qtyNum, rr, referencePrice, onPatch,
+}: {
+  form: ReturnType<typeof useTradingStore.getState>["form"];
+  tickSize: number;
+  pricePrecision: number;
+  qtyNum: number;
+  rr: number;
+  referencePrice: number;
+  onPatch: (p: Partial<typeof form>) => void;
+}) {
+  const [open, setOpen] = useState(true);
+
+  const tpUsd = form.tpEnabled && form.tp && qtyNum > 0
+    ? Math.abs(parseFloat(form.tp) - referencePrice) * qtyNum
+    : 0;
+  const slUsd = form.slEnabled && form.sl && qtyNum > 0
+    ? Math.abs(referencePrice - parseFloat(form.sl)) * qtyNum
+    : 0;
+  const tpTicks = form.tp ? ticksBetween(referencePrice, parseFloat(form.tp), tickSize) : 0;
+
+  return (
+    <div className="space-y-1.5">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between text-[10px] uppercase tracking-wider text-tv-text-muted hover:text-tv-text"
+      >
+        <span>Exits</span>
+        <span className="flex items-center gap-1">
+          {rr > 0 && (
+            <span className="text-tv-text-muted">Risk / Reward {rr.toFixed(2)}</span>
+          )}
+          {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        </span>
+      </button>
+      {open && (
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <label className="flex items-center justify-between">
+              <span className="text-[10px] text-tv-text">Take profit, price</span>
+              <Switch checked={form.tpEnabled} onChange={(v) => onPatch({ tpEnabled: v })} />
+            </label>
+            {form.tpEnabled && (
+              <div className="grid grid-cols-[1fr,auto] gap-2">
+                <input
+                  type="number"
+                  step="any"
+                  value={form.tp}
+                  onChange={(e) => onPatch({ tp: e.target.value })}
+                  placeholder={referencePrice > 0 ? referencePrice.toFixed(pricePrecision) : "0.0"}
+                  className="rounded border border-tv-border bg-tv-bg px-2 py-1.5 font-mono text-xs tabular-nums focus:border-tv-blue"
+                />
+                <span className="self-center text-[10px] text-tv-text-muted">
+                  {form.tp ? `${Math.abs(tpTicks)} ticks` : ""}
+                </span>
+              </div>
+            )}
+            {form.tpEnabled && tpUsd > 0 && (
+              <div className="text-right text-[10px] text-tv-green">+{tpUsd.toFixed(2)} USD</div>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <label className="flex items-center justify-between">
+              <span className="text-[10px] text-tv-text">Stop loss, price</span>
+              <Switch checked={form.slEnabled} onChange={(v) => onPatch({ slEnabled: v })} />
+            </label>
+            {form.slEnabled && (
+              <div className="grid grid-cols-[1fr,auto] gap-2">
+                <input
+                  type="number"
+                  step="any"
+                  value={form.sl}
+                  onChange={(e) => onPatch({ sl: e.target.value })}
+                  placeholder={referencePrice > 0 ? referencePrice.toFixed(pricePrecision) : "0.0"}
+                  className="rounded border border-tv-border bg-tv-bg px-2 py-1.5 font-mono text-xs tabular-nums focus:border-tv-blue"
+                />
+                <span className="self-center text-[10px] text-tv-text-muted">
+                  {slUsd > 0 ? `${slUsd.toFixed(2)} USD` : ""}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExtraSettings({
+  tif, reduceOnly, leverage, perp, onTif, onReduceOnly, onLeverage,
+}: {
+  tif: TimeInForce;
+  reduceOnly: boolean;
+  leverage: number;
+  perp: boolean;
+  onTif: (v: TimeInForce) => void;
+  onReduceOnly: (v: boolean) => void;
+  onLeverage: (n: number) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function commitLeverage(n: number) {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => onLeverage(n), 400);
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between text-[10px] uppercase tracking-wider text-tv-text-muted hover:text-tv-text"
+      >
+        <span>Extra settings</span>
+        {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+      </button>
+      {open && (
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <span className="text-[10px] text-tv-text-muted">Time in force</span>
+            <select
+              value={tif}
+              onChange={(e) => onTif(e.target.value as TimeInForce)}
+              className="w-full rounded border border-tv-border bg-tv-bg px-2 py-1.5 text-xs text-tv-text focus:border-tv-blue"
+            >
+              {TIF_OPTIONS.map((t) => (
+                <option key={t} value={t}>{TIF_LABELS[t]}</option>
+              ))}
+            </select>
+          </div>
+          {perp && (
+            <>
+              <label className="flex cursor-pointer items-center gap-2 text-[11px] text-tv-text">
+                <input
+                  type="checkbox"
+                  checked={reduceOnly}
+                  onChange={(e) => onReduceOnly(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-tv-blue"
+                />
+                Reduce-Only
+              </label>
+              <div className="space-y-1">
+                <span className="text-[10px] text-tv-text-muted">Leverage</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min={1}
+                    max={125}
+                    value={leverage}
+                    onChange={(e) => commitLeverage(parseInt(e.target.value, 10))}
+                    className="flex-1 accent-tv-blue"
+                  />
+                  <span className="w-12 text-right font-mono text-xs tabular-nums">
+                    x{leverage}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SubmitButton({
+  symbol, side, type, qty, price, isLoading, onSubmit,
+}: {
+  symbol: string;
+  side: "BUY" | "SELL";
+  type: string;
+  qty: string;
+  price: string;
+  isLoading: boolean;
+  onSubmit: () => void;
+}) {
+  const cleanSym = symbol.replace(/\.P$/, "");
+  const summary = `${qty || "0"} ${cleanSym} ${type === "LIMIT" ? `@ ${price || "—"} LIMIT` : type}`;
+  const disabled = isLoading || !qty;
+  return (
+    <button
+      onClick={onSubmit}
+      disabled={disabled}
+      className={cn(
+        "flex flex-col items-center justify-center gap-0.5 border-t border-tv-border px-3 py-3 text-sm font-semibold text-white transition-colors disabled:opacity-50",
+        side === "BUY" ? "bg-tv-blue hover:bg-tv-blue/90" : "bg-tv-red hover:bg-tv-red/90",
+      )}
+    >
+      <span>{isLoading ? "Submitting…" : side === "BUY" ? "Buy" : "Sell"}</span>
+      <span className="text-[10px] font-normal opacity-90">{summary}</span>
+    </button>
+  );
+}
+
+function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        "relative h-4 w-7 rounded-full transition-colors",
+        checked ? "bg-tv-blue" : "bg-tv-border",
+      )}
+    >
+      <span
+        className={cn(
+          "absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform",
+          checked ? "translate-x-3.5" : "translate-x-0.5",
+        )}
+      />
+    </button>
+  );
+}
+
