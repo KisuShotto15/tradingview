@@ -9,11 +9,26 @@ import { PriceChart } from "@/components/chart/PriceChart";
 import { IndicatorSettingsDialog } from "@/components/chart/IndicatorSettingsDialog";
 import { ChartSettingsDialog } from "@/components/chart/ChartSettingsDialog";
 import { DrawingSettingsDialog } from "@/components/chart/DrawingSettingsDialog";
+import { MobileShell } from "@/components/mobile/MobileShell";
 import { useChartStore } from "@/lib/store/chart-store";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 export default function HomePage() {
   const symbol = useChartStore((s) => s.symbol);
   const timeframe = useChartStore((s) => s.timeframe);
+  const isMobile = useIsMobile();
+
+  if (isMobile) {
+    return (
+      <>
+        <MobileShell />
+        {/* Reuse the desktop dialogs — they're already viewport-aware. */}
+        <IndicatorSettingsDialog />
+        <ChartSettingsDialog />
+        <DrawingSettingsDialog />
+      </>
+    );
+  }
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-tv-bg">

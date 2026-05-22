@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";
+import { ServiceWorkerRegistrar } from "@/components/ServiceWorkerRegistrar";
 import "./globals.css";
 
 const inter = Inter({
@@ -19,10 +20,26 @@ export const metadata: Metadata = {
   title: "TradingView Free — Open source crypto charts",
   description:
     "Live crypto charting platform. A free alternative to TradingView. Powered by Binance + lightweight-charts.",
+  manifest: "/manifest.webmanifest",
+  applicationName: "TV Free",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "TV Free",
+  },
   icons: {
     icon: [{ url: "/logo.svg", type: "image/svg+xml" }],
     apple: "/logo.svg",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#000000",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -37,6 +54,7 @@ export default function RootLayout({
     >
       <body className="h-full overflow-hidden bg-tv-bg text-tv-text">
         <Providers>{children}</Providers>
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   );
