@@ -3,9 +3,18 @@
 import { useCallback, useRef } from "react";
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import { useChartStore } from "@/lib/store/chart-store";
+import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
 import { snapToOHLC } from "@/lib/chart/snap";
+
+/** True if the currently-selected drawing is locked (no drag allowed). */
+function selectedIsLocked(): boolean {
+  const st = useDrawingsStore.getState();
+  if (!st.selectedId) return false;
+  const d = st.drawings.find((x) => x.id === st.selectedId);
+  return !!d?.locked;
+}
 
 interface ShapeDragHandlers<T> {
   onStart?: () => void;
@@ -35,6 +44,7 @@ export function useDragShape<T>(
   return useCallback(
     (e: React.MouseEvent) => {
       if (!chart || !candleSeries || !container) return;
+      if (selectedIsLocked()) return; // drawing is locked → no drag
       e.preventDefault();
       e.stopPropagation();
 

@@ -52,6 +52,9 @@ interface TradingState {
   // UI form
   form: OrderForm;
   tradingPanelOpen: boolean;
+  /** When true, the API-credentials dialog is open. Lifted from local state
+   *  in OrderPanel so mobile screens can also open it. */
+  apiKeyDialogOpen: boolean;
   isLoading: boolean;
   lastError: string | null;
   /** OrderId currently being modified via drag-to-modify on the chart. */
@@ -61,6 +64,7 @@ interface TradingState {
   setCredentials: (apiKey: string, apiSecret: string, testnet: boolean) => void;
   setConnected: (v: boolean) => void;
   setTradingPanelOpen: (v: boolean) => void;
+  setApiKeyDialogOpen: (v: boolean) => void;
   updateForm: (patch: Partial<OrderForm>) => void;
   resetForm: (price?: number) => void;
 
@@ -130,6 +134,7 @@ export const useTradingStore = create<TradingState>()(
       balance: [],
       form: defaultForm(),
       tradingPanelOpen: false,
+      apiKeyDialogOpen: false,
       isLoading: false,
       lastError: null,
       modifyingOrderId: null,
@@ -139,6 +144,7 @@ export const useTradingStore = create<TradingState>()(
       },
       setConnected: (v) => set({ isConnected: v }),
       setTradingPanelOpen: (v) => set({ tradingPanelOpen: v }),
+      setApiKeyDialogOpen: (v) => set({ apiKeyDialogOpen: v }),
       updateForm: (patch) =>
         set((s) => ({ form: { ...s.form, ...patch } })),
       resetForm: (price) =>

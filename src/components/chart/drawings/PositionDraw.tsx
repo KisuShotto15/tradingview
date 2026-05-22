@@ -104,6 +104,7 @@ export function PositionDraw({
   function makeYDrag(field: "entry" | "stop" | "target") {
     return (e: React.MouseEvent) => {
       if (!candleSeries || !container) return;
+      if (drawing.locked) return;
       e.preventDefault();
       e.stopPropagation();
       snap();
@@ -128,6 +129,7 @@ export function PositionDraw({
 
   function onRightHandleDrag(e: React.MouseEvent) {
     if (!chart || !container) return;
+    if (drawing.locked) return;
     e.preventDefault();
     e.stopPropagation();
     snap();

@@ -32,7 +32,7 @@ const CATALOG_AS_SYMBOLS: (SymbolInfo & { category: string; description: string 
     description: e.description,
   }));
 
-export function SymbolSelector() {
+export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = {}) {
   const symbol = useChartStore((s) => s.symbol);
   const setSymbol = useChartStore((s) => s.setSymbol);
   const open = useChartStore((s) => s.symbolDialogOpen);
@@ -118,11 +118,13 @@ export function SymbolSelector() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger className="group flex items-center gap-2 rounded px-3 py-1.5 text-sm font-semibold hover:bg-tv-panel-hover">
-        <Search className="h-3.5 w-3.5 text-tv-text-muted group-hover:text-tv-text" />
-        <span className="tabular-nums">{symbol}</span>
-        <ChevronDown className="h-3.5 w-3.5 text-tv-text-muted" />
-      </DialogTrigger>
+      {!noTrigger && (
+        <DialogTrigger className="group flex items-center gap-2 rounded px-3 py-1.5 text-sm font-semibold hover:bg-tv-panel-hover">
+          <Search className="h-3.5 w-3.5 text-tv-text-muted group-hover:text-tv-text" />
+          <span className="tabular-nums">{symbol}</span>
+          <ChevronDown className="h-3.5 w-3.5 text-tv-text-muted" />
+        </DialogTrigger>
+      )}
       <DialogContent className="max-w-md gap-0 bg-tv-panel p-0">
         <DialogHeader className="border-b border-tv-border px-4 py-3">
           <DialogTitle className="text-sm font-medium">Search symbol</DialogTitle>

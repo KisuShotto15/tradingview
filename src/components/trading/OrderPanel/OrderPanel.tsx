@@ -52,7 +52,9 @@ export function OrderPanel() {
   const fetchOrders = useTradingStore((s) => s.fetchOrders);
   const fetchPositions = useTradingStore((s) => s.fetchPositions);
 
-  const [keyDialogOpen, setKeyDialogOpen] = useState(false);
+  // Lifted to trading-store so mobile screens can open it too.
+  const keyDialogOpen = useTradingStore((s) => s.apiKeyDialogOpen);
+  const setKeyDialogOpen = useTradingStore((s) => s.setApiKeyDialogOpen);
 
   const symInfo = useSymbolInfo(symbol);
   const { bid, ask } = useBookTicker(symbol);

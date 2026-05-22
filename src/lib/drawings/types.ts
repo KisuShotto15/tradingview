@@ -29,6 +29,9 @@ interface BaseDrawing {
   color?: string;
   lineWidth?: number;
   hidden?: boolean;
+  /** When true, the drawing cannot be moved or resized (UI handlers must
+   *  short-circuit). Toggled from the floating context toolbar. */
+  locked?: boolean;
   alert?: AlertConfig | null;
 }
 

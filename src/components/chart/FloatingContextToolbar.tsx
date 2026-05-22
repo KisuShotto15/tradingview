@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Eye, EyeOff, Settings2, Trash2, TrendingUp } from "lucide-react";
+import { Eye, EyeOff, Lock, Settings2, Trash2, TrendingUp, Unlock } from "lucide-react";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useChartStore, type DrawingTool } from "@/lib/store/chart-store";
@@ -160,6 +160,7 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
           <Settings2 className="h-3.5 w-3.5" />
         </Btn>
         <VisBtn drawing={drawing} onPatch={patch} />
+        <LockBtn drawing={drawing} onPatch={patch} />
         <Btn title="Delete" danger onClick={() => {
           void remove(drawing.id);
           useDrawingsStore.getState().setSelected(null);
@@ -218,6 +219,24 @@ function VisBtn({ drawing, onPatch }: { drawing: Drawing; onPatch: (p: Partial<D
       className="flex h-5 w-5 items-center justify-center rounded text-tv-text-muted transition-colors hover:bg-tv-panel-hover hover:text-tv-text"
     >
       {hidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
+
+function LockBtn({ drawing, onPatch }: { drawing: Drawing; onPatch: (p: Partial<Drawing>) => void }) {
+  const locked = drawing.locked ?? false;
+  return (
+    <button
+      title={locked ? "Unlock — allow moving" : "Lock — prevent moving"}
+      onClick={() => onPatch({ locked: !locked })}
+      className={cn(
+        "flex h-5 w-5 items-center justify-center rounded transition-colors",
+        locked
+          ? "text-tv-blue hover:bg-tv-blue/15"
+          : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
+      )}
+    >
+      {locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
     </button>
   );
 }

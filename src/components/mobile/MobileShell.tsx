@@ -7,6 +7,7 @@ import { WatchlistScreen } from "./WatchlistScreen";
 import { ChartScreen } from "./ChartScreen";
 import { TradeScreen } from "./TradeScreen";
 import { MenuScreen } from "./MenuScreen";
+import { MobileSheetsRoot } from "./MobileSheetsRoot";
 
 /**
  * Mobile UI shell — full-screen container with a fixed bottom tab bar.
@@ -24,6 +25,7 @@ export function MobileShell() {
         {tab === "menu" && <MenuScreen />}
       </main>
       <BottomTabBar />
+      <MobileSheetsRoot />
     </div>
   );
 }
