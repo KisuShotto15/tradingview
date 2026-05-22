@@ -157,6 +157,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const obvRef = useRef<ISeriesApi<"Line"> | null>(null);
   const candlesRef = useRef<Candle[]>([]);
   const savedPaneHeightsRef = useRef<number[]>([]);
+  const savedMainPaneHRef = useRef<number>(0);
   const firstPointRef = useRef<{ time: number; price: number } | null>(null);
   const placementPointsRef = useRef<Array<{ time: number; price: number }>>([]);
   const chartColorsRef = useRef(DEFAULT_CHART_COLORS);
@@ -806,7 +807,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
   useEffect(() => {
     if (!chartRef.current) return;
     if (subPanesHidden) {
-      savedPaneHeightsRef.current = chartRef.current.panes().map((p) => p.getHeight());
+      const panes = chartRef.current.panes();
+      savedPaneHeightsRef.current = panes.map((p) => p.getHeight());
+      savedMainPaneHRef.current = panes[0]?.getHeight() ?? 0;
     }
     requestAnimationFrame(() => recomputePaneOffsets());
   }, [subPanesHidden]);
@@ -2140,12 +2143,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
   }
   void renderTick;
 
-  const mainPaneH = paneOffsets[0]?.height ?? containerSize.height;
+  const clipH = savedMainPaneHRef.current || paneOffsets[0]?.height || 0;
 
   return (
     <div
-      className="relative w-full overflow-hidden"
-      style={{ height: subPanesHidden ? mainPaneH : "100%" }}
+      className="relative h-full w-full"
+      style={subPanesHidden && clipH > 0 ? { clipPath: `inset(0 0 calc(100% - ${clipH}px) 0)` } : undefined}
     >
       <div ref={containerRef} className="h-full w-full" />
       <DrawingsLayer
