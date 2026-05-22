@@ -157,7 +157,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const obvRef = useRef<ISeriesApi<"Line"> | null>(null);
   const candlesRef = useRef<Candle[]>([]);
   const savedPaneHeightsRef = useRef<number[]>([]);
-  const savedMainPaneHRef = useRef<number>(0);
   const firstPointRef = useRef<{ time: number; price: number } | null>(null);
   const placementPointsRef = useRef<Array<{ time: number; price: number }>>([]);
   const chartColorsRef = useRef(DEFAULT_CHART_COLORS);
@@ -803,15 +802,24 @@ export function PriceChart({ symbol, timeframe }: Props) {
     return () => el.removeEventListener("dblclick", onDblClick);
   }, []);
 
-  // Save pane heights before collapsing so they can be restored.
+  // Collapse/expand sub-pane heights on dblclick toggle.
+  // Series visibility is handled in the visibility effect above (runs synchronously first),
+  // so by the next animation frame the legend headers are already gone.
   useEffect(() => {
     if (!chartRef.current) return;
+    const panes = chartRef.current.panes();
     if (subPanesHidden) {
-      const panes = chartRef.current.panes();
       savedPaneHeightsRef.current = panes.map((p) => p.getHeight());
-      savedMainPaneHRef.current = panes[0]?.getHeight() ?? 0;
+      requestAnimationFrame(() => {
+        panes.forEach((p, i) => { if (i > 0) p.setHeight(0); });
+        requestAnimationFrame(() => recomputePaneOffsets());
+      });
+    } else {
+      panes.forEach((p, i) => {
+        if (i > 0) p.setHeight(savedPaneHeightsRef.current[i] ?? 120);
+      });
+      requestAnimationFrame(() => recomputePaneOffsets());
     }
-    requestAnimationFrame(() => recomputePaneOffsets());
   }, [subPanesHidden]);
 
   // Manage volume — overlay at the bottom of the main pane
@@ -1258,8 +1266,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
   }, [indicators.obv, indicators.rsi, indicators.macd, indicators.adx, indicators.squeeze, indicators.vumanchu, indicatorOverlays]);
 
   // Visibility — eye toggle (hidden state) + enabled state combined.
+  // Sub-pane series are also hidden when subPanesHidden (so their legend headers vanish).
   useEffect(() => {
-    const v = (key: IndicatorKey) => indicators[key] && !hidden[key];
+    const isSubPane = (key: IndicatorKey) =>
+      key === "rsi" || key === "macd" || key === "adx" || key === "squeeze" || key === "vumanchu" || key === "obv";
+    const v = (key: IndicatorKey) =>
+      indicators[key] && !hidden[key] && !(isSubPane(key) && subPanesHidden);
     // EMAs visibility is driven by per-instance `hidden` flag in the sync effect
     if (rsiRef.current) rsiRef.current.applyOptions({ visible: v("rsi") });
     if (rsi30Ref.current) rsi30Ref.current.applyOptions({ visible: v("rsi") });
@@ -1288,7 +1300,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (vmcObRef.current) vmcObRef.current.applyOptions({ visible: v("vumanchu") });
     if (vmcOsRef.current) vmcOsRef.current.applyOptions({ visible: v("vumanchu") });
     if (vmcZeroRef.current) vmcZeroRef.current.applyOptions({ visible: v("vumanchu") });
-  }, [indicators, hidden]);
+  }, [indicators, hidden, subPanesHidden]);
 
   // Apply logarithmic price scale toggle — main candle pane ONLY (uses the
   // candle series's own price scale so sub-pane indicators are unaffected).
@@ -2143,13 +2155,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
   }
   void renderTick;
 
-  const clipH = savedMainPaneHRef.current || paneOffsets[0]?.height || 0;
-
   return (
-    <div
-      className="relative h-full w-full"
-      style={subPanesHidden && clipH > 0 ? { clipPath: `inset(0 0 calc(100% - ${clipH}px) 0)` } : undefined}
-    >
+    <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" />
       <DrawingsLayer
         symbol={symbol}
