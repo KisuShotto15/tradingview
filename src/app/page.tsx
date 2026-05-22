@@ -4,6 +4,7 @@ import { Header } from "@/components/layout/Header";
 import { LeftSidebar } from "@/components/layout/LeftSidebar";
 import { RightSidebar } from "@/components/layout/RightSidebar";
 import { BottomPanel } from "@/components/layout/BottomPanel";
+import { PositionsPanel } from "@/components/layout/PositionsPanel";
 import { PriceChart } from "@/components/chart/PriceChart";
 import { IndicatorSettingsDialog } from "@/components/chart/IndicatorSettingsDialog";
 import { ChartSettingsDialog } from "@/components/chart/ChartSettingsDialog";
@@ -23,6 +24,7 @@ export default function HomePage() {
           <div className="min-h-0 flex-1">
             <PriceChart symbol={symbol} timeframe={timeframe} />
           </div>
+          <PositionsPanel />
         </main>
         <RightSidebar />
       </div>

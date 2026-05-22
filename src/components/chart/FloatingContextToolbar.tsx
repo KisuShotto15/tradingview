@@ -5,6 +5,7 @@ import { Eye, EyeOff, Settings2, Trash2, TrendingUp } from "lucide-react";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useChartStore, type DrawingTool } from "@/lib/store/chart-store";
+import { useTradingStore } from "@/lib/store/trading-store";
 import { ColorPicker } from "@/components/ui/color-picker";
 import { cn } from "@/lib/utils";
 import type { Drawing } from "@/lib/drawings/types";
@@ -167,22 +168,8 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
         </Btn>
       </Seg>
 
-      {/* Create Limit Order */}
-      {isPosition && (
-        <>
-          <Sep />
-          <Seg>
-            <button
-              disabled
-              title="Connect an exchange to create orders automatically"
-              className="flex items-center gap-1 rounded px-1.5 text-[10px] font-medium text-tv-text-muted/40"
-            >
-              <TrendingUp className="h-3 w-3" />
-              <span>Limit order</span>
-            </button>
-          </Seg>
-        </>
-      )}
+      {/* Create Limit Order from the long/short drawing */}
+      {isPosition && <LimitOrderButton drawing={drawing} />}
     </div>
   );
 }
@@ -252,5 +239,60 @@ function SwatchPicker({ value, onChange }: { value: string; onChange: (v: string
     <div style={{ transform: "scale(0.78)", transformOrigin: "center" }}>
       <ColorPicker value={value} onChange={onChange} />
     </div>
+  );
+}
+
+/**
+ * Pre-fills the OrderPanel with the long/short drawing's entry / stop /
+ * target and opens the right sidebar so the user can confirm the qty + submit.
+ *
+ * If no API credentials are set we disable the button and prompt to connect.
+ */
+function LimitOrderButton({ drawing }: { drawing: Drawing }) {
+  const apiKey = useTradingStore((s) => s.apiKey);
+  const apiSecret = useTradingStore((s) => s.apiSecret);
+  const updateForm = useTradingStore((s) => s.updateForm);
+  const setTradingPanelOpen = useTradingStore((s) => s.setTradingPanelOpen);
+  const connected = apiKey && apiSecret;
+
+  function onClick() {
+    if (!connected) return;
+    if (drawing.kind !== "long" && drawing.kind !== "short") return;
+    const isLong = drawing.kind === "long";
+    updateForm({
+      side: isLong ? "BUY" : "SELL",
+      type: "LIMIT",
+      price: drawing.entry.toString(),
+      stopPrice: "",
+      slEnabled: true,
+      sl: drawing.stop.toString(),
+      tpEnabled: true,
+      tp: drawing.target.toString(),
+    });
+    setTradingPanelOpen(true);
+  }
+
+  return (
+    <>
+      <Sep />
+      <Seg>
+        <button
+          disabled={!connected}
+          onClick={onClick}
+          title={connected
+            ? "Pre-fill the order panel with this drawing's E/S/T"
+            : "Connect an exchange to create orders"}
+          className={cn(
+            "flex items-center gap-1 rounded px-1.5 text-[10px] font-medium transition-colors",
+            connected
+              ? "text-tv-blue hover:bg-tv-blue/15"
+              : "text-tv-text-muted/40",
+          )}
+        >
+          <TrendingUp className="h-3 w-3" />
+          <span>Limit order</span>
+        </button>
+      </Seg>
+    </>
   );
 }

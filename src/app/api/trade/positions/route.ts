@@ -42,6 +42,13 @@ export async function GET(req: Request) {
       unRealizedProfit: string;
       leverage: string;
       positionSide: string;
+      liquidationPrice?: string;
+      notional?: string;
+      positionInitialMargin?: string;
+      maintMargin?: string;
+      isolatedMargin?: string;
+      marginType?: string; // "isolated" | "cross"
+      isolated?: boolean;
     };
 
     return NextResponse.json(
@@ -66,6 +73,14 @@ export async function GET(req: Request) {
               : parseFloat(p.positionAmt) < 0
                 ? "SHORT"
                 : "BOTH",
+          liquidationPrice: p.liquidationPrice ? parseFloat(p.liquidationPrice) : 0,
+          notional: p.notional
+            ? Math.abs(parseFloat(p.notional))
+            : Math.abs(parseFloat(p.positionAmt) * parseFloat(p.markPrice)),
+          initialMargin: p.positionInitialMargin ? parseFloat(p.positionInitialMargin) : 0,
+          maintMargin: p.maintMargin ? parseFloat(p.maintMargin) : 0,
+          marginType: (p.marginType ?? (p.isolated ? "isolated" : "cross")) as
+            "isolated" | "cross",
         })),
     );
   } catch (e) {

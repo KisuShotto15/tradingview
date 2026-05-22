@@ -18,8 +18,6 @@ import { isPerp } from "@/lib/binance/rest";
 import { cn } from "@/lib/utils";
 import type { SizingMode, TimeInForce } from "@/lib/binance/trading-types";
 import { ApiKeyDialog } from "../ApiKeyDialog";
-import { OpenOrdersList } from "./OpenOrdersList";
-import { PositionsList } from "./PositionsList";
 
 const SIZING_LABELS: Record<SizingMode, string> = {
   AMOUNT: "Amount",
@@ -215,8 +213,6 @@ export function OrderPanel() {
           </div>
         )}
 
-        {perp && <PositionsList symbol={symbol} />}
-        <OpenOrdersList symbol={symbol} />
       </div>
 
       <SubmitButton
@@ -657,22 +653,28 @@ function SubmitButton({
 }
 
 function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  // Explicit pixel sizing keeps the dot strictly inside the track regardless
+  // of Tailwind preset (v3/v4 differ in how spacing scales map to translate).
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
+      style={{ width: 30, height: 16 }}
       className={cn(
-        "relative h-4 w-7 rounded-full transition-colors",
+        "relative inline-block shrink-0 cursor-pointer rounded-full transition-colors",
         checked ? "bg-tv-blue" : "bg-tv-border",
       )}
     >
       <span
-        className={cn(
-          "absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform",
-          checked ? "translate-x-3.5" : "translate-x-0.5",
-        )}
+        style={{
+          width: 12,
+          height: 12,
+          top: 2,
+          left: checked ? 16 : 2,
+        }}
+        className="absolute rounded-full bg-white shadow transition-all duration-150"
       />
     </button>
   );

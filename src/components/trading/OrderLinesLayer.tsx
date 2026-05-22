@@ -37,6 +37,9 @@ interface LineSpec {
   onCommit?: (price: number) => void;
   /** When true, render the line in a "modifying…" muted style. */
   modifying?: boolean;
+  /** When true, the line represents an OPEN POSITION (uses "EP" label and
+   *  solid styling). Distinguishes from a pending limit order. */
+  isPosition?: boolean;
 }
 
 function colorOf(kind: LineSpec["kind"]): string {
@@ -50,9 +53,10 @@ function colorOf(kind: LineSpec["kind"]): string {
 function pillText(line: LineSpec): { left: string; right: string } {
   const qtyStr = line.qty > 0 ? line.qty.toString() : "";
   if (line.kind === "LIMIT") {
+    const tag = line.isPosition ? "EP" : "Limit";
     return {
       left: `${line.side} ${qtyStr}`.trim(),
-      right: `Limit ${formatPrice(line.price)}`,
+      right: `${tag} ${formatPrice(line.price)}`,
     };
   }
   if (line.entryPrice && line.qty > 0) {
@@ -157,8 +161,10 @@ export function OrderLinesLayer({
   const tradingPanelOpen = useTradingStore((s) => s.tradingPanelOpen);
   const form = useTradingStore((s) => s.form);
   const orders = useTradingStore((s) => s.orders);
+  const positions = useTradingStore((s) => s.positions);
   const updateForm = useTradingStore((s) => s.updateForm);
   const modifyOrder = useTradingStore((s) => s.modifyOrder);
+  const setPositionTpSl = useTradingStore((s) => s.setPositionTpSl);
   const modifyingOrderId = useTradingStore((s) => s.modifyingOrderId);
 
   // `renderTick` is already a prop from PriceChart — receiving it as a prop
@@ -279,6 +285,68 @@ export function OrderLinesLayer({
       onCommit: commit,
       modifying: modifyingOrderId === order.orderId,
     });
+  }
+
+  /* ── Lines for open positions on the exchange ───────────────────── */
+  const cleanedSym = symbol.replace(/\.P$/, "");
+  for (const pos of positions) {
+    if (pos.positionAmt === 0 || pos.symbol !== cleanedSym) continue;
+    const isLong = pos.positionAmt > 0;
+    const posSide: "BUY" | "SELL" = isLong ? "BUY" : "SELL";
+    const closeSide: "BUY" | "SELL" = isLong ? "SELL" : "BUY";
+    const qty = Math.abs(pos.positionAmt);
+
+    // Entry line (read-only — position is already filled).
+    lines.push({
+      kind: "LIMIT",
+      price: pos.entryPrice,
+      qty,
+      side: posSide,
+      isPosition: true,
+    });
+
+    // Find existing reduceOnly TP / SL orders for this position.
+    const tpOrder = orders.find(
+      (o) => o.symbol === cleanedSym && o.side === closeSide && o.reduceOnly &&
+        (o.type === "TAKE_PROFIT_MARKET" || o.type === "TAKE_PROFIT"),
+    );
+    const slOrder = orders.find(
+      (o) => o.symbol === cleanedSym && o.side === closeSide && o.reduceOnly &&
+        (o.type === "STOP_MARKET" || o.type === "STOP" || o.type === "STOP_LIMIT"),
+    );
+
+    if (tpOrder?.stopPrice) {
+      lines.push({
+        kind: "TP",
+        price: tpOrder.stopPrice,
+        qty,
+        side: posSide,
+        entryPrice: pos.entryPrice,
+        isPosition: true,
+        onDrag: () => { /* live preview only; commit fires on mouseup */ },
+        onCommit: async (newPrice) => {
+          if (Math.abs(newPrice - (tpOrder.stopPrice ?? 0)) < 1e-9) return;
+          await setPositionTpSl(symbol, pos, { tp: newPrice });
+        },
+        modifying: modifyingOrderId === tpOrder.orderId,
+      });
+    }
+    if (slOrder?.stopPrice) {
+      lines.push({
+        kind: "SL",
+        price: slOrder.stopPrice,
+        qty,
+        side: posSide,
+        entryPrice: pos.entryPrice,
+        isPosition: true,
+        onDrag: () => { /* live preview only */ },
+        onCommit: async (newPrice) => {
+          if (Math.abs(newPrice - (slOrder.stopPrice ?? 0)) < 1e-9) return;
+          await setPositionTpSl(symbol, pos, { sl: newPrice });
+        },
+        modifying: modifyingOrderId === slOrder.orderId,
+      });
+    }
   }
 
   /* ── Shaded zones (only for preview, between entry↔TP and entry↔SL) ── */

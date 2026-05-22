@@ -43,6 +43,15 @@ export interface Position {
   percentage: number;
   leverage: number;
   side: "LONG" | "SHORT" | "BOTH";
+  /** Estimated liquidation price (0 if not provided). */
+  liquidationPrice: number;
+  /** USD notional of the position (|qty| * mark price). */
+  notional: number;
+  /** Initial margin locked for this position. */
+  initialMargin: number;
+  /** Maintenance margin requirement. */
+  maintMargin: number;
+  marginType: "isolated" | "cross";
 }
 
 export interface AssetBalance {

@@ -85,6 +85,18 @@ interface TradingState {
     symbol: string,
     leverage: number,
   ) => Promise<{ ok: boolean; error?: string }>;
+  /** Close an open position with a reduceOnly MARKET order. */
+  closePosition: (
+    symbol: string,
+    position: Position,
+  ) => Promise<{ ok: boolean; error?: string }>;
+  /** Place a reduceOnly TP and/or SL for an existing position. Cancels any
+   *  matching existing reduceOnly order before placing the new one. */
+  setPositionTpSl: (
+    symbol: string,
+    position: Position,
+    args: { tp?: number | null; sl?: number | null },
+  ) => Promise<{ ok: boolean; error?: string }>;
 }
 
 function defaultForm(): OrderForm {
@@ -381,6 +393,102 @@ export const useTradingStore = create<TradingState>()(
           return { ok: true };
         } catch (e) {
           set({ modifyingOrderId: null, lastError: String(e) });
+          return { ok: false, error: String(e) };
+        }
+      },
+
+      closePosition: async (symbol, position) => {
+        const { apiKey, apiSecret, testnet } = get();
+        if (!apiKey || !apiSecret) return { ok: false, error: "No credentials" };
+        const perp = isPerp(symbol);
+        const sym = cleanSym(symbol);
+        const qty = Math.abs(position.positionAmt);
+        if (qty <= 0) return { ok: false, error: "Position is empty" };
+        const closeSide: OrderSide = position.positionAmt > 0 ? "SELL" : "BUY";
+        try {
+          const res = await fetch("/api/trade/order", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              apiKey, apiSecret, testnet,
+              symbol: sym, isPerp: perp,
+              side: closeSide, type: "MARKET",
+              quantity: String(qty),
+              ...(perp ? { reduceOnly: true } : {}),
+            } satisfies PlaceOrderParams),
+          });
+          const data = (await res.json().catch(() => ({}))) as { msg?: string };
+          if (!res.ok) {
+            set({ lastError: data.msg ?? "close failed" });
+            return { ok: false, error: data.msg ?? "close failed" };
+          }
+          void get().fetchOrders(symbol);
+          void get().fetchPositions(symbol);
+          void get().fetchBalance(symbol);
+          return { ok: true };
+        } catch (e) {
+          set({ lastError: String(e) });
+          return { ok: false, error: String(e) };
+        }
+      },
+
+      setPositionTpSl: async (symbol, position, { tp, sl }) => {
+        const { apiKey, apiSecret, testnet, orders } = get();
+        if (!apiKey || !apiSecret) return { ok: false, error: "No credentials" };
+        const perp = isPerp(symbol);
+        const sym = cleanSym(symbol);
+        if (!perp) return { ok: false, error: "Position TP/SL only on perp" };
+        const qty = Math.abs(position.positionAmt);
+        const closeSide: OrderSide = position.positionAmt > 0 ? "SELL" : "BUY";
+
+        // Cancel any existing reduceOnly TP / SL orders for this symbol on the
+        // opposite side before placing new ones.
+        async function cancelExisting(typeMatch: (t: string) => boolean) {
+          const stale = orders.filter(
+            (o) =>
+              o.symbol === sym &&
+              o.side === closeSide &&
+              o.reduceOnly &&
+              typeMatch(o.type),
+          );
+          for (const o of stale) {
+            await fetch("/api/trade/order", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                apiKey, apiSecret, testnet,
+                symbol: sym, isPerp: true, orderId: o.orderId,
+              }),
+            });
+          }
+        }
+        async function place(type: "TAKE_PROFIT_MARKET" | "STOP_MARKET", stopPrice: number) {
+          await fetch("/api/trade/order", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              apiKey, apiSecret, testnet,
+              symbol: sym, isPerp: true,
+              side: closeSide, type,
+              quantity: String(qty), stopPrice: String(stopPrice),
+              reduceOnly: true, workingType: "MARK_PRICE",
+            } satisfies PlaceOrderParams),
+          });
+        }
+
+        try {
+          if (tp !== undefined) {
+            await cancelExisting((t) => t === "TAKE_PROFIT_MARKET" || t === "TAKE_PROFIT");
+            if (tp !== null && tp > 0) await place("TAKE_PROFIT_MARKET", tp);
+          }
+          if (sl !== undefined) {
+            await cancelExisting((t) => t === "STOP_MARKET" || t === "STOP" || t === "STOP_LIMIT");
+            if (sl !== null && sl > 0) await place("STOP_MARKET", sl);
+          }
+          void get().fetchOrders(symbol);
+          return { ok: true };
+        } catch (e) {
+          set({ lastError: String(e) });
           return { ok: false, error: String(e) };
         }
       },
