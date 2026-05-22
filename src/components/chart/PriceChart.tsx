@@ -156,6 +156,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   // OBV pane
   const obvRef = useRef<ISeriesApi<"Line"> | null>(null);
   const candlesRef = useRef<Candle[]>([]);
+  const savedPaneHeightsRef = useRef<number[]>([]);
   const firstPointRef = useRef<{ time: number; price: number } | null>(null);
   const placementPointsRef = useRef<Array<{ time: number; price: number }>>([]);
   const chartColorsRef = useRef(DEFAULT_CHART_COLORS);
@@ -801,9 +802,20 @@ export function PriceChart({ symbol, timeframe }: Props) {
     return () => el.removeEventListener("dblclick", onDblClick);
   }, []);
 
-  // Trigger a one-shot offset recompute when sub-panes hide/show.
-  // (Per-series visibility is handled below in the main visibility effect.)
+  // Collapse/expand sub-panes on dblclick toggle.
   useEffect(() => {
+    if (!chartRef.current) return;
+    const panes = chartRef.current.panes();
+    if (subPanesHidden) {
+      // Save current heights then collapse sub-panes to 0.
+      savedPaneHeightsRef.current = panes.map((p) => p.getHeight());
+      panes.forEach((p, i) => { if (i > 0) p.setHeight(0); });
+    } else {
+      // Restore saved heights; fall back to 120px if no snapshot.
+      panes.forEach((p, i) => {
+        if (i > 0) p.setHeight(savedPaneHeightsRef.current[i] ?? 120);
+      });
+    }
     requestAnimationFrame(() => recomputePaneOffsets());
   }, [subPanesHidden]);
 
@@ -1251,13 +1263,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
   }, [indicators.obv, indicators.rsi, indicators.macd, indicators.adx, indicators.squeeze, indicators.vumanchu, indicatorOverlays]);
 
   // Visibility — eye toggle (hidden state) + enabled state combined.
-  // Sub-pane indicators (RSI/MACD/ADX/Squeeze/VuManChu/OBV) are also hidden as
-  // a group when subPanesHidden is true (toggled by dblclick on the chart bg).
   useEffect(() => {
-    const isSubPane = (key: IndicatorKey) =>
-      key === "rsi" || key === "macd" || key === "adx" || key === "squeeze" || key === "vumanchu" || key === "obv";
-    const v = (key: IndicatorKey) =>
-      indicators[key] && !hidden[key] && !(isSubPane(key) && subPanesHidden);
+    const v = (key: IndicatorKey) => indicators[key] && !hidden[key];
     // EMAs visibility is driven by per-instance `hidden` flag in the sync effect
     if (rsiRef.current) rsiRef.current.applyOptions({ visible: v("rsi") });
     if (rsi30Ref.current) rsi30Ref.current.applyOptions({ visible: v("rsi") });
@@ -1286,7 +1293,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (vmcObRef.current) vmcObRef.current.applyOptions({ visible: v("vumanchu") });
     if (vmcOsRef.current) vmcOsRef.current.applyOptions({ visible: v("vumanchu") });
     if (vmcZeroRef.current) vmcZeroRef.current.applyOptions({ visible: v("vumanchu") });
-  }, [indicators, hidden, subPanesHidden]);
+  }, [indicators, hidden]);
 
   // Apply logarithmic price scale toggle — main candle pane ONLY (uses the
   // candle series's own price scale so sub-pane indicators are unaffected).
@@ -2178,7 +2185,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         />
       )}
 
-      {indicators.squeeze && !subPanesHidden && paneOffsets[squeezePaneIdx] && (
+      {indicators.squeeze && paneOffsets[squeezePaneIdx] && paneOffsets[squeezePaneIdx].height > 0 && (
         <SqueezeOverlay
           chart={chartRef.current}
           squeezeSeries={squeezeHistRef.current}
