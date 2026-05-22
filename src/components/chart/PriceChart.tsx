@@ -803,27 +803,23 @@ export function PriceChart({ symbol, timeframe }: Props) {
   }, []);
 
   // Collapse/expand sub-pane heights on dblclick toggle.
+  // Collapse/expand sub-panes.
+  // setHeight() is clamped to MIN_PANE_HEIGHT=30 inside lightweight-charts.
+  // setStretchFactor(0) bypasses that limit → pane renders at the 2px layout minimum.
+  // The main pane auto-expands to fill the freed space. No container resize needed.
   useEffect(() => {
     if (!chartRef.current) return;
-    const chart = chartRef.current;
-    const panes = chart.panes();
+    const panes = chartRef.current.panes();
     if (subPanesHidden) {
-      // Snapshot heights, then lock chart to just the main pane height.
-      savedPaneHeightsRef.current = panes.map((p) => p.getHeight());
-      const mainH = panes[0]?.getHeight() ?? 300;
-      chart.applyOptions({ autoSize: false, height: mainH });
-      panes.forEach((p, i) => { if (i > 0) p.setHeight(0); });
-      requestAnimationFrame(() => recomputePaneOffsets());
+      savedPaneHeightsRef.current = panes.map((p) => p.getStretchFactor());
+      panes.forEach((p, i) => { if (i > 0) p.setStretchFactor(0); });
     } else {
-      // Restore full-container autoSize and individual pane heights.
-      chart.applyOptions({ autoSize: true });
-      requestAnimationFrame(() => {
-        chart.panes().forEach((p, i) => {
-          if (i > 0) p.setHeight(savedPaneHeightsRef.current[i] ?? 120);
-        });
-        requestAnimationFrame(() => recomputePaneOffsets());
+      panes.forEach((p, i) => {
+        const saved = savedPaneHeightsRef.current[i];
+        if (i > 0 && saved !== undefined && saved > 0) p.setStretchFactor(saved);
       });
     }
+    requestAnimationFrame(() => recomputePaneOffsets());
   }, [subPanesHidden]);
 
   // Manage volume — overlay at the bottom of the main pane
