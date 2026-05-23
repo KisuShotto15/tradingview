@@ -147,18 +147,14 @@ export function SqueezeOverlay({
           // One shared linear-area path through every bar in the sign-group.
           const d = buildAreaPath(startX, gb, endX, yBase);
 
-          // Render each color sub-segment by clipping the shared path between
-          // the midpoints of adjacent same-sign bars.
+          // Render each color sub-segment by clipping the shared path. The
+          // colour boundary is placed exactly at the first bar of the NEW
+          // colour (matching TradingView's per-bar plot colour semantics).
           return group.colorSegs.map((seg, si) => {
             const allSegs = group.colorSegs;
-            const prevSeg = si > 0 ? allSegs[si - 1] : null;
             const nextSeg = si < allSegs.length - 1 ? allSegs[si + 1] : null;
-            const clipX1 = prevSeg
-              ? (prevSeg.bars[prevSeg.bars.length - 1].x + seg.bars[0].x) / 2
-              : startX;
-            const clipX2 = nextSeg
-              ? (seg.bars[seg.bars.length - 1].x + nextSeg.bars[0].x) / 2
-              : endX;
+            const clipX1 = si > 0 ? seg.bars[0].x : startX;
+            const clipX2 = nextSeg ? nextSeg.bars[0].x : endX;
             const clipId = `sqz-c-${gi}-${si}`;
             return (
               <g key={clipId}>
@@ -170,7 +166,9 @@ export function SqueezeOverlay({
                 <path
                   d={d}
                   fill={colorMap[seg.color]}
-                  stroke="none"
+                  stroke={colorMap[seg.color]}
+                  strokeWidth={0.5}
+                  shapeRendering="geometricPrecision"
                   clipPath={`url(#${clipId})`}
                 />
               </g>
