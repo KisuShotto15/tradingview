@@ -28,6 +28,7 @@ import { resolveSource } from "@/lib/symbols/source";
 import { ema, rsi, macd, obv } from "@/lib/indicators";
 import { adx as adxCalc } from "@/lib/indicators/adx";
 import { squeezeMomentum } from "@/lib/indicators/squeeze";
+import { SqueezeOverlay } from "./SqueezeOverlay";
 import { vumanchu as vumanchuCalc } from "@/lib/indicators/vumanchu";
 import type { Candle, Timeframe } from "@/lib/binance/types";
 import {
@@ -1637,23 +1638,23 @@ export function PriceChart({ symbol, timeframe }: Props) {
       red: style.momentumDecNeg,
       maroon: style.momentumIncNeg,
     };
-    // Render directly as a histogram (= Pine's plot.style_columns). Each bar
-    // is a vertical column from the zero baseline to its momentum value,
-    // colored per Pine's bcolor logic (lime/green/red/maroon). No smooth
-    // overlay — the visual is identical to TradingView's original.
+    // Histogram series stays in place (provides the price-scale anchor and
+    // coordinate-to-price mapping for the SVG overlay) but its bars are
+    // transparent — the visible rendering happens in <SqueezeOverlay/>,
+    // which draws Pine plot.style_area exactly: linear segments between
+    // bars, filled to baseline, colors per bar from bcolor logic.
     squeezeHistRef.current.setData(
       pts.map((p) => ({
         time: p.time as UTCTimestamp,
         value: p.momentum,
-        color: COLORS[p.color] ?? COLORS.green,
+        color: "rgba(0,0,0,0)",
       })),
     );
     squeezeHistRef.current.applyOptions({
       visible: style.showMomentum && indicators.squeeze && !hidden.squeeze,
     });
-    // Publish pts for any other consumer that may need them (kept for parity
-    // with the previous overlay-based design).
     setSqueezePts(pts);
+    void COLORS;
     // Zero-line dots: invisible line at 0 + colored markers for squeeze state
     squeezeDotsRef.current?.setData(
       pts.map((p) => ({ time: p.time as UTCTimestamp, value: 0 })),
@@ -2207,9 +2208,40 @@ export function PriceChart({ symbol, timeframe }: Props) {
         />
       )}
 
-      {/* Squeeze Momentum is rendered as native HistogramSeries columns (see
-          updateSqueeze) — identical to Pine's plot.style_columns. The SVG
-          overlay that previously drew smooth blobs has been retired. */}
+      {indicators.squeeze && !subPanesHidden && paneOffsets[squeezePaneIdx] && paneOffsets[squeezePaneIdx].height > 0 && (
+        <SqueezeOverlay
+          chart={chartRef.current}
+          squeezeSeries={squeezeHistRef.current}
+          width={containerSize.width}
+          height={containerSize.height}
+          paneTop={paneOffsets[squeezePaneIdx].top}
+          paneHeight={paneOffsets[squeezePaneIdx].height}
+          pts={squeezePts}
+          visible={squeezeStyle.showMomentum}
+          colorMap={{
+            lime: squeezeStyle.momentumIncPos,
+            green: squeezeStyle.momentumDecPos,
+            red: squeezeStyle.momentumDecNeg,
+            maroon: squeezeStyle.momentumIncNeg,
+          }}
+          chartAreaWidth={chartRef.current ? chartRef.current.timeScale().width() : containerSize.width}
+          screenBlend={
+            indicators.adx &&
+            (indicatorOverlays.adx === "squeeze" || indicatorOverlays.squeeze === "adx") &&
+            (() => {
+              const hostKey: IndicatorKey =
+                indicatorOverlays.squeeze === "adx" ? "adx" : "squeeze";
+              const zOrder = paneZOrder[hostKey];
+              return (
+                !zOrder ||
+                !zOrder.includes("adx") ||
+                !zOrder.includes("squeeze") ||
+                zOrder.indexOf("adx") > zOrder.indexOf("squeeze")
+              );
+            })()
+          }
+        />
+      )}
       {previewState && (
         <PlacementPreview
           tool={tool}
