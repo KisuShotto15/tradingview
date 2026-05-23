@@ -237,9 +237,20 @@ export interface Watchlist {
 /** Tagged settings target — either a builtin indicator key or an EMA instance id. */
 export type SettingsTarget = IndicatorKey | { kind: "ema"; id: string };
 
+export type ChartType =
+  | "candles"
+  | "line"
+  | "area"
+  | "bars"
+  | "hollow-candles"
+  | "line-with-markers"
+  | "step-line";
+
 interface ChartState {
   symbol: string;
   timeframe: Timeframe;
+  /** Main pane price series rendering style. */
+  chartType: ChartType;
   /** Indicator is added to the chart (appears in pill + renders unless hidden) */
   indicators: Record<IndicatorKey, boolean>;
   /** Indicator is hidden (eye icon off) — kept in pill list, just not rendered */
@@ -305,6 +316,7 @@ interface ChartState {
   // Actions
   setSymbol: (s: string) => void;
   setTimeframe: (t: Timeframe) => void;
+  setChartType: (t: ChartType) => void;
   setChartColors: (patch: Partial<ChartColors>) => void;
   toggleIndicator: (key: IndicatorKey) => void;
   removeIndicator: (key: IndicatorKey) => void;
@@ -377,6 +389,7 @@ export const useChartStore = create<ChartState>()(
   persist(
     (set, get) => ({
       symbol: "BTCUSDT",
+      chartType: "candles" as ChartType,
       timeframe: "15m" as Timeframe,
       indicators: {
         rsi: true,
@@ -424,6 +437,7 @@ export const useChartStore = create<ChartState>()(
 
       setSymbol: (symbol) => set({ symbol }),
       setTimeframe: (timeframe) => set({ timeframe }),
+      setChartType: (chartType) => set({ chartType }),
 
       toggleIndicator: (key) => {
         if (!isApplyingHistory) {
@@ -789,6 +803,7 @@ export const useChartStore = create<ChartState>()(
       },
       partialize: (s) => ({
         symbol: s.symbol,
+        chartType: s.chartType,
         timeframe: s.timeframe,
         indicators: s.indicators,
         hidden: s.hidden,

@@ -384,7 +384,7 @@ export function Watchlist() {
                 <div className="flex min-w-0 items-center gap-1.5">
                   <CoinIcon symbol={s} size={16} />
                   <span className="truncate font-medium text-tv-text">
-                    {getBaseAsset(s)}
+                    {s}
                   </span>
                 </div>
                 <span

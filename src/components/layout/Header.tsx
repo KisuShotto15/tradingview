@@ -3,6 +3,7 @@
 import { Code2, LogOut, Redo2, Settings2, Undo2 } from "lucide-react";
 import { SymbolSelector } from "@/components/chart/SymbolSelector";
 import { TimeframeSelector } from "@/components/chart/TimeframeSelector";
+import { ChartTypeSelector } from "@/components/chart/ChartTypeSelector";
 import { IndicatorMenu } from "@/components/chart/IndicatorMenu";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -29,6 +30,8 @@ export function Header() {
         <SymbolSelector />
         <Separator orientation="vertical" className="h-6 bg-tv-border" />
         <TimeframeSelector />
+        <Separator orientation="vertical" className="mx-1 h-6 bg-tv-border" />
+        <ChartTypeSelector />
         <Separator orientation="vertical" className="mx-1 h-6 bg-tv-border" />
         <IndicatorMenu />
         <Separator orientation="vertical" className="mx-1 h-6 bg-tv-border" />

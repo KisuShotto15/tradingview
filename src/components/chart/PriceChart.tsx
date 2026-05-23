@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   createChart,
   CandlestickSeries,
+  BarSeries,
   LineSeries,
   HistogramSeries,
   AreaSeries,
@@ -125,6 +126,13 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  /** Alternate main-pane price series for line / area / bar / etc. chart
+   *  types. When chartType="candles" this stays null and the candle series is
+   *  visible. Otherwise the candle series is hidden and this one renders
+   *  the price as { time, value } (close-based). */
+  const mainSeriesRef = useRef<
+    ISeriesApi<"Line"> | ISeriesApi<"Area"> | ISeriesApi<"Bar"> | null
+  >(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   /** Per-user EMA instance: id → series */
   const emaSeriesMapRef = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
@@ -176,6 +184,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const indicatorLogScale = useChartStore((s) => s.indicatorLogScale);
   const pillsCollapsed = useChartStore((s) => s.pillsCollapsed);
   const subPanesHidden = useChartStore((s) => s.subPanesHidden);
+  const chartType = useChartStore((s) => s.chartType);
   const keyLevelsCfg = useChartStore((s) => s.keyLevels);
   const chartColors = useChartStore((s) => s.chartColors);
   chartColorsRef.current = chartColors;
