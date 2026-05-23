@@ -17,6 +17,7 @@ import { FibRetracementDraw } from "./FibRetracementDraw";
 import { PriceRangeDraw } from "./PriceRangeDraw";
 import { DateRangeDraw } from "./DateRangeDraw";
 import { PositionDraw } from "./PositionDraw";
+import { BrushDraw } from "./BrushDraw";
 
 interface Props {
   symbol: string;
@@ -333,6 +334,18 @@ function renderDrawing(args: RenderArgs) {
         />
       );
     }
+    case "brush":
+    case "highlighter":
+      return (
+        <BrushDraw
+          key={d.id}
+          drawing={d}
+          chart={chart}
+          candleSeries={candleSeries}
+          selected={selected}
+          onSelect={onSelect}
+        />
+      );
     default:
       return null;
   }

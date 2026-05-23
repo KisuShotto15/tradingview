@@ -1450,13 +1450,134 @@ export function PriceChart({ symbol, timeframe }: Props) {
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.style.cursor =
-        tool !== "cursor" && tool !== "eraser" ? "crosshair" : "";
+        tool === "brush" || tool === "highlighter" ? "crosshair"
+        : tool !== "cursor" && tool !== "eraser" ? "crosshair" : "";
     }
     if (tool !== "measure") setMeasure(INITIAL_MEASURE);
     // Reset multi-click placement when switching tools
     firstPointRef.current = null;
     placementPointsRef.current = [];
     setPreviewState(null);
+  }, [tool]);
+
+  // Brush / Highlighter — freehand drawing via pointer capture
+  useEffect(() => {
+    if (tool !== "brush" && tool !== "highlighter") return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const isHighlighter = tool === "highlighter";
+    let active = false;
+    const pts: { time: number; price: number }[] = [];
+    let lastX = 0;
+    let lastY = 0;
+    const MIN_DIST_SQ = 9; // 3px min between points
+
+    // Live preview path element injected into the drawings SVG
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("style", "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:15;overflow:visible");
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", isHighlighter ? "#ffeb3b" : "#ffffff");
+    path.setAttribute("stroke-width", isHighlighter ? "14" : "2");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    path.setAttribute("opacity", isHighlighter ? "0.35" : "1");
+    svg.appendChild(path);
+    container.parentElement?.appendChild(svg);
+
+    function ptsToD(pixels: { x: number; y: number }[]) {
+      if (pixels.length < 2) return "";
+      let d = `M ${pixels[0].x} ${pixels[0].y}`;
+      for (let i = 1; i < pixels.length - 1; i++) {
+        const mx = (pixels[i].x + pixels[i + 1].x) / 2;
+        const my = (pixels[i].y + pixels[i + 1].y) / 2;
+        d += ` Q ${pixels[i].x} ${pixels[i].y} ${mx} ${my}`;
+      }
+      d += ` L ${pixels[pixels.length - 1].x} ${pixels[pixels.length - 1].y}`;
+      return d;
+    }
+
+    function updatePreview() {
+      if (!chartRef.current || !candleSeriesRef.current) return;
+      const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
+      const pixels: { x: number; y: number }[] = [];
+      for (const pt of pts) {
+        const x = chartRef.current.timeScale().timeToCoordinate(pt.time as UTCTimestamp);
+        const y = candleSeriesRef.current.priceToCoordinate(pt.price);
+        if (x !== null && y !== null) pixels.push({ x: x as number, y: y as number });
+      }
+      path.setAttribute("d", ptsToD(pixels));
+      void intervalSec;
+    }
+
+    function toChartPoint(clientX: number, clientY: number) {
+      if (!chartRef.current || !candleSeriesRef.current || !container) return null;
+      const rect = container.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      const price = candleSeriesRef.current.coordinateToPrice(y);
+      if (price === null) return null;
+      const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
+      const time = xToTime(chartRef.current, x, candlesRef.current, intervalSec);
+      if (time === null) return null;
+      return { time, price: price as number };
+    }
+
+    function onPointerDown(e: PointerEvent) {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      active = true;
+      pts.length = 0;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      const pt = toChartPoint(e.clientX, e.clientY);
+      if (pt) pts.push(pt);
+      (container as HTMLElement).setPointerCapture(e.pointerId);
+    }
+
+    function onPointerMove(e: PointerEvent) {
+      if (!active) return;
+      e.preventDefault();
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      if (dx * dx + dy * dy < MIN_DIST_SQ) return;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      const pt = toChartPoint(e.clientX, e.clientY);
+      if (pt) { pts.push(pt); updatePreview(); }
+    }
+
+    function onPointerUp(e: PointerEvent) {
+      if (!active) return;
+      active = false;
+      e.preventDefault();
+      path.setAttribute("d", "");
+      if (pts.length >= 2) {
+        void drawingsApiRef.current.add({
+          id: generateId(),
+          kind: tool as "brush" | "highlighter",
+          symbol: symbolRef.current,
+          points: [...pts],
+          color: isHighlighter ? "#ffeb3b" : "#ffffff",
+          lineWidth: isHighlighter ? 14 : 2,
+        });
+      }
+    }
+
+    container.addEventListener("pointerdown", onPointerDown, { capture: true });
+    container.addEventListener("pointermove", onPointerMove, { capture: true });
+    container.addEventListener("pointerup", onPointerUp, { capture: true });
+
+    return () => {
+      container.removeEventListener("pointerdown", onPointerDown, { capture: true });
+      container.removeEventListener("pointermove", onPointerMove, { capture: true });
+      container.removeEventListener("pointerup", onPointerUp, { capture: true });
+      svg.remove();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool]);
 
   // Track Ctrl key globally for magnet visual + apply snap to preview

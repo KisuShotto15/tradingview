@@ -9,8 +9,10 @@ import {
   CalendarRange,
   ChevronRight,
   GripVertical,
+  Highlighter,
   Layers3,
   MoveRight,
+  Pencil,
   Percent,
   RectangleHorizontal,
   Ruler,
@@ -111,6 +113,13 @@ const TOOL_GROUPS: ToolGroup[] = [
     tools: [
       { key: "long", icon: LongPositionIcon, label: "Long position", hint: "Click entry, then target. Stop auto-set; drag handles to edit" },
       { key: "short", icon: ShortPositionIcon, label: "Short position", hint: "Click entry, then target. Stop auto-set; drag handles to edit" },
+    ],
+  },
+  {
+    label: "Draw",
+    tools: [
+      { key: "brush", icon: Pencil, label: "Brush", hint: "Click and drag to draw freehand on the chart" },
+      { key: "highlighter", icon: Highlighter, label: "Highlighter", hint: "Click and drag to highlight areas on the chart" },
     ],
   },
   {
