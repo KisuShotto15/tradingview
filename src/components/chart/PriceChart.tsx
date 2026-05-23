@@ -1514,7 +1514,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
     function toChartPoint(clientX: number, clientY: number) {
       if (!chartRef.current || !candleSeriesRef.current || !container) return null;
-      const rect = container.getBoundingClientRect();
+      const rect = container!.getBoundingClientRect();
       const x = clientX - rect.left;
       const y = clientY - rect.top;
       const price = candleSeriesRef.current.coordinateToPrice(y);

@@ -152,20 +152,21 @@ export function SqueezeOverlay({
           // One shared linear-area path through every bar in the sign-group.
           const d = buildAreaPath(startX, gb, endX, yBase);
 
-          // Render each color sub-segment by clipping the shared path. Each
-          // bar OWNS the area between the midpoints with its neighbours —
-          // this is Pine `plot.style_area`'s per-bar semantics, so the colour
-          // change happens half a bar BEFORE the new-colour bar's centre.
-          // (Clipping at the bar's own x produces a "one-bar lag" visually.)
+          // Render each color sub-segment by clipping the shared path. The
+          // boundary between two adjacent colours is placed at the LAST bar
+          // of the previous colour (i.e. the peak / apex). This matches
+          // TradingView's plot.style_area behaviour where the new colour
+          // starts visually AT the local extreme (the deepest red bar, the
+          // brightest lime peak), not half a bar afterwards.
           return group.colorSegs.map((seg, si) => {
             const allSegs = group.colorSegs;
             const prevSeg = si > 0 ? allSegs[si - 1] : null;
             const nextSeg = si < allSegs.length - 1 ? allSegs[si + 1] : null;
             const clipX1 = prevSeg
-              ? (prevSeg.bars[prevSeg.bars.length - 1].x + seg.bars[0].x) / 2
+              ? prevSeg.bars[prevSeg.bars.length - 1].x
               : startX;
             const clipX2 = nextSeg
-              ? (seg.bars[seg.bars.length - 1].x + nextSeg.bars[0].x) / 2
+              ? seg.bars[seg.bars.length - 1].x
               : endX;
             const clipId = `sqz-c-${gi}-${si}`;
             return (
