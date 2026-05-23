@@ -320,6 +320,22 @@ export function PriceChart({ symbol, timeframe }: Props) {
         if (snapped !== null) price = snapped;
       }
 
+      // Shift+Click → measure tool shortcut (works with any active tool)
+      if (param.sourceEvent?.shiftKey && resolvedTime !== null) {
+        const cur = measureRef.current;
+        if (cur.phase === "idle" || cur.phase === "done") {
+          setMeasure({ phase: "placing", a: { time: resolvedTime, price }, b: { time: resolvedTime, price } });
+        } else {
+          setMeasure({ phase: "done", a: cur.a, b: { time: resolvedTime, price } });
+        }
+        return;
+      }
+
+      // Any non-shift click while measure is "done" → dismiss
+      if (measureRef.current.phase === "done") {
+        setMeasure(INITIAL_MEASURE);
+      }
+
       // Cursor click on empty chart area → deselect any selected drawing
       if (toolRef.current === "cursor") {
         useDrawingsStore.getState().setSelected(null);
@@ -599,9 +615,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
         setMagnetTarget((prev) => (prev === null ? prev : null));
       }
 
-      // Measure preview
+      // Measure preview — works for both the measure tool and Shift+Click shortcut
       if (
-        toolRef.current === "measure" &&
+        (toolRef.current === "measure" || measureRef.current.phase === "placing") &&
         measureRef.current.phase === "placing" &&
         cursorTime !== null &&
         cursorPrice !== null
@@ -2098,7 +2114,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
       setDragKey(null);
     }
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") { pointerDragRef.current = null; setDragKey(null); }
+      if (e.key === "Escape") {
+        pointerDragRef.current = null;
+        setDragKey(null);
+        setMeasure(INITIAL_MEASURE);
+      }
     }
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("keydown", onKeyDown);
