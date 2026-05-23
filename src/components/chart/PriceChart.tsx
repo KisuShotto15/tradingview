@@ -320,18 +320,15 @@ export function PriceChart({ symbol, timeframe }: Props) {
         if (snapped !== null) price = snapped;
       }
 
-      // Shift+Click → measure tool shortcut (works with any active tool)
-      if (param.sourceEvent?.shiftKey && resolvedTime !== null) {
-        const cur = measureRef.current;
-        if (cur.phase === "idle" || cur.phase === "done") {
-          setMeasure({ phase: "placing", a: { time: resolvedTime, price }, b: { time: resolvedTime, price } });
-        } else {
-          setMeasure({ phase: "done", a: cur.a, b: { time: resolvedTime, price } });
-        }
+      // Measure shortcut: Shift+Click starts, any click completes, any click dismisses
+      if (measureRef.current.phase === "placing" && resolvedTime !== null) {
+        setMeasure({ phase: "done", a: measureRef.current.a, b: { time: resolvedTime, price } });
         return;
       }
-
-      // Any non-shift click while measure is "done" → dismiss
+      if (param.sourceEvent?.shiftKey && resolvedTime !== null) {
+        setMeasure({ phase: "placing", a: { time: resolvedTime, price }, b: { time: resolvedTime, price } });
+        return;
+      }
       if (measureRef.current.phase === "done") {
         setMeasure(INITIAL_MEASURE);
       }
