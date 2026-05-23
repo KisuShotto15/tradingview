@@ -53,6 +53,37 @@ function buildPath(topPts: Pt[], yBase: number): string {
   return d;
 }
 
+/**
+ * Outline-only variant of the curve: walks the same Catmull-Rom spline as
+ * buildPath() but skips the baseline endpoints, so when stroked it only
+ * highlights the top edge of each "mountain/valley" — not the vertical
+ * connection back to the zero line. Mirrors the subtle edge highlight on
+ * TradingView's original Squeeze Momentum histogram.
+ */
+function buildOutlinePath(topPts: Pt[]): string {
+  // topPts[0] and topPts[n-1] are baseline endpoints — strip them so we only
+  // outline the actual bar points.
+  if (topPts.length < 4) return "";
+  const pts = topPts.slice(1, topPts.length - 1);
+  if (pts.length < 2) return "";
+
+  let d = `M ${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)} `;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(i - 1, 0)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(i + 2, pts.length - 1)];
+
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+    d += `C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)} `;
+  }
+  return d;
+}
+
 export function SqueezeOverlay({
   chart,
   squeezeSeries,
@@ -168,6 +199,9 @@ export function SqueezeOverlay({
             { x: endX, y: yBase },
           ];
           const d = buildPath(topPts, yBase);
+          // Same curve without baseline endpoints — used as a subtle edge
+          // highlight on top of each filled segment (matches TradingView).
+          const outlineD = buildOutlinePath(topPts);
 
           // Render each color sub-segment by clipping the shared path
           return group.colorSegs.map((seg, si) => {
@@ -192,6 +226,20 @@ export function SqueezeOverlay({
                   </clipPath>
                 </defs>
                 <path d={d} fill={colorMap[seg.color]} stroke="none" clipPath={`url(#${clipId})`} />
+                {/* Edge highlight — subtle stroke along the curve only. */}
+                {outlineD && (
+                  <path
+                    d={outlineD}
+                    fill="none"
+                    stroke={colorMap[seg.color]}
+                    strokeWidth={1.25}
+                    strokeOpacity={0.9}
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    clipPath={`url(#${clipId})`}
+                    style={{ mixBlendMode: "screen" }}
+                  />
+                )}
               </g>
             );
           });
