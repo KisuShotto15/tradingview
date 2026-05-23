@@ -192,10 +192,15 @@ export interface SqueezeStyle {
 }
 
 export const DEFAULT_SQUEEZE_STYLE: SqueezeStyle = {
-  momentumIncPos: "#00ff00",
-  momentumDecPos: "#26a69a",
-  momentumIncNeg: "#a52a2a",
-  momentumDecNeg: "#ef5350",
+  // Pine-exact colors from the Rolgui Squeeze indicator:
+  //   color.rgb(46, 245, 39)   → lime  (val>0 and val>prev)
+  //   color.rgb(16, 120, 13)   → green (val>0 and val<=prev)
+  //   color.rgb(217, 6, 6)     → red   (val<0 and val<prev)
+  //   color.rgb(98, 0, 0)      → maroon(val<0 and val>=prev)
+  momentumIncPos: "#2ef527",
+  momentumDecPos: "#10780d",
+  momentumIncNeg: "#620000",
+  momentumDecNeg: "#d90606",
   squeezeOn: "#000000",
   squeezeOff: "#787b86",
   noSqueeze: "#2962ff",
