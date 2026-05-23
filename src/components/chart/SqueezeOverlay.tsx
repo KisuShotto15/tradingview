@@ -53,6 +53,37 @@ function buildPath(topPts: Pt[], yBase: number): string {
   return d;
 }
 
+/** Blend a hex / rgb color towards white by `amount` (0..1). Used to compute
+ *  a subtle highlight tone for the histogram edge. */
+function lighten(color: string, amount = 0.45): string {
+  // Try to parse #rrggbb or #rgb. Fall back to the raw string on any failure.
+  let r = 0, g = 0, b = 0;
+  if (color.startsWith("#")) {
+    const hex = color.slice(1);
+    if (hex.length === 3) {
+      r = parseInt(hex[0] + hex[0], 16);
+      g = parseInt(hex[1] + hex[1], 16);
+      b = parseInt(hex[2] + hex[2], 16);
+    } else if (hex.length >= 6) {
+      r = parseInt(hex.slice(0, 2), 16);
+      g = parseInt(hex.slice(2, 4), 16);
+      b = parseInt(hex.slice(4, 6), 16);
+    } else {
+      return color;
+    }
+  } else {
+    const m = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    if (!m) return color;
+    r = parseInt(m[1], 10);
+    g = parseInt(m[2], 10);
+    b = parseInt(m[3], 10);
+  }
+  const lr = Math.round(r + (255 - r) * amount);
+  const lg = Math.round(g + (255 - g) * amount);
+  const lb = Math.round(b + (255 - b) * amount);
+  return `rgb(${lr}, ${lg}, ${lb})`;
+}
+
 /**
  * Outline-only variant of the curve: walks the same Catmull-Rom spline as
  * buildPath() but skips the baseline endpoints, so when stroked it only
@@ -226,18 +257,16 @@ export function SqueezeOverlay({
                   </clipPath>
                 </defs>
                 <path d={d} fill={colorMap[seg.color]} stroke="none" clipPath={`url(#${clipId})`} />
-                {/* Edge highlight — subtle stroke along the curve only. */}
+                {/* Edge highlight — slightly lighter shade along the curve. */}
                 {outlineD && (
                   <path
                     d={outlineD}
                     fill="none"
-                    stroke={colorMap[seg.color]}
-                    strokeWidth={1.25}
-                    strokeOpacity={0.9}
+                    stroke={lighten(colorMap[seg.color], 0.55)}
+                    strokeWidth={1.5}
                     strokeLinejoin="round"
                     strokeLinecap="round"
                     clipPath={`url(#${clipId})`}
-                    style={{ mixBlendMode: "screen" }}
                   />
                 )}
               </g>
