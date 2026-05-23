@@ -14,7 +14,9 @@ export type DrawingKind =
   | "price-range"
   | "date-range"
   | "long"
-  | "short";
+  | "short"
+  | "brush"
+  | "highlighter";
 
 export interface AlertConfig {
   enabled: boolean;
@@ -116,6 +118,16 @@ export interface ShortPositionDrawing extends BaseDrawing {
   showLabels?: boolean;
 }
 
+export interface BrushDrawing extends BaseDrawing {
+  kind: "brush";
+  points: Point[];
+}
+
+export interface HighlighterDrawing extends BaseDrawing {
+  kind: "highlighter";
+  points: Point[];
+}
+
 export type Drawing =
   | HLineDrawing
   | VLineDrawing
@@ -127,7 +139,9 @@ export type Drawing =
   | PriceRangeDrawing
   | DateRangeDrawing
   | LongPositionDrawing
-  | ShortPositionDrawing;
+  | ShortPositionDrawing
+  | BrushDrawing
+  | HighlighterDrawing;
 
 export const FIB_LEVELS_DEFAULT = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 

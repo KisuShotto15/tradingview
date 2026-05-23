@@ -105,19 +105,24 @@ export function SqueezeOverlay({
     return a.x + t * (b.x - a.x);
   }
 
-  // For each sign-group, compute the baseline-anchor x on its left and right
-  // (zero crossing with the neighbouring opposite-sign group, or barSpacing/2
-  // beyond the first/last bar when there's no neighbour).
+  // For each sign-group: compute the baseline-anchor x on its left and right.
+  //  • Interior groups (both neighbours opposite-sign): close at the exact
+  //    zero crossing with each neighbour, so positive and negative areas
+  //    meet at the baseline forming the natural V / Λ silhouette.
+  //  • Edge groups (no neighbour on one side, i.e. first or last in the
+  //    series): close VERTICALLY at the first / last bar's own x. TradingView
+  //    does the same — there's no synthetic tail past the last bar.
   const groupEdges = signGroups.map((g, gi) => {
     const gb = groupBars(g);
     const prevGroup = gi > 0 ? signGroups[gi - 1] : null;
     const nextGroup = gi < signGroups.length - 1 ? signGroups[gi + 1] : null;
     const prevLast = prevGroup ? groupBars(prevGroup).slice(-1)[0] : null;
     const nextFirst = nextGroup ? groupBars(nextGroup)[0] : null;
-    const startX = prevLast ? zeroCross(prevLast, gb[0]) : gb[0].x - hw;
-    const endX = nextFirst ? zeroCross(gb[gb.length - 1], nextFirst) : gb[gb.length - 1].x + hw;
+    const startX = prevLast ? zeroCross(prevLast, gb[0]) : gb[0].x;
+    const endX = nextFirst ? zeroCross(gb[gb.length - 1], nextFirst) : gb[gb.length - 1].x;
     return { startX, endX };
   });
+  void hw;
 
   void width;
   void height;
@@ -147,14 +152,21 @@ export function SqueezeOverlay({
           // One shared linear-area path through every bar in the sign-group.
           const d = buildAreaPath(startX, gb, endX, yBase);
 
-          // Render each color sub-segment by clipping the shared path. The
-          // colour boundary is placed exactly at the first bar of the NEW
-          // colour (matching TradingView's per-bar plot colour semantics).
+          // Render each color sub-segment by clipping the shared path. Each
+          // bar OWNS the area between the midpoints with its neighbours —
+          // this is Pine `plot.style_area`'s per-bar semantics, so the colour
+          // change happens half a bar BEFORE the new-colour bar's centre.
+          // (Clipping at the bar's own x produces a "one-bar lag" visually.)
           return group.colorSegs.map((seg, si) => {
             const allSegs = group.colorSegs;
+            const prevSeg = si > 0 ? allSegs[si - 1] : null;
             const nextSeg = si < allSegs.length - 1 ? allSegs[si + 1] : null;
-            const clipX1 = si > 0 ? seg.bars[0].x : startX;
-            const clipX2 = nextSeg ? nextSeg.bars[0].x : endX;
+            const clipX1 = prevSeg
+              ? (prevSeg.bars[prevSeg.bars.length - 1].x + seg.bars[0].x) / 2
+              : startX;
+            const clipX2 = nextSeg
+              ? (seg.bars[seg.bars.length - 1].x + nextSeg.bars[0].x) / 2
+              : endX;
             const clipId = `sqz-c-${gi}-${si}`;
             return (
               <g key={clipId}>

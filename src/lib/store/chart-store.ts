@@ -30,7 +30,9 @@ export type DrawingTool =
   | "price-range"
   | "date-range"
   | "long"
-  | "short";
+  | "short"
+  | "brush"
+  | "highlighter";
 
 export interface IndicatorConfig {
   rsi: number;
