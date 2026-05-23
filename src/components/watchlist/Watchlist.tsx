@@ -27,6 +27,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatPrice, formatPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { CoinIcon, getBaseAsset } from "./CoinIcon";
 
 interface Row {
   symbol: string;
@@ -380,11 +381,11 @@ export function Watchlist() {
                 )}
               >
                 <GripVertical className="h-3 w-3 shrink-0 cursor-grab text-tv-text-dim opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing" />
-                <div className="flex min-w-0 items-center gap-1">
-                  <span className="font-medium text-tv-text">
-                    {s.replace("USDT", "")}
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <CoinIcon symbol={s} size={16} />
+                  <span className="truncate font-medium text-tv-text">
+                    {getBaseAsset(s)}
                   </span>
-                  <span className="text-[10px] text-tv-text-dim">USDT</span>
                 </div>
                 <span
                   className={cn(
