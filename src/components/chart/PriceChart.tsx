@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   createChart,
   CandlestickSeries,
-  BarSeries,
   LineSeries,
   HistogramSeries,
   AreaSeries,
@@ -39,7 +38,7 @@ import {
   DEFAULT_CHART_COLORS,
 } from "@/lib/store/chart-store";
 import { formatPrice, formatVolume } from "@/lib/format";
-import { ChevronUp } from "lucide-react";
+import { Bell, ChevronUp } from "lucide-react";
 import { IndicatorPill } from "./IndicatorPill";
 import { MeasureOverlay } from "./MeasureOverlay";
 import { DrawingsLayer } from "./drawings/DrawingsLayer";
@@ -126,13 +125,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
-  /** Alternate main-pane price series for line / area / bar / etc. chart
-   *  types. When chartType="candles" this stays null and the candle series is
-   *  visible. Otherwise the candle series is hidden and this one renders
-   *  the price as { time, value } (close-based). */
-  const mainSeriesRef = useRef<
-    ISeriesApi<"Line"> | ISeriesApi<"Area"> | ISeriesApi<"Bar"> | null
-  >(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   /** Per-user EMA instance: id → series */
   const emaSeriesMapRef = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
@@ -184,7 +176,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const indicatorLogScale = useChartStore((s) => s.indicatorLogScale);
   const pillsCollapsed = useChartStore((s) => s.pillsCollapsed);
   const subPanesHidden = useChartStore((s) => s.subPanesHidden);
-  const chartType = useChartStore((s) => s.chartType);
   const keyLevelsCfg = useChartStore((s) => s.keyLevels);
   const chartColors = useChartStore((s) => s.chartColors);
   chartColorsRef.current = chartColors;
@@ -194,6 +185,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const toggleHidden = useChartStore((s) => s.toggleHidden);
   const setSettingsTarget = useChartStore((s) => s.setSettingsTarget);
   const setIndicatorOverlay = useChartStore((s) => s.setIndicatorOverlay);
+  const openAlertDialog = useChartStore((s) => s.openAlertDialog);
+  const setCurrentLivePrice = useChartStore((s) => s.setCurrentLivePrice);
   const drawingsApi = useDrawings();
   // Note: useAlertMonitor relies on lastPrice (state); see below where it's invoked.
 
@@ -209,6 +202,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const configRef = useRef(config);
   configRef.current = config;
 
+  const [chartContextMenu, setChartContextMenu] = useState<{ x: number; y: number; price: number } | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [lastPrice, setLastPrice] = useState<{ value: number; pct: number } | null>(null);
   const [lastValues, setLastValues] = useState<LastValues>({});
@@ -713,6 +707,19 @@ export function PriceChart({ symbol, timeframe }: Props) {
     // (ResizeObserver only fires on container resize, not internal pane layout changes)
     const onPaneMouseUp = () => requestAnimationFrame(() => recomputePaneOffsets());
     containerRef.current.addEventListener("mouseup", onPaneMouseUp);
+
+    // Right-click context menu — "Add alert at [price]"
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      if (!candleSeriesRef.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const y = e.clientY - rect.top;
+      const price = candleSeriesRef.current.coordinateToPrice(y);
+      if (price === null || isNaN(price as number)) return;
+      setChartContextMenu({ x: e.clientX - rect.left, y: e.clientY - rect.top, price: price as number });
+    };
+    containerRef.current.addEventListener("contextmenu", onContextMenu);
+
     recomputePaneOffsets();
     const initRect = containerRef.current.getBoundingClientRect();
     setContainerSize({ width: initRect.width, height: initRect.height });
@@ -722,6 +729,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(logicalRangeHandler);
       ro.disconnect();
       containerRef.current?.removeEventListener("mouseup", onPaneMouseUp);
+      containerRef.current?.removeEventListener("contextmenu", onContextMenu);
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
@@ -1972,10 +1980,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
         if (klines.length > 0) {
           const last = klines[klines.length - 1];
           const prev = klines[klines.length - 2] ?? last;
-          setLastPrice({
+          const lp = {
             value: last.close,
             pct: prev.close === 0 ? 0 : ((last.close - prev.close) / prev.close) * 100,
-          });
+          };
+          setLastPrice(lp);
+          setCurrentLivePrice(lp.value);
         }
 
         // Non-Binance sources: poll for fresh data periodically.
@@ -2017,10 +2027,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
               updateOBV();
               const last = fresh[fresh.length - 1];
               const prev = fresh[fresh.length - 2] ?? last;
-              setLastPrice({
+              const lp2 = {
                 value: last.close,
                 pct: prev.close === 0 ? 0 : ((last.close - prev.close) / prev.close) * 100,
-              });
+              };
+              setLastPrice(lp2);
+              setCurrentLivePrice(lp2.value);
             } catch (e) {
               console.error("Polling refresh failed:", e);
             }
@@ -2079,13 +2091,15 @@ export function PriceChart({ symbol, timeframe }: Props) {
                 updateVumanchu();
               updateOBV();
                 const prev = arr[arr.length - 2] ?? lastCandle;
-                setLastPrice({
+                const lp3 = {
                   value: synth.close,
                   pct:
                     prev && prev.close !== 0
                       ? ((synth.close - prev.close) / prev.close) * 100
                       : 0,
-                });
+                };
+                setLastPrice(lp3);
+                setCurrentLivePrice(lp3.value);
               },
             }),
           );
@@ -2129,10 +2143,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
             updateVumanchu();
             updateOBV();
             const prev = arr[arr.length - 2] ?? lastCandle;
-            setLastPrice({
+            const lp4 = {
               value: k.close,
               pct: prev && prev.close !== 0 ? ((k.close - prev.close) / prev.close) * 100 : 0,
-            });
+            };
+            setLastPrice(lp4);
+            setCurrentLivePrice(lp4.value);
           },
         });
       } catch (e) {
@@ -2704,6 +2720,36 @@ export function PriceChart({ symbol, timeframe }: Props) {
           </div>
         );
       })}
+
+      {/* Chart right-click context menu */}
+      {chartContextMenu && (
+        <>
+          {/* Backdrop to close on outside click */}
+          <div
+            className="absolute inset-0 z-40"
+            onMouseDown={() => setChartContextMenu(null)}
+          />
+          <div
+            style={{ top: chartContextMenu.y, left: chartContextMenu.x }}
+            className="absolute z-50 min-w-52 overflow-hidden rounded border border-tv-border bg-tv-panel py-1 shadow-2xl"
+          >
+            <button
+              onMouseDown={() => {
+                openAlertDialog(chartContextMenu.price);
+                setChartContextMenu(null);
+              }}
+              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-xs text-tv-text hover:bg-tv-panel-hover"
+            >
+              <Bell className="h-3.5 w-3.5 shrink-0 text-tv-yellow" />
+              <span>
+                Add alert on{" "}
+                <span className="font-medium">{symbol}</span> at{" "}
+                <span className="font-medium">{formatPrice(chartContextMenu.price)}</span>
+              </span>
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

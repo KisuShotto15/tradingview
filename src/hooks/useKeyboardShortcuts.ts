@@ -15,6 +15,7 @@ import { useDrawings } from "@/lib/supabase/use-drawings";
  */
 export function useKeyboardShortcuts() {
   const setTool = useChartStore((s) => s.setTool);
+  const openAlertDialog = useChartStore((s) => s.openAlertDialog);
   const resetPlacement = useDrawingsStore((s) => s.resetPlacement);
   const setSelected = useDrawingsStore((s) => s.setSelected);
   const { undo, redo, remove } = useDrawings();
@@ -44,6 +45,14 @@ export function useKeyboardShortcuts() {
       if (isRedo) {
         e.preventDefault();
         void redo();
+        return;
+      }
+
+      // Alt+A — open Create Alert dialog
+      if (e.altKey && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        const { currentLivePrice } = useChartStore.getState();
+        openAlertDialog(currentLivePrice ?? undefined);
         return;
       }
 
@@ -77,5 +86,5 @@ export function useKeyboardShortcuts() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [setTool, resetPlacement, setSelected, undo, redo, remove]);
+  }, [setTool, openAlertDialog, resetPlacement, setSelected, undo, redo, remove]);
 }

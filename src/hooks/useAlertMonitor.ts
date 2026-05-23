@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
+import { useAlertsStore } from "@/lib/store/alerts-store";
 import { useToastStore } from "@/lib/alerts/toast-store";
 import { playAlertSound } from "@/lib/alerts/sound";
 import { useDrawings } from "@/lib/supabase/use-drawings";
@@ -10,15 +11,11 @@ import type { Drawing } from "@/lib/drawings/types";
 
 const COOLDOWN_MS = 30_000;
 
-/**
- * Watches the live price (passed in via `price`) and triggers alerts when it
- * crosses any drawing-attached alert level for the current symbol.
- *
- * Drawing kinds that can carry an alert: hline, hray.
- * Other kinds (price-range, long/short) could be wired in later.
- */
 export function useAlertMonitor(symbol: string, price: number | null) {
   const drawings = useDrawingsStore((s) => s.drawings);
+  const alerts = useAlertsStore((s) => s.alerts);
+  const updateAlert = useAlertsStore((s) => s.updateAlert);
+  const disableAlert = useAlertsStore((s) => s.disableAlert);
   const pushToast = useToastStore((s) => s.push);
   const { update } = useDrawings();
   const prevPriceRef = useRef<number | null>(null);
@@ -29,6 +26,7 @@ export function useAlertMonitor(symbol: string, price: number | null) {
     prevPriceRef.current = price;
     if (prev === null) return;
 
+    // --- Drawing-attached alerts (hline / hray) ---
     for (const d of drawings) {
       if (d.symbol !== symbol || !d.alert?.enabled) continue;
       const level = priceLevelFor(d);
@@ -45,7 +43,6 @@ export function useAlertMonitor(symbol: string, price: number | null) {
 
       if (!hit) continue;
 
-      // Cooldown check
       const now = Date.now();
       if (d.alert.lastTriggeredAt && now - d.alert.lastTriggeredAt < COOLDOWN_MS) continue;
 
@@ -60,7 +57,45 @@ export function useAlertMonitor(symbol: string, price: number | null) {
         alert: { ...d.alert, lastTriggeredAt: now },
       } as Partial<Drawing>);
     }
-  }, [price, drawings, symbol, pushToast, update]);
+
+    // --- Standalone price alerts ---
+    for (const a of alerts) {
+      if (!a.enabled || a.symbol !== symbol) continue;
+
+      // Expired?
+      const now = Date.now();
+      if (a.expiresAt && now > a.expiresAt) {
+        disableAlert(a.id);
+        continue;
+      }
+
+      const crossedUp = prev < a.value && price >= a.value;
+      const crossedDown = prev > a.value && price <= a.value;
+
+      const hit =
+        (a.condition === "crossing" && (crossedUp || crossedDown)) ||
+        (a.condition === "crossing-up" && crossedUp) ||
+        (a.condition === "crossing-down" && crossedDown);
+
+      if (!hit) continue;
+      if (a.lastTriggeredAt && now - a.lastTriggeredAt < COOLDOWN_MS) continue;
+
+      if (a.sound) playAlertSound();
+      if (a.toast) {
+        pushToast({
+          title: a.message || `${symbol} alert triggered`,
+          message: `Last: ${formatPrice(price)}`,
+          variant: "alert",
+        });
+      }
+
+      if (a.trigger === "once") {
+        disableAlert(a.id);
+      } else {
+        updateAlert(a.id, { lastTriggeredAt: now });
+      }
+    }
+  }, [price, drawings, alerts, symbol, pushToast, update, updateAlert, disableAlert]);
 }
 
 function priceLevelFor(d: Drawing): number | null {

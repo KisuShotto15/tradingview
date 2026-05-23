@@ -1,6 +1,6 @@
 "use client";
 
-import { Code2, LogOut, Redo2, Settings2, Undo2 } from "lucide-react";
+import { Bell, Code2, LogOut, Redo2, Settings2, Undo2 } from "lucide-react";
 import { SymbolSelector } from "@/components/chart/SymbolSelector";
 import { TimeframeSelector } from "@/components/chart/TimeframeSelector";
 import { ChartTypeSelector } from "@/components/chart/ChartTypeSelector";
@@ -15,6 +15,8 @@ export function Header() {
   const { user, signOut } = useAuth();
   const { undo, redo } = useDrawings();
   const setChartSettingsOpen = useChartStore((s) => s.setChartSettingsOpen);
+  const openAlertDialog = useChartStore((s) => s.openAlertDialog);
+  const currentLivePrice = useChartStore((s) => s.currentLivePrice);
 
   return (
     <header className="flex h-12 items-center justify-between border-b border-tv-border bg-tv-panel px-3">
@@ -34,6 +36,21 @@ export function Header() {
         <ChartTypeSelector />
         <Separator orientation="vertical" className="mx-1 h-6 bg-tv-border" />
         <IndicatorMenu />
+        <Separator orientation="vertical" className="mx-1 h-6 bg-tv-border" />
+        <Tooltip>
+          <TooltipTrigger
+            onClick={() => openAlertDialog(currentLivePrice ?? undefined)}
+            aria-label="Create alert"
+            className="flex h-7 items-center gap-1.5 rounded px-2 text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+          >
+            <Bell className="h-3.5 w-3.5" />
+            <span className="text-xs">Alert</span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">
+            <div className="font-medium">Create alert</div>
+            <div className="mt-0.5 text-[10px] text-tv-text-muted">Alt+A</div>
+          </TooltipContent>
+        </Tooltip>
         <Separator orientation="vertical" className="mx-1 h-6 bg-tv-border" />
         <Tooltip>
           <TooltipTrigger

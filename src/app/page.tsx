@@ -9,6 +9,7 @@ import { PriceChart } from "@/components/chart/PriceChart";
 import { IndicatorSettingsDialog } from "@/components/chart/IndicatorSettingsDialog";
 import { ChartSettingsDialog } from "@/components/chart/ChartSettingsDialog";
 import { DrawingSettingsDialog } from "@/components/chart/DrawingSettingsDialog";
+import { CreateAlertDialog } from "@/components/alerts/CreateAlertDialog";
 import { MobileShell } from "@/components/mobile/MobileShell";
 import { useChartStore } from "@/lib/store/chart-store";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -26,6 +27,7 @@ export default function HomePage() {
         <IndicatorSettingsDialog />
         <ChartSettingsDialog />
         <DrawingSettingsDialog />
+        <CreateAlertDialog />
       </>
     );
   }
@@ -47,6 +49,7 @@ export default function HomePage() {
       <IndicatorSettingsDialog />
       <ChartSettingsDialog />
       <DrawingSettingsDialog />
+      <CreateAlertDialog />
     </div>
   );
 }

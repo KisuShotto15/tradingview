@@ -312,6 +312,11 @@ interface ChartState {
   /** Which indicator/EMA's settings dialog is open (null = closed) */
   settingsTarget: SettingsTarget | null;
   chartSettingsOpen: boolean;
+  /** Create-alert dialog state */
+  alertDialogOpen: boolean;
+  alertDialogPrice: number | null;
+  /** Latest live price for the current symbol (updated on each WS tick) */
+  currentLivePrice: number | null;
 
   // Actions
   setSymbol: (s: string) => void;
@@ -356,6 +361,9 @@ interface ChartState {
   setSymbolDialogOpen: (v: boolean) => void;
   setSettingsTarget: (k: SettingsTarget | null) => void;
   setChartSettingsOpen: (v: boolean) => void;
+  openAlertDialog: (price?: number) => void;
+  closeAlertDialog: () => void;
+  setCurrentLivePrice: (price: number | null) => void;
   /** Apply a partial snapshot from undo/redo — does NOT push to history */
   applySnapshot: (snap: ChartStateSnapshot) => void;
 }
@@ -434,6 +442,9 @@ export const useChartStore = create<ChartState>()(
       symbolDialogOpen: false,
       settingsTarget: null,
       chartSettingsOpen: false,
+      alertDialogOpen: false,
+      alertDialogPrice: null,
+      currentLivePrice: null,
 
       setSymbol: (symbol) => set({ symbol }),
       setTimeframe: (timeframe) => set({ timeframe }),
@@ -777,6 +788,9 @@ export const useChartStore = create<ChartState>()(
       setSymbolDialogOpen: (symbolDialogOpen) => set({ symbolDialogOpen }),
       setSettingsTarget: (settingsTarget) => set({ settingsTarget }),
       setChartSettingsOpen: (chartSettingsOpen) => set({ chartSettingsOpen }),
+      openAlertDialog: (price) => set({ alertDialogOpen: true, alertDialogPrice: price ?? null }),
+      closeAlertDialog: () => set({ alertDialogOpen: false, alertDialogPrice: null }),
+      setCurrentLivePrice: (currentLivePrice) => set({ currentLivePrice }),
     }),
     {
       name: "tv-gratis-chart-state",
@@ -803,7 +817,6 @@ export const useChartStore = create<ChartState>()(
       },
       partialize: (s) => ({
         symbol: s.symbol,
-        chartType: s.chartType,
         timeframe: s.timeframe,
         indicators: s.indicators,
         hidden: s.hidden,
