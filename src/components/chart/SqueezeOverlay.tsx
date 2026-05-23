@@ -22,24 +22,34 @@ interface Props {
 type Pt = { x: number; y: number };
 
 /**
- * Smooth filled area through topPts using Catmull-Rom spline.
- * The first and last points are at yBase (baseline connection).
- * Closes back to baseline via a straight line at the end.
+ * Smooth filled area for a sign-group (all bars on the same side of zero).
+ * `bars` are the actual data points (no synthetic baseline endpoints).
+ *
+ * Visual: left vertical edge at firstBar.x going up from baseline → Catmull-
+ * Rom spline through the bars → right vertical edge at lastBar.x going down
+ * to baseline. The vertical edges match TradingView's original look at sign
+ * transitions (the curve never crosses the baseline diagonally).
  */
-function buildPath(topPts: Pt[], yBase: number): string {
-  const n = topPts.length;
+function buildPath(bars: Pt[], yBase: number): string {
+  const n = bars.length;
   if (n === 0) return "";
 
-  const start = topPts[0];
-  const end = topPts[n - 1];
+  const first = bars[0];
+  const last = bars[n - 1];
 
-  let d = `M ${start.x.toFixed(1)},${yBase.toFixed(1)} L ${start.x.toFixed(1)},${start.y.toFixed(1)} `;
+  let d = `M ${first.x.toFixed(1)},${yBase.toFixed(1)} L ${first.x.toFixed(1)},${first.y.toFixed(1)} `;
+
+  if (n === 1) {
+    // Single bar: nothing to curve through; close vertically.
+    d += `L ${last.x.toFixed(1)},${yBase.toFixed(1)} Z`;
+    return d;
+  }
 
   for (let i = 0; i < n - 1; i++) {
-    const p0 = topPts[Math.max(i - 1, 0)];
-    const p1 = topPts[i];
-    const p2 = topPts[i + 1];
-    const p3 = topPts[Math.min(i + 2, n - 1)];
+    const p0 = bars[Math.max(i - 1, 0)];
+    const p1 = bars[i];
+    const p2 = bars[i + 1];
+    const p3 = bars[Math.min(i + 2, n - 1)];
 
     const cp1x = p1.x + (p2.x - p0.x) / 6;
     const cp1y = p1.y + (p2.y - p0.y) / 6;
@@ -49,61 +59,28 @@ function buildPath(topPts: Pt[], yBase: number): string {
     d += `C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)} `;
   }
 
-  d += `L ${end.x.toFixed(1)},${yBase.toFixed(1)} Z`;
+  // Vertical drop from last bar to baseline, then close to first bar's column.
+  d += `L ${last.x.toFixed(1)},${yBase.toFixed(1)} Z`;
   return d;
 }
 
-/** Blend a hex / rgb color towards white by `amount` (0..1). Used to compute
- *  a subtle highlight tone for the histogram edge. */
-function lighten(color: string, amount = 0.45): string {
-  // Try to parse #rrggbb or #rgb. Fall back to the raw string on any failure.
-  let r = 0, g = 0, b = 0;
-  if (color.startsWith("#")) {
-    const hex = color.slice(1);
-    if (hex.length === 3) {
-      r = parseInt(hex[0] + hex[0], 16);
-      g = parseInt(hex[1] + hex[1], 16);
-      b = parseInt(hex[2] + hex[2], 16);
-    } else if (hex.length >= 6) {
-      r = parseInt(hex.slice(0, 2), 16);
-      g = parseInt(hex.slice(2, 4), 16);
-      b = parseInt(hex.slice(4, 6), 16);
-    } else {
-      return color;
-    }
-  } else {
-    const m = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
-    if (!m) return color;
-    r = parseInt(m[1], 10);
-    g = parseInt(m[2], 10);
-    b = parseInt(m[3], 10);
-  }
-  const lr = Math.round(r + (255 - r) * amount);
-  const lg = Math.round(g + (255 - g) * amount);
-  const lb = Math.round(b + (255 - b) * amount);
-  return `rgb(${lr}, ${lg}, ${lb})`;
-}
-
 /**
- * Outline-only variant of the curve: walks the same Catmull-Rom spline as
- * buildPath() but skips the baseline endpoints, so when stroked it only
- * highlights the top edge of each "mountain/valley" — not the vertical
- * connection back to the zero line. Mirrors the subtle edge highlight on
- * TradingView's original Squeeze Momentum histogram.
+ * Outline-only variant of the curve: same Catmull-Rom spline as buildPath()
+ * but without the vertical edges and baseline — only the top of each
+ * mountain / bottom of each valley. Used as a stroke highlight on top of
+ * the filled body so the edge "pops" the same way the TradingView original
+ * shows a subtle rim around each histogram bump.
  */
-function buildOutlinePath(topPts: Pt[]): string {
-  // topPts[0] and topPts[n-1] are baseline endpoints — strip them so we only
-  // outline the actual bar points.
-  if (topPts.length < 4) return "";
-  const pts = topPts.slice(1, topPts.length - 1);
-  if (pts.length < 2) return "";
+function buildOutlinePath(bars: Pt[]): string {
+  const n = bars.length;
+  if (n < 2) return "";
 
-  let d = `M ${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)} `;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[Math.max(i - 1, 0)];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[Math.min(i + 2, pts.length - 1)];
+  let d = `M ${bars[0].x.toFixed(1)},${bars[0].y.toFixed(1)} `;
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = bars[Math.max(i - 1, 0)];
+    const p1 = bars[i];
+    const p2 = bars[i + 1];
+    const p3 = bars[Math.min(i + 2, n - 1)];
 
     const cp1x = p1.x + (p2.x - p0.x) / 6;
     const cp1y = p1.y + (p2.y - p0.y) / 6;
@@ -176,27 +153,7 @@ export function SqueezeOverlay({
     return g.colorSegs.flatMap((s) => s.bars);
   }
 
-  // Zero-crossing x between two adjacent bars of opposite sign
-  function zeroCross(a: Bar, b: Bar): number {
-    const t = (yBase - a.y) / (b.y - a.y);
-    return a.x + t * (b.x - a.x);
-  }
-
-  // Compute start/end x for each sign group (baseline connection points)
-  const groupEdges = signGroups.map((g, gi) => {
-    const gb = groupBars(g);
-    const prevGroup = gi > 0 ? signGroups[gi - 1] : null;
-    const nextGroup = gi < signGroups.length - 1 ? signGroups[gi + 1] : null;
-
-    const prevLastBar = prevGroup ? groupBars(prevGroup).slice(-1)[0] : null;
-    const nextFirstBar = nextGroup ? groupBars(nextGroup)[0] : null;
-
-    const startX = prevLastBar ? zeroCross(prevLastBar, gb[0]) : gb[0].x - hw;
-    const endX = nextFirstBar ? zeroCross(gb[gb.length - 1], nextFirstBar) : gb[gb.length - 1].x + hw;
-
-    return { startX, endX };
-  });
-
+  void hw;
   void width;
   void height;
   const clipW = chartAreaWidth ?? 99999;
@@ -221,18 +178,12 @@ export function SqueezeOverlay({
       <g clipPath="url(#sqz-pane)">
         {signGroups.map((group, gi) => {
           const gb = groupBars(group);
-          const { startX, endX } = groupEdges[gi];
-
-          // One smooth path through all bars in this sign group
-          const topPts: Pt[] = [
-            { x: startX, y: yBase },
-            ...gb,
-            { x: endX, y: yBase },
-          ];
-          const d = buildPath(topPts, yBase);
-          // Same curve without baseline endpoints — used as a subtle edge
-          // highlight on top of each filled segment (matches TradingView).
-          const outlineD = buildOutlinePath(topPts);
+          const d = buildPath(gb, yBase);
+          // Same curve without the vertical edges or baseline — stroked on
+          // top of the fill to give a subtle rim highlight.
+          const outlineD = buildOutlinePath(gb);
+          const startX = gb[0].x;
+          const endX = gb[gb.length - 1].x;
 
           // Render each color sub-segment by clipping the shared path
           return group.colorSegs.map((seg, si) => {
@@ -256,13 +207,20 @@ export function SqueezeOverlay({
                     <rect x={clipX1.toFixed(1)} y="-10000" width={(clipX2 - clipX1).toFixed(1)} height="20000" />
                   </clipPath>
                 </defs>
-                <path d={d} fill={colorMap[seg.color]} stroke="none" clipPath={`url(#${clipId})`} />
-                {/* Edge highlight — slightly lighter shade along the curve. */}
+                {/* Fill at reduced opacity so the same-color stroke pops. */}
+                <path
+                  d={d}
+                  fill={colorMap[seg.color]}
+                  fillOpacity={0.78}
+                  stroke="none"
+                  clipPath={`url(#${clipId})`}
+                />
+                {/* Edge rim — same color as the fill, full intensity. */}
                 {outlineD && (
                   <path
                     d={outlineD}
                     fill="none"
-                    stroke={lighten(colorMap[seg.color], 0.55)}
+                    stroke={colorMap[seg.color]}
                     strokeWidth={1.5}
                     strokeLinejoin="round"
                     strokeLinecap="round"
