@@ -2421,7 +2421,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
               )}
             </>
           )}
-          {(userEMAs.length > 0 || indicators.volume) && (
+          {(userEMAs.length > 0 || indicators.volume || ownedSubPanes.length > 0) && (
             <button
               onClick={() =>
                 useChartStore.getState().setPillsCollapsed(!pillsCollapsed)
@@ -2469,7 +2469,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       })}
 
       {/* Pills for each owned pane */}
-      {ownedSubPanes.map((p) => {
+      {!pillsCollapsed && ownedSubPanes.map((p) => {
         const offset = paneOffsets[p.paneIdx];
         if (!offset) return null;
         const guests = subPaneEntries.filter(
