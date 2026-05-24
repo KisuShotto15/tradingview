@@ -28,6 +28,7 @@ const KIND_TITLE: Record<string, string> = {
   "date-range": "Date range",
   long: "Long position",
   short: "Short position",
+  rectangle: "Rectangle",
 };
 
 type Tab = "style" | "coordinates";
@@ -59,12 +60,16 @@ export function DrawingSettingsDialog() {
               const stylePatch: Record<string, unknown> = {};
               if (patch.color !== undefined) stylePatch.color = patch.color;
               if (patch.lineWidth !== undefined) stylePatch.lineWidth = patch.lineWidth;
+              if ((patch as Record<string, unknown>).lineStyle !== undefined) stylePatch.lineStyle = (patch as Record<string, unknown>).lineStyle;
               // Position-specific fields
               const p = patch as Record<string, unknown>;
               if (p.stopColor !== undefined) stylePatch.stopColor = p.stopColor;
               if (p.targetColor !== undefined) stylePatch.targetColor = p.targetColor;
               if (p.textColor !== undefined) stylePatch.textColor = p.textColor;
               if (p.showLabels !== undefined) stylePatch.showLabels = p.showLabels;
+              // Rectangle-specific fields
+              if (p.fillColor !== undefined) stylePatch.fillColor = p.fillColor;
+              if (p.fillOpacity !== undefined) stylePatch.fillOpacity = p.fillOpacity;
               if (Object.keys(stylePatch).length > 0) {
                 setToolDefault(drawing.kind, stylePatch as Parameters<typeof setToolDefault>[1]);
               }
@@ -96,7 +101,9 @@ function Form({
   const [tab, setTab] = useState<Tab>("style");
   const [color, setColor] = useState<string>(drawing.color ?? "#d1d4dc");
   const [lineWidth, setLineWidth] = useState<number>(drawing.lineWidth ?? 1);
+  const [lineStyle, setLineStyle] = useState<0 | 1 | 2>(drawing.lineStyle ?? 0);
   const isPosition = drawing.kind === "long" || drawing.kind === "short";
+  const isRect = drawing.kind === "rectangle";
   const [stopColor, setStopColor] = useState<string>(
     isPosition ? ((drawing as { stopColor?: string }).stopColor ?? "#ef5350") : "#ef5350",
   );
@@ -109,15 +116,26 @@ function Form({
   const [showLabels, setShowLabels] = useState<boolean>(
     isPosition ? ((drawing as { showLabels?: boolean }).showLabels ?? false) : false,
   );
+  const [fillColor, setFillColor] = useState<string>(
+    isRect ? ((drawing as { fillColor?: string }).fillColor ?? "#2962ff") : "#2962ff",
+  );
+  const [fillOpacity, setFillOpacity] = useState<number>(
+    isRect ? ((drawing as { fillOpacity?: number }).fillOpacity ?? 0.1) : 0.1,
+  );
 
   useEffect(() => {
     setColor(drawing.color ?? "#d1d4dc");
     setLineWidth(drawing.lineWidth ?? 1);
+    setLineStyle(drawing.lineStyle ?? 0);
     if (drawing.kind === "long" || drawing.kind === "short") {
       setStopColor(drawing.stopColor ?? "#ef5350");
       setTargetColor(drawing.targetColor ?? "#26a69a");
       setTextColor(drawing.textColor ?? "#d1d4dc");
       setShowLabels(drawing.showLabels ?? false);
+    }
+    if (drawing.kind === "rectangle") {
+      setFillColor(drawing.fillColor ?? "#2962ff");
+      setFillOpacity(drawing.fillOpacity ?? 0.1);
     }
   }, [drawing]);
 
@@ -125,11 +143,16 @@ function Form({
     const patch: Partial<Drawing> = {} as Partial<Drawing>;
     patch.color = color;
     patch.lineWidth = lineWidth;
+    (patch as Record<string, unknown>).lineStyle = lineStyle;
     if (isPosition) {
       (patch as Record<string, unknown>).stopColor = stopColor;
       (patch as Record<string, unknown>).targetColor = targetColor;
       (patch as Record<string, unknown>).textColor = textColor;
       (patch as Record<string, unknown>).showLabels = showLabels;
+    }
+    if (isRect) {
+      (patch as Record<string, unknown>).fillColor = fillColor;
+      (patch as Record<string, unknown>).fillOpacity = fillOpacity;
     }
     onApply(patch);
   }
@@ -175,7 +198,7 @@ function Form({
             </>
           ) : (
             <>
-              <ColorRow label="Color" value={color} onChange={setColor} />
+              <ColorRow label={isRect ? "Border color" : "Color"} value={color} onChange={setColor} />
               <div className="flex items-center justify-between gap-3">
                 <span className="text-xs text-tv-text">Line width</span>
                 <div className="flex items-center gap-1">
@@ -195,6 +218,53 @@ function Form({
                   ))}
                 </div>
               </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-tv-text">Line style</span>
+                <div className="flex items-center gap-1">
+                  {([0, 1, 2] as const).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setLineStyle(s)}
+                      title={s === 0 ? "Solid" : s === 1 ? "Dashed" : "Dotted"}
+                      className={cn(
+                        "flex h-7 w-10 items-center justify-center rounded border",
+                        lineStyle === s
+                          ? "border-tv-blue bg-tv-blue/15"
+                          : "border-tv-border hover:bg-tv-panel-hover",
+                      )}
+                    >
+                      <svg width="24" height="2" viewBox="0 0 24 2">
+                        <line
+                          x1="0" y1="1" x2="24" y2="1"
+                          stroke="currentColor" strokeWidth="2"
+                          strokeDasharray={s === 1 ? "6 3" : s === 2 ? "2 3" : "none"}
+                        />
+                      </svg>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {isRect && (
+                <>
+                  <ColorRow label="Fill color" value={fillColor} onChange={setFillColor} />
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-tv-text">Fill opacity</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={Math.round(fillOpacity * 100)}
+                        onChange={(e) => setFillOpacity(parseInt(e.target.value) / 100)}
+                        className="w-24 accent-tv-blue"
+                      />
+                      <span className="w-8 text-right text-xs tabular-nums text-tv-text-muted">
+                        {Math.round(fillOpacity * 100)}%
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>

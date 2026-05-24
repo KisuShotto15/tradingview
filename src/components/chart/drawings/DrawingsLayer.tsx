@@ -18,6 +18,7 @@ import { PriceRangeDraw } from "./PriceRangeDraw";
 import { DateRangeDraw } from "./DateRangeDraw";
 import { PositionDraw } from "./PositionDraw";
 import { BrushDraw } from "./BrushDraw";
+import { RectangleDraw } from "./RectangleDraw";
 
 interface Props {
   symbol: string;
@@ -346,6 +347,29 @@ function renderDrawing(args: RenderArgs) {
           onSelect={onSelect}
         />
       );
+    case "rectangle": {
+      const ax = timeToX(chart, Number(d.a.time), globalCandlesRef.current, _intervalSec);
+      const bx = timeToX(chart, Number(d.b.time), globalCandlesRef.current, _intervalSec);
+      const ay = candleSeries.priceToCoordinate(d.a.price);
+      const by = candleSeries.priceToCoordinate(d.b.price);
+      if (ax === null || bx === null || ay === null || by === null) return null;
+      return (
+        <RectangleDraw
+          key={d.id}
+          drawing={d}
+          ax={ax}
+          ay={ay}
+          bx={bx}
+          by={by}
+          selected={selected}
+          onSelect={onSelect}
+          onEdit={onEdit}
+          chart={chart}
+          candleSeries={candleSeries}
+          container={container}
+        />
+      );
+    }
     default:
       return null;
   }

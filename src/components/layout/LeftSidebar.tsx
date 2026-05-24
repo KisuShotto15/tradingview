@@ -39,11 +39,9 @@ type AnyIcon = LucideIcon | React.FC<{ className?: string }>;
 function LongPositionIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 20 20" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="2" y="4" width="16" height="5.5" fill="#26a69a" fillOpacity="0.35" />
-      <rect x="2" y="10.5" width="16" height="5.5" fill="#ef5350" fillOpacity="0.35" />
-      <line x1="2" y1="10" x2="18" y2="10" stroke="#d1d4dc" strokeWidth="1.4" />
-      <line x1="2" y1="4" x2="18" y2="4" stroke="#26a69a" strokeWidth="1" />
-      <line x1="2" y1="16" x2="18" y2="16" stroke="#ef5350" strokeWidth="1" />
+      <path d="M4 14 L14 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <path d="M8 4 L14 4 L14 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <text x="2" y="19" fontSize="6" fill="currentColor" fontWeight="bold">L</text>
     </svg>
   );
 }
@@ -51,11 +49,17 @@ function LongPositionIcon({ className }: { className?: string }) {
 function ShortPositionIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 20 20" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="2" y="4" width="16" height="5.5" fill="#ef5350" fillOpacity="0.35" />
-      <rect x="2" y="10.5" width="16" height="5.5" fill="#26a69a" fillOpacity="0.35" />
-      <line x1="2" y1="10" x2="18" y2="10" stroke="#d1d4dc" strokeWidth="1.4" />
-      <line x1="2" y1="4" x2="18" y2="4" stroke="#ef5350" strokeWidth="1" />
-      <line x1="2" y1="16" x2="18" y2="16" stroke="#26a69a" strokeWidth="1" />
+      <path d="M4 6 L14 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <path d="M8 16 L14 16 L14 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <text x="2" y="10" fontSize="6" fill="currentColor" fontWeight="bold">S</text>
+    </svg>
+  );
+}
+
+function RectangleIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="3" y="5" width="14" height="10" stroke="currentColor" strokeWidth="1.5" rx="0.5"/>
     </svg>
   );
 }
@@ -113,6 +117,12 @@ const TOOL_GROUPS: ToolGroup[] = [
     tools: [
       { key: "long", icon: LongPositionIcon, label: "Long position", hint: "Click entry, then target. Stop auto-set; drag handles to edit" },
       { key: "short", icon: ShortPositionIcon, label: "Short position", hint: "Click entry, then target. Stop auto-set; drag handles to edit" },
+    ],
+  },
+  {
+    label: "Shapes",
+    tools: [
+      { key: "rectangle", icon: RectangleIcon, label: "Rectangle", hint: "Click two corners to draw a rectangle" },
     ],
   },
   {

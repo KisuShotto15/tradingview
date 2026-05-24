@@ -6,6 +6,7 @@ import {
   ChevronRight,
   ChevronsDown,
   ChevronsUp,
+  Flag,
   GripVertical,
   ListPlus,
   Pencil,
@@ -44,6 +45,7 @@ export function Watchlist() {
   const deleteWatchlist = useChartStore((s) => s.deleteWatchlist);
   const addLabelToWatchlist = useChartStore((s) => s.addLabelToWatchlist);
   const removeWatchlistItem = useChartStore((s) => s.removeWatchlistItem);
+  const setWatchlistItemFlag = useChartStore((s) => s.setWatchlistItemFlag);
   const moveWatchlistItem = useChartStore((s) => s.moveWatchlistItem);
   const reorderWatchlistItems = useChartStore((s) => s.reorderWatchlistItems);
   const renameWatchlistItem = useChartStore((s) => s.renameWatchlistItem);
@@ -67,6 +69,14 @@ export function Watchlist() {
   } | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [flagPickerId, setFlagPickerId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!flagPickerId) return;
+    function close() { setFlagPickerId(null); }
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [flagPickerId]);
 
   // Drag & drop state
   const draggedId = useRef<string | null>(null);
@@ -374,12 +384,17 @@ export function Watchlist() {
                   openContextMenu(e, item.id);
                 }}
                 className={cn(
-                  "group grid cursor-pointer grid-cols-[auto_1fr_auto_auto] items-center gap-1 px-1 py-1.5 text-xs transition-colors",
+                  "group relative grid cursor-pointer grid-cols-[4px_auto_1fr_auto_auto] items-center gap-1 py-1.5 pr-1 text-xs transition-colors",
                   "hover:bg-tv-panel-hover",
                   isActive && "bg-tv-panel-hover",
                   isDragTarget && "border-t-2 border-t-tv-blue",
                 )}
               >
+                {/* Flag color strip */}
+                <div
+                  className="self-stretch rounded-sm"
+                  style={{ backgroundColor: item.type === "symbol" ? (item.flagColor ?? "transparent") : "transparent" }}
+                />
                 <GripVertical className="h-3 w-3 shrink-0 cursor-grab text-tv-text-dim opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing" />
                 <div className="flex min-w-0 items-center gap-1.5">
                   <CoinIcon symbol={s} size={16} />
@@ -410,6 +425,56 @@ export function Watchlist() {
                   >
                     {row ? formatPct(row.pct) : "—"}
                   </span>
+                  <div className="relative">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFlagPickerId(flagPickerId === item.id ? null : item.id);
+                      }}
+                      className={cn(
+                        "rounded p-0.5 transition-colors",
+                        item.type === "symbol" && item.flagColor
+                          ? "visible"
+                          : "invisible group-hover:visible",
+                        item.type === "symbol" && item.flagColor
+                          ? "text-[color:var(--flag-color)]"
+                          : "text-tv-text-muted hover:text-tv-text",
+                      )}
+                      style={item.type === "symbol" && item.flagColor ? { "--flag-color": item.flagColor } as React.CSSProperties : undefined}
+                      aria-label="Set flag color"
+                    >
+                      <Flag className="h-3 w-3" />
+                    </button>
+                    {flagPickerId === item.id && (
+                      <div
+                        className="absolute right-0 top-5 z-50 flex gap-1 rounded border border-tv-border bg-tv-panel p-1.5 shadow-lg"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {["#ef5350","#2962ff","#26a69a","#ffb74d","#ab47bc","#00bcd4","#f06292"].map((c) => (
+                          <button
+                            key={c}
+                            onClick={() => {
+                              if (active) setWatchlistItemFlag(active.id, item.id, c);
+                              setFlagPickerId(null);
+                            }}
+                            className="h-4 w-4 rounded-sm transition-opacity hover:opacity-80"
+                            style={{ backgroundColor: c }}
+                            aria-label={`Set flag to ${c}`}
+                          />
+                        ))}
+                        <button
+                          onClick={() => {
+                            if (active) setWatchlistItemFlag(active.id, item.id, null);
+                            setFlagPickerId(null);
+                          }}
+                          className="flex h-4 w-4 items-center justify-center rounded-sm border border-tv-border text-tv-text-muted hover:text-tv-red"
+                          aria-label="Remove flag"
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

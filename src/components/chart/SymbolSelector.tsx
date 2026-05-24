@@ -37,6 +37,8 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
   const setSymbol = useChartStore((s) => s.setSymbol);
   const open = useChartStore((s) => s.symbolDialogOpen);
   const setOpen = useChartStore((s) => s.setSymbolDialogOpen);
+  const symbolDialogInitialQuery = useChartStore((s) => s.symbolDialogInitialQuery);
+  const setSymbolDialogInitialQuery = useChartStore((s) => s.setSymbolDialogInitialQuery);
   const activeWatchlistId = useChartStore((s) => s.activeWatchlistId);
   const watchlists = useChartStore((s) => s.watchlists);
   const addSymbolToWatchlist = useChartStore((s) => s.addSymbolToWatchlist);
@@ -51,6 +53,13 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
 
   const [query, setQuery] = useState("");
   const [allSymbols, setAllSymbols] = useState<SymbolInfo[]>([]);
+
+  useEffect(() => {
+    if (open && symbolDialogInitialQuery) {
+      setQuery(symbolDialogInitialQuery);
+      setSymbolDialogInitialQuery("");
+    }
+  }, [open, symbolDialogInitialQuery, setSymbolDialogInitialQuery]);
 
   useEffect(() => {
     if (open && allSymbols.length === 0) {

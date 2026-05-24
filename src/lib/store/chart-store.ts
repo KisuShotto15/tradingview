@@ -32,7 +32,8 @@ export type DrawingTool =
   | "long"
   | "short"
   | "brush"
-  | "highlighter";
+  | "highlighter"
+  | "rectangle";
 
 export interface IndicatorConfig {
   rsi: number;
@@ -225,7 +226,7 @@ export const DEFAULT_WATCHLIST = [
 
 /** Either a symbol entry or a section label inside a watchlist. */
 export type WatchlistItem =
-  | { id: string; type: "symbol"; value: string }
+  | { id: string; type: "symbol"; value: string; flagColor?: string }
   | { id: string; type: "label"; value: string };
 
 export interface Watchlist {
@@ -296,7 +297,7 @@ interface ChartState {
   toolDefaults: Partial<
     Record<
       string,
-      { color?: string; lineWidth?: number; lineStyle?: number }
+      { color?: string; lineWidth?: number; lineStyle?: 0 | 1 | 2; [key: string]: unknown }
     >
   >;
   /** User watchlists with sections/labels */
@@ -309,6 +310,7 @@ interface ChartState {
   // Ephemeral UI state (not persisted)
   tool: DrawingTool;
   symbolDialogOpen: boolean;
+  symbolDialogInitialQuery: string;
   /** Which indicator/EMA's settings dialog is open (null = closed) */
   settingsTarget: SettingsTarget | null;
   chartSettingsOpen: boolean;
@@ -345,7 +347,7 @@ interface ChartState {
   setPinnedTimeframes: (tfs: Timeframe[]) => void;
   setToolDefault: (
     kind: string,
-    patch: { color?: string; lineWidth?: number; lineStyle?: number },
+    patch: { color?: string; lineWidth?: number; lineStyle?: 0 | 1 | 2; [key: string]: unknown },
   ) => void;
   createWatchlist: (name: string) => string;
   renameWatchlist: (id: string, name: string) => void;
@@ -354,11 +356,13 @@ interface ChartState {
   addSymbolToWatchlist: (watchlistId: string, symbol: string) => void;
   addLabelToWatchlist: (watchlistId: string, label: string, beforeId?: string) => void;
   removeWatchlistItem: (watchlistId: string, itemId: string) => void;
+  setWatchlistItemFlag: (watchlistId: string, itemId: string, color: string | null) => void;
   moveWatchlistItem: (watchlistId: string, itemId: string, delta: -1 | 1) => void;
   reorderWatchlistItems: (watchlistId: string, fromId: string, toId: string) => void;
   renameWatchlistItem: (watchlistId: string, itemId: string, value: string) => void;
   setTool: (t: DrawingTool) => void;
   setSymbolDialogOpen: (v: boolean) => void;
+  setSymbolDialogInitialQuery: (q: string) => void;
   setSettingsTarget: (k: SettingsTarget | null) => void;
   setChartSettingsOpen: (v: boolean) => void;
   openAlertDialog: (price?: number) => void;
@@ -440,6 +444,7 @@ export const useChartStore = create<ChartState>()(
       chartColors: { ...DEFAULT_CHART_COLORS },
       tool: "cursor",
       symbolDialogOpen: false,
+      symbolDialogInitialQuery: "",
       settingsTarget: null,
       chartSettingsOpen: false,
       alertDialogOpen: false,
@@ -669,7 +674,7 @@ export const useChartStore = create<ChartState>()(
         set((s) => ({
           toolDefaults: {
             ...s.toolDefaults,
-            [kind]: { ...(s.toolDefaults[kind] ?? {}), ...patch },
+            [kind]: { ...(s.toolDefaults[kind] as Record<string, unknown> ?? {}), ...patch },
           },
         })),
       createWatchlist: (name) => {
@@ -743,6 +748,21 @@ export const useChartStore = create<ChartState>()(
               : w,
           ),
         })),
+      setWatchlistItemFlag: (watchlistId, itemId, color) =>
+        set((state) => ({
+          watchlists: state.watchlists.map((w) =>
+            w.id === watchlistId
+              ? {
+                  ...w,
+                  items: w.items.map((i) =>
+                    i.id === itemId && i.type === "symbol"
+                      ? { ...i, flagColor: color ?? undefined }
+                      : i,
+                  ),
+                }
+              : w,
+          ),
+        })),
       moveWatchlistItem: (watchlistId, itemId, delta) =>
         set((state) => ({
           watchlists: state.watchlists.map((w) => {
@@ -786,6 +806,7 @@ export const useChartStore = create<ChartState>()(
         set((s) => ({ chartColors: { ...s.chartColors, ...patch } })),
       setTool: (tool) => set({ tool }),
       setSymbolDialogOpen: (symbolDialogOpen) => set({ symbolDialogOpen }),
+      setSymbolDialogInitialQuery: (symbolDialogInitialQuery) => set({ symbolDialogInitialQuery }),
       setSettingsTarget: (settingsTarget) => set({ settingsTarget }),
       setChartSettingsOpen: (chartSettingsOpen) => set({ chartSettingsOpen }),
       openAlertDialog: (price) => set({ alertDialogOpen: true, alertDialogPrice: price ?? null }),

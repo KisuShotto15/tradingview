@@ -33,6 +33,7 @@ export function VLineDraw({
   const color = drawing.color ?? "#2962ff";
   const stroke = selected ? "#ffffff" : color;
   const strokeWidth = selected ? 2 : drawing.lineWidth ?? 1;
+  const strokeDasharray = drawing.lineStyle === 1 ? "6 4" : drawing.lineStyle === 2 ? "2 4" : "none";
   const { updateLive, commit } = useDrawings();
   const snapshotRef = useRef<VLineDrawing | null>(null);
 
@@ -90,7 +91,7 @@ export function VLineDraw({
         y2={height}
         stroke={stroke}
         strokeWidth={strokeWidth}
-        strokeDasharray="6,4"
+        strokeDasharray={strokeDasharray}
         style={{ pointerEvents: "none" }}
       />
     </g>

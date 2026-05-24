@@ -16,6 +16,8 @@ import { useDrawings } from "@/lib/supabase/use-drawings";
 export function useKeyboardShortcuts() {
   const setTool = useChartStore((s) => s.setTool);
   const openAlertDialog = useChartStore((s) => s.openAlertDialog);
+  const setSymbolDialogInitialQuery = useChartStore((s) => s.setSymbolDialogInitialQuery);
+  const setSymbolDialogOpen = useChartStore((s) => s.setSymbolDialogOpen);
   const resetPlacement = useDrawingsStore((s) => s.resetPlacement);
   const setSelected = useDrawingsStore((s) => s.setSelected);
   const { undo, redo, remove } = useDrawings();
@@ -56,6 +58,20 @@ export function useKeyboardShortcuts() {
         return;
       }
 
+      // Printable character → open symbol search pre-filled
+      if (
+        e.key.length === 1 &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !useChartStore.getState().symbolDialogOpen
+      ) {
+        setSymbolDialogInitialQuery(e.key.toUpperCase());
+        setSymbolDialogOpen(true);
+        e.preventDefault();
+        return;
+      }
+
       if (e.key === "Delete" || e.key === "Backspace") {
         const { selectedId } = useDrawingsStore.getState();
         if (selectedId) {
@@ -86,5 +102,5 @@ export function useKeyboardShortcuts() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [setTool, openAlertDialog, resetPlacement, setSelected, undo, redo, remove]);
+  }, [setTool, openAlertDialog, setSymbolDialogInitialQuery, setSymbolDialogOpen, resetPlacement, setSelected, undo, redo, remove]);
 }

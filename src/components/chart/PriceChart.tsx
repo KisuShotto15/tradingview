@@ -123,6 +123,7 @@ interface PaneOffset {
 
 export function PriceChart({ symbol, timeframe }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const outerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
@@ -323,16 +324,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
         if (snapped !== null) price = snapped;
       }
 
-      // Measure shortcut: Shift+Click starts, any click completes, any click dismisses
-      if (measureRef.current.phase === "placing" && resolvedTime !== null) {
-        setMeasure({ phase: "done", a: measureRef.current.a, b: { time: resolvedTime, price } });
-        return;
-      }
-      if (param.sourceEvent?.shiftKey && resolvedTime !== null) {
-        setMeasure({ phase: "placing", a: { time: resolvedTime, price }, b: { time: resolvedTime, price } });
-        return;
-      }
-      if (measureRef.current.phase === "done") {
+      // Measure dismiss: any non-shift click in "done" phase clears it
+      // (Shift+click is handled by capture-phase listener on outerRef)
+      if (measureRef.current.phase === "done" && !param.sourceEvent?.shiftKey) {
         setMeasure(INITIAL_MEASURE);
       }
 
@@ -463,6 +457,29 @@ export function PriceChart({ symbol, timeframe }: Props) {
             timeA: first.time,
             timeB: time,
             ...(useChartStore.getState().toolDefaults["price-range"] ?? {}),
+          });
+          firstPointRef.current = null;
+          setPreviewState(null);
+          setToolRef.current("cursor");
+        }
+        return;
+      }
+
+      if (toolRef.current === "rectangle") {
+        if (resolvedTime === null) return;
+        const time = resolvedTime;
+        const first = firstPointRef.current;
+        if (!first) {
+          firstPointRef.current = { time, price };
+          setPreviewState({ first: { time, price }, extra: [], cursor: { time, price } });
+        } else {
+          void drawingsApiRef.current.add({
+            id: generateId(),
+            kind: "rectangle",
+            symbol: symbolRef.current,
+            a: { time: first.time, price: first.price },
+            b: { time, price },
+            ...(useChartStore.getState().toolDefaults["rectangle"] ?? {}),
           });
           firstPointRef.current = null;
           setPreviewState(null);
@@ -1488,7 +1505,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     const pts: { time: number; price: number }[] = [];
     let lastX = 0;
     let lastY = 0;
-    const MIN_DIST_SQ = 9; // 3px min between points
+    const MIN_DIST_SQ = 4; // 2px min between points — finer sampling for smoother curves
 
     // Live preview path element injected into the drawings SVG
     const ns = "http://www.w3.org/2000/svg";
@@ -2271,6 +2288,34 @@ export function PriceChart({ symbol, timeframe }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dragKey]);
 
+  // Capture-phase mousedown: handles shift+click for measure regardless of SVG overlay
+  useEffect(() => {
+    const outer = outerRef.current;
+    if (!outer) return;
+    function onShiftCapture(e: MouseEvent) {
+      const isPlacing = measureRef.current.phase === "placing";
+      if (!e.shiftKey && !isPlacing) return;
+      if (!containerRef.current || !chartRef.current || !candleSeriesRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const rawPrice = candleSeriesRef.current.coordinateToPrice(y);
+      if (rawPrice === null || !isFinite(rawPrice as number)) return;
+      const price = rawPrice as number;
+      const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
+      const time = xToTime(chartRef.current, x, candlesRef.current, intervalSec);
+      if (time === null) return;
+      if (isPlacing) {
+        setMeasure({ phase: "done", a: measureRef.current.a, b: { time, price } });
+      } else {
+        setMeasure({ phase: "placing", a: { time, price }, b: { time, price } });
+      }
+      e.stopPropagation();
+    }
+    outer.addEventListener("mousedown", onShiftCapture, { capture: true });
+    return () => outer.removeEventListener("mousedown", onShiftCapture, { capture: true });
+  }, []);
+
   let measureRender: React.ReactNode = null;
   if (
     measure.a &&
@@ -2318,7 +2363,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   void renderTick;
 
   return (
-    <div className="relative h-full w-full">
+    <div ref={outerRef} className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" />
       <DrawingsLayer
         symbol={symbol}

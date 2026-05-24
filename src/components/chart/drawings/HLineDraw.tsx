@@ -34,6 +34,7 @@ export function HLineDraw({
   const color = drawing.color ?? "#2962ff";
   const stroke = selected ? "#ffffff" : color;
   const strokeWidth = selected ? 2 : drawing.lineWidth ?? 1;
+  const strokeDasharray = drawing.lineStyle === 1 ? "6 4" : drawing.lineStyle === 2 ? "2 4" : "none";
   const { updateLive, commit } = useDrawings();
   const snapshotRef = useRef<HLineDrawing | null>(null);
 
@@ -93,7 +94,7 @@ export function HLineDraw({
         y2={y}
         stroke={stroke}
         strokeWidth={strokeWidth}
-        strokeDasharray="6,4"
+        strokeDasharray={strokeDasharray}
         style={{ pointerEvents: "none" }}
       />
       {/* Price label */}

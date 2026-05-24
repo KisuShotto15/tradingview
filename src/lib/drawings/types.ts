@@ -16,7 +16,8 @@ export type DrawingKind =
   | "long"
   | "short"
   | "brush"
-  | "highlighter";
+  | "highlighter"
+  | "rectangle";
 
 export interface AlertConfig {
   enabled: boolean;
@@ -30,6 +31,8 @@ interface BaseDrawing {
   symbol: string;
   color?: string;
   lineWidth?: number;
+  /** 0 = solid, 1 = dashed, 2 = dotted */
+  lineStyle?: 0 | 1 | 2;
   hidden?: boolean;
   /** When true, the drawing cannot be moved or resized (UI handlers must
    *  short-circuit). Toggled from the floating context toolbar. */
@@ -128,6 +131,14 @@ export interface HighlighterDrawing extends BaseDrawing {
   points: Point[];
 }
 
+export interface RectangleDrawing extends BaseDrawing {
+  kind: "rectangle";
+  a: Point;
+  b: Point;
+  fillColor?: string;
+  fillOpacity?: number;
+}
+
 export type Drawing =
   | HLineDrawing
   | VLineDrawing
@@ -141,7 +152,8 @@ export type Drawing =
   | LongPositionDrawing
   | ShortPositionDrawing
   | BrushDrawing
-  | HighlighterDrawing;
+  | HighlighterDrawing
+  | RectangleDrawing;
 
 export const FIB_LEVELS_DEFAULT = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 
