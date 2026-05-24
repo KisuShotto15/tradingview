@@ -1536,69 +1536,55 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
     const isHighlighter = tool === "highlighter";
     let active = false;
-    const pts: { time: number; price: number }[] = [];
+    // Raw pixel positions (relative to container) — no time conversion yet
+    const rawPx: { x: number; y: number }[] = [];
     let lastX = 0;
     let lastY = 0;
-    const MIN_DIST_SQ = 1; // 1px min between points — maximum density for smooth slow strokes
 
-    // Live preview path element injected into the drawings SVG
+    // Live preview path element injected above the drawings SVG
     const ns = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(ns, "svg");
     svg.setAttribute("style", "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:15;overflow:visible");
-    const path = document.createElementNS(ns, "path");
-    path.setAttribute("fill", "none");
-    path.setAttribute("stroke", isHighlighter ? "#ffeb3b" : "#ffffff");
-    path.setAttribute("stroke-width", isHighlighter ? "14" : "2");
-    path.setAttribute("stroke-linecap", "round");
-    path.setAttribute("stroke-linejoin", "round");
-    path.setAttribute("opacity", isHighlighter ? "0.35" : "1");
-    svg.appendChild(path);
+    const pathEl = document.createElementNS(ns, "path");
+    pathEl.setAttribute("fill", "none");
+    pathEl.setAttribute("stroke", isHighlighter ? "#ffeb3b" : "#ffffff");
+    pathEl.setAttribute("stroke-width", isHighlighter ? "14" : "2");
+    pathEl.setAttribute("stroke-linecap", "round");
+    pathEl.setAttribute("stroke-linejoin", "round");
+    pathEl.setAttribute("opacity", isHighlighter ? "0.35" : "1");
+    svg.appendChild(pathEl);
     container.parentElement?.appendChild(svg);
 
+    // Chaikin corner-cutting smoothing — applied on pixel arrays.
+    // Each iteration replaces each segment AB with two new points:
+    //   Q = 0.75·A + 0.25·B  and  R = 0.25·A + 0.75·B
+    // Result after a few iterations: smooth curve through the point cloud.
+    function chaikin(pts: { x: number; y: number }[], iters = 3) {
+      let r = pts;
+      for (let n = 0; n < iters; n++) {
+        if (r.length < 3) break;
+        const next: { x: number; y: number }[] = [r[0]];
+        for (let i = 0; i < r.length - 1; i++) {
+          const a = r[i], b = r[i + 1];
+          next.push({ x: 0.75 * a.x + 0.25 * b.x, y: 0.75 * a.y + 0.25 * b.y });
+          next.push({ x: 0.25 * a.x + 0.75 * b.x, y: 0.25 * a.y + 0.75 * b.y });
+        }
+        next.push(r[r.length - 1]);
+        r = next;
+      }
+      return r;
+    }
+
+    // SVG polyline string from pixel array (L commands — smoothing already applied)
     function ptsToD(pixels: { x: number; y: number }[]) {
       if (pixels.length < 2) return "";
-      if (pixels.length === 2) {
-        return `M ${pixels[0].x} ${pixels[0].y} L ${pixels[1].x} ${pixels[1].y}`;
-      }
-      // Catmull-Rom → Cubic Bezier (matches BrushDraw.tsx render quality)
-      let d = `M ${pixels[0].x} ${pixels[0].y}`;
-      for (let i = 0; i < pixels.length - 1; i++) {
-        const p0 = pixels[i - 1] ?? pixels[i];
-        const p1 = pixels[i];
-        const p2 = pixels[i + 1];
-        const p3 = pixels[i + 2] ?? p2;
-        const cp1x = p1.x + (p2.x - p0.x) / 6;
-        const cp1y = p1.y + (p2.y - p0.y) / 6;
-        const cp2x = p2.x - (p3.x - p1.x) / 6;
-        const cp2y = p2.y - (p3.y - p1.y) / 6;
-        d += ` C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${p2.x} ${p2.y}`;
-      }
-      return d;
+      return "M " + pixels[0].x.toFixed(1) + " " + pixels[0].y.toFixed(1) +
+        pixels.slice(1).map(p => ` L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join("");
     }
 
     function updatePreview() {
-      if (!chartRef.current || !candleSeriesRef.current) return;
-      const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
-      const pixels: { x: number; y: number }[] = [];
-      for (const pt of pts) {
-        const x = timeToX(chartRef.current, pt.time, candlesRef.current, intervalSec);
-        const y = candleSeriesRef.current.priceToCoordinate(pt.price);
-        if (x !== null && y !== null) pixels.push({ x: x as number, y: y as number });
-      }
-      path.setAttribute("d", ptsToD(pixels));
-    }
-
-    function toChartPoint(clientX: number, clientY: number) {
-      if (!chartRef.current || !candleSeriesRef.current || !container) return null;
-      const rect = container!.getBoundingClientRect();
-      const x = clientX - rect.left;
-      const y = clientY - rect.top;
-      const price = candleSeriesRef.current.coordinateToPrice(y);
-      if (price === null) return null;
-      const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
-      const time = xToTime(chartRef.current, x, candlesRef.current, intervalSec);
-      if (time === null) return null;
-      return { time, price: price as number };
+      const smoothed = rawPx.length >= 3 ? chaikin(rawPx, 2) : rawPx;
+      pathEl.setAttribute("d", ptsToD(smoothed));
     }
 
     function onPointerDown(e: PointerEvent) {
@@ -1606,37 +1592,60 @@ export function PriceChart({ symbol, timeframe }: Props) {
       e.preventDefault();
       e.stopPropagation();
       active = true;
-      pts.length = 0;
-      lastX = e.clientX;
-      lastY = e.clientY;
-      const pt = toChartPoint(e.clientX, e.clientY);
-      if (pt) pts.push(pt);
+      rawPx.length = 0;
+      const rect = container!.getBoundingClientRect();
+      lastX = e.clientX - rect.left;
+      lastY = e.clientY - rect.top;
+      rawPx.push({ x: lastX, y: lastY });
       (container as HTMLElement).setPointerCapture(e.pointerId);
     }
 
     function onPointerMove(e: PointerEvent) {
       if (!active) return;
       e.preventDefault();
-      const dx = e.clientX - lastX;
-      const dy = e.clientY - lastY;
-      if (dx * dx + dy * dy < MIN_DIST_SQ) return;
-      lastX = e.clientX;
-      lastY = e.clientY;
-      const pt = toChartPoint(e.clientX, e.clientY);
-      if (pt) { pts.push(pt); updatePreview(); }
+      const rect = container!.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const dx = x - lastX, dy = y - lastY;
+      if (dx * dx + dy * dy < 1) return;
+      lastX = x; lastY = y;
+      rawPx.push({ x, y });
+      updatePreview();
     }
 
     function onPointerUp(e: PointerEvent) {
       if (!active) return;
       active = false;
       e.preventDefault();
-      path.setAttribute("d", "");
-      if (pts.length >= 2) {
+      pathEl.setAttribute("d", "");
+      if (rawPx.length < 2 || !chartRef.current || !candleSeriesRef.current) return;
+
+      // Apply full Chaikin smoothing on the raw pixel cloud
+      const smoothed = rawPx.length >= 3 ? chaikin(rawPx, 3) : rawPx;
+
+      // Convert smoothed pixels → {time, price, logical} — logical for lossless render
+      const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
+      const points: { time: number; price: number }[] = [];
+      const logicals: number[] = [];
+
+      for (const { x, y } of smoothed) {
+        const price = candleSeriesRef.current!.coordinateToPrice(y);
+        if (price === null) continue;
+        const logical = chartRef.current!.timeScale().coordinateToLogical(x);
+        if (logical === null) continue;
+        const time = xToTime(chartRef.current!, x, candlesRef.current, intervalSec);
+        if (time === null) continue;
+        points.push({ time, price: price as number });
+        logicals.push(logical as number);
+      }
+
+      if (points.length >= 2) {
         void drawingsApiRef.current.add({
           id: generateId(),
           kind: tool as "brush" | "highlighter",
           symbol: symbolRef.current,
-          points: [...pts],
+          points,
+          logicals,
           color: isHighlighter ? "#ffeb3b" : "#ffffff",
           lineWidth: isHighlighter ? 14 : 2,
         });

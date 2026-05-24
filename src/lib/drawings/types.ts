@@ -124,11 +124,16 @@ export interface ShortPositionDrawing extends BaseDrawing {
 export interface BrushDrawing extends BaseDrawing {
   kind: "brush";
   points: Point[];
+  /** Float logical bar indices (from coordinateToLogical) — parallel to points.
+   *  When present, rendering uses logicalToCoordinate for pixel-accurate x positions
+   *  without any time-based round-trip quantization. */
+  logicals?: number[];
 }
 
 export interface HighlighterDrawing extends BaseDrawing {
   kind: "highlighter";
   points: Point[];
+  logicals?: number[];
 }
 
 export interface RectangleDrawing extends BaseDrawing {

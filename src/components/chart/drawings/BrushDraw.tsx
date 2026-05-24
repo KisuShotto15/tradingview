@@ -14,34 +14,24 @@ interface Props {
   onSelect: () => void;
 }
 
+// Simple polyline path — Chaikin smoothing was already applied at capture time
 function pointsToPath(pts: { x: number; y: number }[]): string {
   if (pts.length < 2) return "";
-  if (pts.length === 2) {
-    return `M ${pts[0].x} ${pts[0].y} L ${pts[1].x} ${pts[1].y}`;
-  }
-  // Catmull-Rom → Cubic Bezier conversion for smooth curves
-  // For each segment P[i]→P[i+1], use phantom points for endpoints
-  let d = `M ${pts[0].x} ${pts[0].y}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i - 1] ?? pts[i];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[i + 2] ?? p2;
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${p2.x} ${p2.y}`;
-  }
-  return d;
+  return "M " + pts[0].x.toFixed(1) + " " + pts[0].y.toFixed(1) +
+    pts.slice(1).map(p => ` L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join("");
 }
 
 export function BrushDraw({ drawing, chart, candleSeries, selected, onSelect }: Props) {
   const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
 
   const pixels: { x: number; y: number }[] = [];
-  for (const pt of drawing.points) {
-    const x = timeToX(chart, pt.time, globalCandlesRef.current, intervalSec);
+  for (let i = 0; i < drawing.points.length; i++) {
+    const pt = drawing.points[i];
+    // Use stored logical index when available — avoids time round-trip quantization
+    const logical = drawing.logicals?.[i];
+    const x = logical !== undefined
+      ? chart.timeScale().logicalToCoordinate(logical as never)
+      : timeToX(chart, pt.time, globalCandlesRef.current, intervalSec);
     const y = candleSeries.priceToCoordinate(pt.price);
     if (x !== null && y !== null) pixels.push({ x: x as number, y: y as number });
   }
