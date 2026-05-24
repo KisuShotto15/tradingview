@@ -37,8 +37,8 @@ export function HRayDraw({
   container,
 }: Props) {
   const color = drawing.color ?? "#2962ff";
-  const stroke = selected ? "#ffffff" : color;
-  const strokeWidth = selected ? 2 : drawing.lineWidth ?? 1;
+  const stroke = color;
+  const strokeWidth = drawing.lineWidth ?? 1;
   const { updateLive, commit } = useDrawings();
   const snapshotRef = useRef<HRayDrawing | null>(null);
 

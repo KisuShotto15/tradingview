@@ -63,7 +63,7 @@ export function PriceRangeDraw({
   const isUp = drawing.priceB >= drawing.priceA;
   const baseColor = isUp ? "#26a69a" : "#ef5350";
   const fill = `${baseColor}1a`;
-  const stroke = selected ? "#ffffff" : baseColor;
+  const stroke = baseColor;
 
   const left = Math.min(xA, xB);
   const right = Math.max(xA, xB);

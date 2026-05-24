@@ -70,7 +70,7 @@ export function RectangleDraw({
   );
 
   const borderColor = drawing.color ?? "#2962ff";
-  const stroke = selected ? "#ffffff" : borderColor;
+  const stroke = borderColor;
   const strokeWidth = drawing.lineWidth ?? 1;
   const strokeDasharray = drawing.lineStyle === 1 ? "6 4" : drawing.lineStyle === 2 ? "2 4" : "none";
   const fillBase = drawing.fillColor ?? borderColor;
@@ -88,7 +88,7 @@ export function RectangleDraw({
         x={left} y={top} width={w} height={h}
         fill="transparent"
         stroke="none"
-        style={{ cursor: selected ? "move" : "pointer", pointerEvents: "fill" }}
+        style={{ cursor: selected ? "move" : "pointer", pointerEvents: "all" }}
         onMouseDown={(e) => {
           if (drawing.locked) return;
           if (selected) {
@@ -117,17 +117,6 @@ export function RectangleDraw({
         strokeDasharray={strokeDasharray}
         style={{ pointerEvents: "none" }}
       />
-      {/* Selection glow */}
-      {selected && (
-        <rect
-          x={left} y={top} width={w} height={h}
-          fill="none"
-          stroke={borderColor}
-          strokeWidth={strokeWidth + 4}
-          opacity={0.18}
-          style={{ pointerEvents: "none" }}
-        />
-      )}
       {/* Corner handles */}
       {selected && (
         <>

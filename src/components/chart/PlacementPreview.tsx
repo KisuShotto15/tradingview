@@ -198,6 +198,26 @@ export function PlacementPreview({
     );
   }
 
+  if (tool === "rectangle") {
+    if (aX === null || aY === null || bX === null || bY === null) return null;
+    const left = Math.min(aX, bX);
+    const top = Math.min(aY, bY);
+    const w = Math.abs(bX - aX);
+    const h = Math.abs(bY - aY);
+    return (
+      <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full" style={{ overflow: "visible" }}>
+        <rect
+          x={left} y={top} width={w} height={h}
+          fill="rgba(41, 98, 255, 0.08)"
+          stroke={PREVIEW_STROKE}
+          strokeDasharray={PREVIEW_DASH}
+          strokeWidth={1}
+        />
+        <circle cx={aX} cy={aY} r={4} fill={PREVIEW_HANDLE} stroke="#ffffff" strokeWidth={1.5} />
+      </svg>
+    );
+  }
+
   if (tool === "parallel-channel") {
     if (extra.length === 0) {
       if (aX === null || aY === null || bX === null || bY === null) return null;

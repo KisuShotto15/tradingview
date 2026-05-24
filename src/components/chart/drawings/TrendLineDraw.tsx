@@ -37,8 +37,8 @@ export function TrendLineDraw({
   container,
 }: Props) {
   const color = drawing.color ?? "#2962ff";
-  const stroke = selected ? "#ffffff" : color;
-  const strokeWidth = selected ? 2 : drawing.lineWidth ?? 1.5;
+  const stroke = color;
+  const strokeWidth = drawing.lineWidth ?? 1.5;
   const { updateLive, commit } = useDrawings();
   const snapshotRef = useRef<TrendLineDrawing | null>(null);
 

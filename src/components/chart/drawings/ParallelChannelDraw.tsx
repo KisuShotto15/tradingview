@@ -40,8 +40,8 @@ export function ParallelChannelDraw({
   container,
 }: Props) {
   const color = drawing.color ?? "#2962ff";
-  const stroke = selected ? "#ffffff" : color;
-  const strokeWidth = selected ? 2 : drawing.lineWidth ?? 1.5;
+  const stroke = color;
+  const strokeWidth = drawing.lineWidth ?? 1.5;
   const fill = `${color}1a`; // ~10% alpha
   const { updateLive, commit } = useDrawings();
   const snapshotRef = useRef<ParallelChannelDrawing | null>(null);

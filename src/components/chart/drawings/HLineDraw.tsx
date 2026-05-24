@@ -32,8 +32,8 @@ export function HLineDraw({
   container,
 }: Props) {
   const color = drawing.color ?? "#2962ff";
-  const stroke = selected ? "#ffffff" : color;
-  const strokeWidth = selected ? 2 : drawing.lineWidth ?? 1;
+  const stroke = color;
+  const strokeWidth = drawing.lineWidth ?? 1;
   const strokeDasharray = drawing.lineStyle === 1 ? "6 4" : drawing.lineStyle === 2 ? "2 4" : "none";
   const { updateLive, commit } = useDrawings();
   const snapshotRef = useRef<HLineDrawing | null>(null);

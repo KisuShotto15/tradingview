@@ -57,7 +57,7 @@ export function DateRangeDraw({
 
   const color = "#2962ff";
   const fill = `${color}14`;
-  const stroke = selected ? "#ffffff" : color;
+  const stroke = color;
   const left = Math.min(xA, xB);
   const right = Math.max(xA, xB);
   const diffSec = Math.abs(drawing.timeB - drawing.timeA);
@@ -73,7 +73,7 @@ export function DateRangeDraw({
         fill={fill}
         stroke={stroke}
         strokeWidth={1}
-        strokeDasharray={selected ? undefined : "4,3"}
+        strokeDasharray="4,3"
         style={{ pointerEvents: "all", cursor: "pointer" }}
         onMouseDown={(e) => {
           e.stopPropagation();
