@@ -14,8 +14,27 @@ interface Props {
   onSelect: () => void;
 }
 
-// Simple polyline path — Chaikin smoothing was already applied at capture time
-function pointsToPath(pts: { x: number; y: number }[]): string {
+type Pt = { x: number; y: number };
+
+// Chaikin corner-cutting — same algorithm as capture phase.
+// Applied at render time as a second smoothing pass over converted pixel coords.
+function chaikin(pts: Pt[], iters = 2): Pt[] {
+  let r = pts;
+  for (let n = 0; n < iters; n++) {
+    if (r.length < 3) break;
+    const next: Pt[] = [r[0]];
+    for (let i = 0; i < r.length - 1; i++) {
+      const a = r[i], b = r[i + 1];
+      next.push({ x: 0.75 * a.x + 0.25 * b.x, y: 0.75 * a.y + 0.25 * b.y });
+      next.push({ x: 0.25 * a.x + 0.75 * b.x, y: 0.25 * a.y + 0.75 * b.y });
+    }
+    next.push(r[r.length - 1]);
+    r = next;
+  }
+  return r;
+}
+
+function pointsToPath(pts: Pt[]): string {
   if (pts.length < 2) return "";
   return "M " + pts[0].x.toFixed(1) + " " + pts[0].y.toFixed(1) +
     pts.slice(1).map(p => ` L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join("");
@@ -24,20 +43,25 @@ function pointsToPath(pts: { x: number; y: number }[]): string {
 export function BrushDraw({ drawing, chart, candleSeries, selected, onSelect }: Props) {
   const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
 
-  const pixels: { x: number; y: number }[] = [];
+  const raw: Pt[] = [];
   for (let i = 0; i < drawing.points.length; i++) {
     const pt = drawing.points[i];
-    // Use stored logical index when available — avoids time round-trip quantization
     const logical = drawing.logicals?.[i];
+    // logicals[] stores float logical positions from visible-range interpolation at capture
+    // time — logicalToCoordinate gives sub-bar pixel accuracy without bar snapping.
     const x = logical !== undefined
       ? chart.timeScale().logicalToCoordinate(logical as never)
       : timeToX(chart, pt.time, globalCandlesRef.current, intervalSec);
     const y = candleSeries.priceToCoordinate(pt.price);
-    if (x !== null && y !== null) pixels.push({ x: x as number, y: y as number });
+    if (x !== null && y !== null) raw.push({ x: x as number, y: y as number });
   }
 
-  if (pixels.length < 2) return null;
+  if (raw.length < 2) return null;
 
+  // Apply Chaikin as a second smoothing pass at render time.
+  // This eliminates any residual bar-edge quantization that survives
+  // the logical→coordinate conversion.
+  const pixels = raw.length >= 3 ? chaikin(raw, 2) : raw;
   const pathD = pointsToPath(pixels);
   const isHighlighter = drawing.kind === "highlighter";
   const color = drawing.color ?? (isHighlighter ? "#ffeb3b" : "#ffffff");

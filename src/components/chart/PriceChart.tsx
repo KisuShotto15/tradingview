@@ -1628,15 +1628,22 @@ export function PriceChart({ symbol, timeframe }: Props) {
       const points: { time: number; price: number }[] = [];
       const logicals: number[] = [];
 
+      // Compute logical as float from the visible range — guaranteed sub-bar precision.
+      // coordinateToLogical may snap to integer bar indices; manual interpolation avoids that.
+      const visibleRange = chartRef.current!.timeScale().getVisibleLogicalRange();
+      const containerWidth = container!.getBoundingClientRect().width;
+
       for (const { x, y } of smoothed) {
         const price = candleSeriesRef.current!.coordinateToPrice(y);
         if (price === null) continue;
-        const logical = chartRef.current!.timeScale().coordinateToLogical(x);
-        if (logical === null) continue;
         const time = xToTime(chartRef.current!, x, candlesRef.current, intervalSec);
         if (time === null) continue;
         points.push({ time, price: price as number });
-        logicals.push(logical as number);
+        // Float logical from visible range interpolation (sub-bar precision)
+        const logical = visibleRange
+          ? visibleRange.from + (x / containerWidth) * (visibleRange.to - visibleRange.from)
+          : (chartRef.current!.timeScale().coordinateToLogical(x) as number ?? 0);
+        logicals.push(logical);
       }
 
       if (points.length >= 2) {
