@@ -44,18 +44,19 @@ export function xToTime(
   if (logical === null) return null;
   const lastIdx = candles.length - 1;
   if (logical >= 0 && logical <= lastIdx) {
-    // Within data range: prefer direct conversion
-    const direct = chart.timeScale().coordinateToTime(x);
-    if (direct !== null) return Number(direct);
-    return candles[Math.round(logical)].time;
+    // Sub-bar precision: interpolate between neighboring candle timestamps
+    // so brush strokes don't snap to candle boundaries (staircase effect).
+    const i = Math.min(Math.floor(logical), lastIdx - 1);
+    const frac = logical - i;
+    return candles[i].time + frac * (candles[i + 1].time - candles[i].time);
   }
   if (logical > lastIdx) {
     const barsAhead = logical - lastIdx;
-    return candles[lastIdx].time + Math.round(barsAhead) * intervalSec;
+    return candles[lastIdx].time + barsAhead * intervalSec;
   }
   // logical < 0
   const barsBefore = -logical;
-  return candles[0].time - Math.round(barsBefore) * intervalSec;
+  return candles[0].time - barsBefore * intervalSec;
 }
 
 /**
@@ -71,17 +72,18 @@ export function timeToX(
   const direct = chart.timeScale().timeToCoordinate(t as UTCTimestamp);
   if (direct !== null) return direct;
   if (candles.length === 0) return null;
+  const first = candles[0];
   const last = candles[candles.length - 1];
   if (t > last.time) {
     const barsAhead = (t - last.time) / intervalSec;
-    return chart
-      .timeScale()
-      .logicalToCoordinate((candles.length - 1 + barsAhead) as never);
+    return chart.timeScale().logicalToCoordinate((candles.length - 1 + barsAhead) as never);
   }
-  const first = candles[0];
   if (t < first.time) {
     const barsBefore = (first.time - t) / intervalSec;
     return chart.timeScale().logicalToCoordinate(-barsBefore as never);
   }
-  return null;
+  // Fractional timestamp between existing candles (e.g. brush strokes).
+  // Approximate logical position via interval spacing.
+  const logical = (t - first.time) / intervalSec;
+  return chart.timeScale().logicalToCoordinate(logical as never);
 }

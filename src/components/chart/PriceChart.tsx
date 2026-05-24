@@ -49,7 +49,7 @@ import { FloatingContextToolbar } from "./FloatingContextToolbar";
 import { KeyLevelsOverlay } from "./KeyLevelsOverlay";
 import { computeKeyLevels } from "@/lib/indicators/keylevels";
 import type { SqueezePoint } from "@/lib/indicators/squeeze";
-import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
+import { xToTime, timeToX, timeframeToSeconds } from "@/lib/chart/coords";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
 import { snapToOHLC } from "@/lib/chart/snap";
 import { useDrawings } from "@/lib/supabase/use-drawings";
@@ -1505,7 +1505,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     const pts: { time: number; price: number }[] = [];
     let lastX = 0;
     let lastY = 0;
-    const MIN_DIST_SQ = 4; // 2px min between points — finer sampling for smoother curves
+    const MIN_DIST_SQ = 1; // 1px min between points — maximum density for smooth slow strokes
 
     // Live preview path element injected into the drawings SVG
     const ns = "http://www.w3.org/2000/svg";
@@ -1523,13 +1523,22 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
     function ptsToD(pixels: { x: number; y: number }[]) {
       if (pixels.length < 2) return "";
-      let d = `M ${pixels[0].x} ${pixels[0].y}`;
-      for (let i = 1; i < pixels.length - 1; i++) {
-        const mx = (pixels[i].x + pixels[i + 1].x) / 2;
-        const my = (pixels[i].y + pixels[i + 1].y) / 2;
-        d += ` Q ${pixels[i].x} ${pixels[i].y} ${mx} ${my}`;
+      if (pixels.length === 2) {
+        return `M ${pixels[0].x} ${pixels[0].y} L ${pixels[1].x} ${pixels[1].y}`;
       }
-      d += ` L ${pixels[pixels.length - 1].x} ${pixels[pixels.length - 1].y}`;
+      // Catmull-Rom → Cubic Bezier (matches BrushDraw.tsx render quality)
+      let d = `M ${pixels[0].x} ${pixels[0].y}`;
+      for (let i = 0; i < pixels.length - 1; i++) {
+        const p0 = pixels[i - 1] ?? pixels[i];
+        const p1 = pixels[i];
+        const p2 = pixels[i + 1];
+        const p3 = pixels[i + 2] ?? p2;
+        const cp1x = p1.x + (p2.x - p0.x) / 6;
+        const cp1y = p1.y + (p2.y - p0.y) / 6;
+        const cp2x = p2.x - (p3.x - p1.x) / 6;
+        const cp2y = p2.y - (p3.y - p1.y) / 6;
+        d += ` C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${p2.x} ${p2.y}`;
+      }
       return d;
     }
 
@@ -1538,12 +1547,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
       const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
       const pixels: { x: number; y: number }[] = [];
       for (const pt of pts) {
-        const x = chartRef.current.timeScale().timeToCoordinate(pt.time as UTCTimestamp);
+        const x = timeToX(chartRef.current, pt.time, candlesRef.current, intervalSec);
         const y = candleSeriesRef.current.priceToCoordinate(pt.price);
         if (x !== null && y !== null) pixels.push({ x: x as number, y: y as number });
       }
       path.setAttribute("d", ptsToD(pixels));
-      void intervalSec;
     }
 
     function toChartPoint(clientX: number, clientY: number) {
@@ -2323,9 +2331,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
     chartRef.current &&
     candleSeriesRef.current
   ) {
-    const ts = chartRef.current.timeScale();
-    const aX = ts.timeToCoordinate(measure.a.time as UTCTimestamp);
-    const bX = ts.timeToCoordinate(measure.b.time as UTCTimestamp);
+    const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
+    const aX = timeToX(chartRef.current, measure.a.time, candlesRef.current, intervalSec);
+    const bX = timeToX(chartRef.current, measure.b.time, candlesRef.current, intervalSec);
     const aY = candleSeriesRef.current.priceToCoordinate(measure.a.price);
     const bY = candleSeriesRef.current.priceToCoordinate(measure.b.price);
 
