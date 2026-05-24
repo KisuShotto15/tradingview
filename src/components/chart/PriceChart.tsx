@@ -126,6 +126,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const outerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const lineSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const areaSeriesRef = useRef<ISeriesApi<"Area"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   /** Per-user EMA instance: id → series */
   const emaSeriesMapRef = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
@@ -180,6 +182,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const keyLevelsCfg = useChartStore((s) => s.keyLevels);
   const chartColors = useChartStore((s) => s.chartColors);
   chartColorsRef.current = chartColors;
+  const chartType = useChartStore((s) => s.chartType);
   const tool = useChartStore((s) => s.tool);
   const setTool = useChartStore((s) => s.setTool);
   const removeIndicator = useChartStore((s) => s.removeIndicator);
@@ -294,6 +297,27 @@ export function PriceChart({ symbol, timeframe }: Props) {
       priceLineColor: TV_COLORS.textMuted,
       priceLineStyle: 2,
     });
+
+    const initChartType = useChartStore.getState().chartType;
+    lineSeriesRef.current = chart.addSeries(LineSeries, {
+      color: "#2962ff",
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      visible: initChartType === "line",
+    });
+    areaSeriesRef.current = chart.addSeries(AreaSeries, {
+      lineColor: "#2962ff",
+      topColor: "rgba(41,98,255,0.4)",
+      bottomColor: "rgba(41,98,255,0.0)",
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      visible: initChartType === "area",
+    });
+    if (initChartType !== "candles") {
+      candleSeriesRef.current.applyOptions({ visible: false });
+    }
 
     chartRef.current = chart;
 
@@ -750,6 +774,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
+      lineSeriesRef.current = null;
+      areaSeriesRef.current = null;
       volumeSeriesRef.current = null;
       emaSeriesMapRef.current.clear();
       rsiRef.current = null;
@@ -760,6 +786,14 @@ export function PriceChart({ symbol, timeframe }: Props) {
       macdHistRef.current = null;
     };
   }, []);
+
+  // Switch chart display type (candles / line / area)
+  useEffect(() => {
+    if (!candleSeriesRef.current) return;
+    candleSeriesRef.current.applyOptions({ visible: chartType === "candles" });
+    lineSeriesRef.current?.applyOptions({ visible: chartType === "line" });
+    areaSeriesRef.current?.applyOptions({ visible: chartType === "area" });
+  }, [chartType]);
 
   // Double-click to open indicator settings
   useEffect(() => {
@@ -1966,6 +2000,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
             })),
           );
         }
+        const closeData = klines.map((k) => ({ time: k.time as UTCTimestamp, value: k.close }));
+        lineSeriesRef.current?.setData(closeData);
+        areaSeriesRef.current?.setData(closeData);
         if (volumeSeriesRef.current) {
           volumeSeriesRef.current.setData(
             klines.map((k) => ({
@@ -2034,6 +2071,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
                   close: k.close,
                 })),
               );
+              const freshClose = fresh.map((k) => ({ time: k.time as UTCTimestamp, value: k.close }));
+              lineSeriesRef.current?.setData(freshClose);
+              areaSeriesRef.current?.setData(freshClose);
               if (volumeSeriesRef.current) {
                 volumeSeriesRef.current.setData(
                   fresh.map((k) => ({
@@ -2098,6 +2138,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
                   low: synth.low,
                   close: synth.close,
                 });
+                lineSeriesRef.current?.update({ time: synth.time as UTCTimestamp, value: synth.close });
+                areaSeriesRef.current?.update({ time: synth.time as UTCTimestamp, value: synth.close });
                 if (volumeSeriesRef.current) {
                   volumeSeriesRef.current.update({
                     time: synth.time as UTCTimestamp,
@@ -2153,6 +2195,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
               low: k.low,
               close: k.close,
             });
+            lineSeriesRef.current?.update({ time: k.time as UTCTimestamp, value: k.close });
+            areaSeriesRef.current?.update({ time: k.time as UTCTimestamp, value: k.close });
             if (volumeSeriesRef.current) {
               volumeSeriesRef.current.update({
                 time: k.time as UTCTimestamp,
