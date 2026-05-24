@@ -2,6 +2,7 @@
 
 import { ChevronDown, Check } from "lucide-react";
 import { useChartStore, type ChartType } from "@/lib/store/chart-store";
+import { Fragment } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -151,10 +152,10 @@ export function ChartTypeSelector() {
             const active = chartType === opt.id;
             const showSeparator = i === 3; // separator between candle-family and line-family
             return (
-              <div key={opt.id}>
+              <Fragment key={opt.id}>
                 {showSeparator && <DropdownMenuSeparator className="bg-tv-border" />}
                 <DropdownMenuItem
-                  onSelect={() => setChartType(opt.id)}
+                  onClick={() => setChartType(opt.id)}
                   className={cn(
                     "flex items-center gap-2 text-xs",
                     active && "bg-tv-panel-hover",
@@ -164,7 +165,7 @@ export function ChartTypeSelector() {
                   <span className="flex-1">{opt.label}</span>
                   {active && <Check className="h-3 w-3 text-tv-blue" />}
                 </DropdownMenuItem>
-              </div>
+              </Fragment>
             );
           })}
         </DropdownMenuContent>
