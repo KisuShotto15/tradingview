@@ -1628,10 +1628,14 @@ export function PriceChart({ symbol, timeframe }: Props) {
       const points: { time: number; price: number }[] = [];
       const logicals: number[] = [];
 
-      // Compute logical as float from the visible range — guaranteed sub-bar precision.
-      // coordinateToLogical may snap to integer bar indices; manual interpolation avoids that.
+      // Compute the pixels-per-bar ratio from two known integer bar positions.
+      // This avoids using containerWidth (which includes the price scale and would
+      // produce a systematic left-shift because chartAreaWidth < containerWidth).
       const visibleRange = chartRef.current!.timeScale().getVisibleLogicalRange();
-      const containerWidth = container!.getBoundingClientRect().width;
+      const refLog = Math.round((visibleRange?.from ?? 0) + (visibleRange ? (visibleRange.to - visibleRange.from) / 2 : 0));
+      const refX0 = chartRef.current!.timeScale().logicalToCoordinate(refLog as never) as number;
+      const refX1 = chartRef.current!.timeScale().logicalToCoordinate((refLog + 1) as never) as number;
+      const pxPerBar = (refX1 ?? refX0 + 8) - (refX0 ?? 0);
 
       for (const { x, y } of smoothed) {
         const price = candleSeriesRef.current!.coordinateToPrice(y);
@@ -1639,10 +1643,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
         const time = xToTime(chartRef.current!, x, candlesRef.current, intervalSec);
         if (time === null) continue;
         points.push({ time, price: price as number });
-        // Float logical from visible range interpolation (sub-bar precision)
-        const logical = visibleRange
-          ? visibleRange.from + (x / containerWidth) * (visibleRange.to - visibleRange.from)
-          : (chartRef.current!.timeScale().coordinateToLogical(x) as number ?? 0);
+        // Float logical computed from actual bar spacing — no containerWidth dependency
+        const logical = refLog + (x - (refX0 ?? 0)) / pxPerBar;
         logicals.push(logical);
       }
 
