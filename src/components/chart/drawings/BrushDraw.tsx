@@ -16,52 +16,47 @@ interface Props {
 
 type Pt = { x: number; y: number };
 
-// Chaikin corner-cutting — same algorithm as capture phase.
-// Applied at render time as a second smoothing pass over converted pixel coords.
-function chaikin(pts: Pt[], iters = 2): Pt[] {
-  let r = pts;
-  for (let n = 0; n < iters; n++) {
-    if (r.length < 3) break;
-    const next: Pt[] = [r[0]];
-    for (let i = 0; i < r.length - 1; i++) {
-      const a = r[i], b = r[i + 1];
-      next.push({ x: 0.75 * a.x + 0.25 * b.x, y: 0.75 * a.y + 0.25 * b.y });
-      next.push({ x: 0.25 * a.x + 0.75 * b.x, y: 0.25 * a.y + 0.75 * b.y });
-    }
-    next.push(r[r.length - 1]);
-    r = next;
-  }
-  return r;
+/**
+ * logicalToCoordinate in lightweight-charts snaps to integer bar centers —
+ * it does NOT linearly interpolate for fractional logical indices.
+ * This helper manually interpolates between the two neighboring integer bars,
+ * giving a true sub-pixel float x position for any float logical value.
+ */
+function logicalToXFloat(chart: IChartApi, logical: number): number | null {
+  const base = Math.floor(logical);
+  const frac = logical - base;
+  const x0 = chart.timeScale().logicalToCoordinate(base as never);
+  if (x0 === null) return null;
+  if (frac === 0) return x0 as number;
+  const x1 = chart.timeScale().logicalToCoordinate((base + 1) as never);
+  if (x1 === null) return x0 as number;
+  return (x0 as number) + frac * ((x1 as number) - (x0 as number));
 }
 
 function pointsToPath(pts: Pt[]): string {
   if (pts.length < 2) return "";
-  return "M " + pts[0].x.toFixed(1) + " " + pts[0].y.toFixed(1) +
-    pts.slice(1).map(p => ` L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join("");
+  return "M " + pts[0].x.toFixed(2) + " " + pts[0].y.toFixed(2) +
+    pts.slice(1).map(p => ` L ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join("");
 }
 
 export function BrushDraw({ drawing, chart, candleSeries, selected, onSelect }: Props) {
   const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
 
-  const raw: Pt[] = [];
+  const pixels: Pt[] = [];
   for (let i = 0; i < drawing.points.length; i++) {
     const pt = drawing.points[i];
     const logical = drawing.logicals?.[i];
-    // logicals[] stores float logical positions from visible-range interpolation at capture
-    // time — logicalToCoordinate gives sub-bar pixel accuracy without bar snapping.
+    // Use sub-bar float interpolation when logicals are stored; fall back to timeToX
+    // for legacy drawings that predate the logicals field.
     const x = logical !== undefined
-      ? chart.timeScale().logicalToCoordinate(logical as never)
+      ? logicalToXFloat(chart, logical)
       : timeToX(chart, pt.time, globalCandlesRef.current, intervalSec);
     const y = candleSeries.priceToCoordinate(pt.price);
-    if (x !== null && y !== null) raw.push({ x: x as number, y: y as number });
+    if (x !== null && y !== null) pixels.push({ x: x as number, y: y as number });
   }
 
-  if (raw.length < 2) return null;
+  if (pixels.length < 2) return null;
 
-  // Apply Chaikin as a second smoothing pass at render time.
-  // This eliminates any residual bar-edge quantization that survives
-  // the logical→coordinate conversion.
-  const pixels = raw.length >= 3 ? chaikin(raw, 2) : raw;
   const pathD = pointsToPath(pixels);
   const isHighlighter = drawing.kind === "highlighter";
   const color = drawing.color ?? (isHighlighter ? "#ffeb3b" : "#ffffff");
