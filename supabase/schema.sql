@@ -40,7 +40,8 @@ create or replace trigger on_auth_user_created
 create table if not exists public.user_watchlists (
   id         uuid primary key default gen_random_uuid(),
   user_id    uuid not null references auth.users(id) on delete cascade,
-  symbols    text[] not null default '{}',
+  symbols    text[] not null default '{}',          -- legado: solo símbolos
+  items      jsonb not null default '[]',           -- completo: símbolos + labels
   updated_at timestamptz default now()
 );
 
@@ -56,14 +57,15 @@ create policy "Usuarios solo ven su watchlist"
 -- user_chart_settings: configuración del chart por usuario
 -- ─────────────────────────────────────────────
 create table if not exists public.user_chart_settings (
-  id          uuid primary key default gen_random_uuid(),
-  user_id     uuid not null references auth.users(id) on delete cascade,
-  symbol      text not null default 'BTCUSDT',
-  timeframe   text not null default '15m',
-  indicators  jsonb not null default '{}',
-  hidden      jsonb not null default '{}',
-  config      jsonb not null default '{}',
-  updated_at  timestamptz default now()
+  id               uuid primary key default gen_random_uuid(),
+  user_id          uuid not null references auth.users(id) on delete cascade,
+  symbol           text not null default 'BTCUSDT',
+  timeframe        text not null default '15m',
+  indicators       jsonb not null default '{}',
+  hidden           jsonb not null default '{}',
+  config           jsonb not null default '{}',
+  visual_settings  jsonb not null default '{}',  -- chartColors, adxStyle, squeezeStyle, keyLevels, userEMAs, chartType
+  updated_at       timestamptz default now()
 );
 
 create unique index if not exists user_chart_settings_user_id_idx on public.user_chart_settings(user_id);

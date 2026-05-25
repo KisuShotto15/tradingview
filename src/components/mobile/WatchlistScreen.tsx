@@ -11,10 +11,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * Mobile watchlist screen — vertical list of pinned symbols with live ticker.
- *
- * Tapping a row sets the active symbol in the chart store and jumps to the
- * Chart tab. Long-press will (later) open the row action sheet to remove,
- * reorder, or move to a different watchlist.
+ * Renders both symbol rows and label/separator headers.
  */
 export function WatchlistScreen() {
   const watchlists = useChartStore((s) => s.watchlists);
@@ -25,9 +22,11 @@ export function WatchlistScreen() {
   const openSheet = useMobileStore((s) => s.openSheet);
 
   const active = watchlists.find((w) => w.id === activeId) ?? watchlists[0];
+  const items = active?.items ?? [];
+
   const symbols = useMemo(
-    () => (active?.items ?? []).filter((i) => i.type === "symbol").map((i) => i.value),
-    [active],
+    () => items.filter((i) => i.type === "symbol").map((i) => i.value),
+    [items],
   );
 
   const [tickers, setTickers] = useState<Map<string, Ticker24h>>(new Map());
@@ -89,18 +88,30 @@ export function WatchlistScreen() {
 
       {/* Rows */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {symbols.length === 0 ? (
+        {items.length === 0 ? (
           <div className="flex h-32 items-center justify-center text-xs text-tv-text-muted">
             Empty list. Tap the + button to add symbols.
           </div>
         ) : (
           <ul>
-            {symbols.map((s) => {
+            {items.map((item) => {
+              if (item.type === "label") {
+                return (
+                  <li
+                    key={item.id}
+                    className="border-b border-tv-border/40 bg-tv-bg/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-tv-text-muted"
+                  >
+                    {item.value}
+                  </li>
+                );
+              }
+
+              const s = item.value;
               const t = tickers.get(s);
               const pct = t?.priceChangePercent ?? 0;
               const up = pct >= 0;
               return (
-                <li key={s}>
+                <li key={item.id}>
                   <button
                     onClick={() => open(s)}
                     className="flex w-full items-center justify-between border-b border-tv-border/60 px-3 py-2.5 text-left active:bg-tv-panel-hover"
