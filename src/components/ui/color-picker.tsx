@@ -4,17 +4,28 @@ import { useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/** Material-inspired 10×10 palette + grayscale row at the top. */
+/** TradingView color palette — each row is a hue family, dark → light left to right. */
 const PALETTE_ROWS: string[][] = [
-  ["#ffffff", "#f5f5f5", "#e0e0e0", "#bdbdbd", "#9e9e9e", "#757575", "#616161", "#424242", "#212121", "#000000"],
-  ["#ffebee", "#ffcdd2", "#ef9a9a", "#e57373", "#ef5350", "#f44336", "#e53935", "#d32f2f", "#c62828", "#b71c1c"],
-  ["#fff3e0", "#ffe0b2", "#ffcc80", "#ffb74d", "#ffa726", "#ff9800", "#fb8c00", "#f57c00", "#ef6c00", "#e65100"],
-  ["#fffde7", "#fff9c4", "#fff59d", "#fff176", "#ffee58", "#ffeb3b", "#fdd835", "#fbc02d", "#f9a825", "#f57f17"],
-  ["#e8f5e9", "#c8e6c9", "#a5d6a7", "#81c784", "#66bb6a", "#4caf50", "#43a047", "#388e3c", "#2e7d32", "#1b5e20"],
-  ["#e0f7fa", "#b2ebf2", "#80deea", "#4dd0e1", "#26c6da", "#00bcd4", "#00acc1", "#0097a7", "#00838f", "#006064"],
-  ["#e3f2fd", "#bbdefb", "#90caf9", "#64b5f6", "#42a5f5", "#2196f3", "#1e88e5", "#1976d2", "#1565c0", "#0d47a1"],
-  ["#ede7f6", "#d1c4e9", "#b39ddb", "#9575cd", "#7e57c2", "#673ab7", "#5e35b1", "#512da8", "#4527a0", "#311b92"],
-  ["#fce4ec", "#f8bbd0", "#f48fb1", "#f06292", "#ec407a", "#e91e63", "#d81b60", "#c2185b", "#ad1457", "#880e4f"],
+  // Grayscale
+  ["#000000", "#1e222d", "#2a2e39", "#363a45", "#434651", "#787b86", "#9598a1", "#b2b5be", "#d1d4dc", "#ffffff"],
+  // Red
+  ["#4e0000", "#730000", "#990000", "#c62828", "#e53935", "#ef5350", "#f47272", "#f99898", "#fbbebe", "#fce8e8"],
+  // Orange
+  ["#3d1200", "#6b2200", "#9e3600", "#c84a00", "#e65100", "#f57c00", "#fb8c00", "#ffa726", "#ffcc80", "#fff3e0"],
+  // Yellow
+  ["#2d2600", "#4d3f00", "#6e5900", "#917300", "#b89200", "#ddb800", "#f9dc00", "#fff176", "#fff9c4", "#fffde7"],
+  // Green
+  ["#003000", "#004d00", "#006600", "#1b5e20", "#2e7d32", "#388e3c", "#43a047", "#66bb6a", "#a5d6a7", "#e8f5e9"],
+  // Teal
+  ["#003030", "#004d49", "#006e69", "#00897b", "#009688", "#26a69a", "#4db6ac", "#80cbc4", "#b2dfdb", "#e0f2f1"],
+  // Blue (standard)
+  ["#001a66", "#0d2f99", "#1565c0", "#1976d2", "#1e88e5", "#2196f3", "#42a5f5", "#64b5f6", "#90caf9", "#bbdefb"],
+  // TradingView blue (primary: #2962ff)
+  ["#001266", "#0d1fa8", "#1631e0", "#2962ff", "#3d71ff", "#5585ff", "#7ba2ff", "#a8bfff", "#c5d2ff", "#e0e8ff"],
+  // Purple
+  ["#1a0040", "#2d006e", "#4a0099", "#6a1ab3", "#7b1fa2", "#9c27b0", "#ab47bc", "#ba68c8", "#ce93d8", "#e1bee7"],
+  // Pink / Magenta
+  ["#2d0025", "#500040", "#800066", "#ad1457", "#c2185b", "#e91e63", "#f06292", "#f48fb1", "#f8bbd0", "#fce4ec"],
 ];
 
 interface Props {
