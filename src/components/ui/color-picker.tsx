@@ -4,28 +4,35 @@ import { useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/** TradingView color palette — each row is a hue family, dark → light left to right. */
+/**
+ * TradingView-style palette.
+ * Layout: columns = hue families, rows = lightness levels (light at top → dark at bottom).
+ * Row 0 = grayscale from white (#ffffff, leftmost) to black (#000000, rightmost).
+ * Rows 1-9 = 10 hue columns, lightest tints in row 1 down to near-black in row 9.
+ *
+ * Columns: [red, orange, yellow, lime, green, teal, sky-blue, TV-blue, purple, pink]
+ */
 const PALETTE_ROWS: string[][] = [
-  // Grayscale
-  ["#000000", "#1e222d", "#2a2e39", "#363a45", "#434651", "#787b86", "#9598a1", "#b2b5be", "#d1d4dc", "#ffffff"],
-  // Red
-  ["#4e0000", "#730000", "#990000", "#c62828", "#e53935", "#ef5350", "#f47272", "#f99898", "#fbbebe", "#fce8e8"],
-  // Orange
-  ["#3d1200", "#6b2200", "#9e3600", "#c84a00", "#e65100", "#f57c00", "#fb8c00", "#ffa726", "#ffcc80", "#fff3e0"],
-  // Yellow
-  ["#2d2600", "#4d3f00", "#6e5900", "#917300", "#b89200", "#ddb800", "#f9dc00", "#fff176", "#fff9c4", "#fffde7"],
-  // Green
-  ["#003000", "#004d00", "#006600", "#1b5e20", "#2e7d32", "#388e3c", "#43a047", "#66bb6a", "#a5d6a7", "#e8f5e9"],
-  // Teal
-  ["#003030", "#004d49", "#006e69", "#00897b", "#009688", "#26a69a", "#4db6ac", "#80cbc4", "#b2dfdb", "#e0f2f1"],
-  // Blue (standard)
-  ["#001a66", "#0d2f99", "#1565c0", "#1976d2", "#1e88e5", "#2196f3", "#42a5f5", "#64b5f6", "#90caf9", "#bbdefb"],
-  // TradingView blue (primary: #2962ff)
-  ["#001266", "#0d1fa8", "#1631e0", "#2962ff", "#3d71ff", "#5585ff", "#7ba2ff", "#a8bfff", "#c5d2ff", "#e0e8ff"],
-  // Purple
-  ["#1a0040", "#2d006e", "#4a0099", "#6a1ab3", "#7b1fa2", "#9c27b0", "#ab47bc", "#ba68c8", "#ce93d8", "#e1bee7"],
-  // Pink / Magenta
-  ["#2d0025", "#500040", "#800066", "#ad1457", "#c2185b", "#e91e63", "#f06292", "#f48fb1", "#f8bbd0", "#fce4ec"],
+  // Row 0 — Grayscale: white → black
+  ["#ffffff", "#d6d6d6", "#b3b3b3", "#919191", "#6e6e6e", "#4b4b4b", "#363636", "#242424", "#141414", "#000000"],
+  // Row 1 — Lightest tints
+  ["#fce8e8", "#fff3e0", "#fffde7", "#f9fbe7", "#e8f5e9", "#e0f2f1", "#e3f2fd", "#e8edff", "#f3e5f5", "#fce4ec"],
+  // Row 2
+  ["#f9b3b3", "#ffcc80", "#fff59d", "#f0f4c3", "#c8e6c9", "#b2dfdb", "#bbdefb", "#c5d2ff", "#e1bee7", "#f8bbd0"],
+  // Row 3
+  ["#f47272", "#ffb74d", "#ffee58", "#dce775", "#81c784", "#4db6ac", "#64b5f6", "#82b1ff", "#ba68c8", "#f06292"],
+  // Row 4 — Vivid / saturated (TradingView primary shades)
+  ["#ef5350", "#ff9800", "#ffeb3b", "#c6ca52", "#4caf50", "#26a69a", "#2196f3", "#448aff", "#9c27b0", "#e91e63"],
+  // Row 5
+  ["#e53935", "#f57c00", "#fbc02d", "#9e9d24", "#388e3c", "#00897b", "#1976d2", "#2962ff", "#7b1fa2", "#c2185b"],
+  // Row 6
+  ["#c62828", "#e65100", "#f57f17", "#6d6f1a", "#2e7d32", "#006064", "#1565c0", "#1a46d9", "#6a1b9a", "#ad1457"],
+  // Row 7
+  ["#921010", "#bf360c", "#e65c00", "#4a4e00", "#1b5e20", "#004d40", "#0d47a1", "#0d2da6", "#4a148c", "#880e4f"],
+  // Row 8
+  ["#5c0000", "#7a2200", "#8d3e00", "#2e3100", "#0a3d15", "#002b26", "#07306c", "#071a73", "#2e0a5c", "#560a33"],
+  // Row 9 — Darkest (near-black per hue)
+  ["#2e0000", "#3d1100", "#4e2200", "#161800", "#031e09", "#001514", "#031838", "#030d40", "#160530", "#2b051a"],
 ];
 
 interface Props {
