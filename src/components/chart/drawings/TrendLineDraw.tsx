@@ -92,6 +92,7 @@ export function TrendLineDraw({
         y2={by}
         stroke="transparent"
         strokeWidth={10}
+        className="drawing-hit"
         style={{
           pointerEvents: "stroke",
           cursor: selected ? "move" : "pointer",

@@ -83,6 +83,7 @@ export function PriceRangeDraw({
         fill={fill}
         stroke={stroke}
         strokeWidth={1}
+        className="drawing-hit"
         style={{ pointerEvents: "all", cursor: "pointer" }}
         onMouseDown={(e) => {
           e.stopPropagation();

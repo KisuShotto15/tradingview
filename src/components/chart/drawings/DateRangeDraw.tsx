@@ -74,6 +74,7 @@ export function DateRangeDraw({
         stroke={stroke}
         strokeWidth={1}
         strokeDasharray="4,3"
+        className="drawing-hit"
         style={{ pointerEvents: "all", cursor: "pointer" }}
         onMouseDown={(e) => {
           e.stopPropagation();

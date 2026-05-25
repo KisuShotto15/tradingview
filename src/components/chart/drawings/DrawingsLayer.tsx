@@ -50,6 +50,9 @@ export function DrawingsLayer({
   const selectedId = useDrawingsStore((s) => s.selectedId);
   const setSelected = useDrawingsStore((s) => s.setSelected);
   const setEditing = useDrawingsStore((s) => s.setEditing);
+  const tool = useChartStore((s) => s.tool);
+  // When any drawing tool is active, disable hit areas so clicks pass through to the chart
+  const drawingsPassive = tool !== "cursor" && tool !== "eraser";
 
   // Force re-render when symbol or renderTick changes
   const [, setTick] = useState(0);
@@ -73,6 +76,10 @@ export function DrawingsLayer({
           <rect x="0" y="0" width={clipW} height={clipH} />
         </clipPath>
       </defs>
+      {/* Disable all drawing hit areas when a placement tool is active */}
+      {drawingsPassive && (
+        <style>{`.drawing-hit { pointer-events: none !important; }`}</style>
+      )}
       <g clipPath="url(#drawings-main-pane)">
         {visible.map((d) =>
           renderDrawing({
@@ -219,13 +226,17 @@ function renderDrawing(args: RenderArgs) {
     case "long":
     case "short": {
       const xA = timeToX(chart, Number(d.timeA), globalCandlesRef.current, _intervalSec);
-      const xB = timeToX(chart, Number(d.timeB), globalCandlesRef.current, _intervalSec);
       const yEntry = candleSeries.priceToCoordinate(d.entry);
       const yStop = candleSeries.priceToCoordinate(d.stop);
       const yTarget = candleSeries.priceToCoordinate(d.target);
-      if (xA === null || xB === null || yEntry === null || yStop === null || yTarget === null) {
+      if (xA === null || yEntry === null || yStop === null || yTarget === null) {
         return null;
       }
+      const barSpan = Math.max(1, (Number(d.timeB) - Number(d.timeA)) / _intervalSec);
+      const logicalA = chart.timeScale().coordinateToLogical(xA);
+      const xB = logicalA !== null
+        ? ((chart.timeScale().logicalToCoordinate((logicalA + barSpan) as never) as number | null) ?? xA + barSpan * 8)
+        : (timeToX(chart, Number(d.timeB), globalCandlesRef.current, _intervalSec) ?? xA + 100);
       return (
         <PositionDraw
           key={d.id}

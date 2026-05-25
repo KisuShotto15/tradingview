@@ -70,6 +70,7 @@ export function VLineDraw({
         y2={height}
         stroke="transparent"
         strokeWidth={10}
+        className="drawing-hit"
         style={{
           pointerEvents: "stroke",
           cursor: selected ? "ew-resize" : "pointer",

@@ -72,6 +72,7 @@ export function HLineDraw({
         y2={y}
         stroke="transparent"
         strokeWidth={10}
+        className="drawing-hit"
         style={{
           pointerEvents: "stroke",
           cursor: selected ? "ns-resize" : "pointer",

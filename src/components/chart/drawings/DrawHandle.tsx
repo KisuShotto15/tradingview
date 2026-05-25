@@ -18,6 +18,7 @@ export function DrawHandle({ x, y, color, selected, onMouseDown }: Props) {
       fill="#0d0d0d"
       stroke="#4a1d8a"
       strokeWidth={1.5}
+      className="drawing-hit"
       style={{ pointerEvents: "all", cursor: "grab" }}
       onMouseDown={onMouseDown}
     />

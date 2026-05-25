@@ -88,6 +88,7 @@ export function RectangleDraw({
         x={left} y={top} width={w} height={h}
         fill="transparent"
         stroke="none"
+        className="drawing-hit"
         style={{ cursor: selected ? "move" : "pointer", pointerEvents: "all" }}
         onMouseDown={(e) => {
           if (drawing.locked) return;

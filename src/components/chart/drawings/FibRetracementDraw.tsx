@@ -83,6 +83,7 @@ export function FibRetracementDraw({
         width={right - left}
         height={Math.abs(by - ay)}
         fill="transparent"
+        className="drawing-hit"
         style={{ pointerEvents: "all", cursor: "pointer" }}
         onMouseDown={(e) => {
           e.stopPropagation();

@@ -95,6 +95,7 @@ export function RayDraw({
         y2={end.y}
         stroke="transparent"
         strokeWidth={10}
+        className="drawing-hit"
         style={{
           pointerEvents: "stroke",
           cursor: selected ? "move" : "pointer",

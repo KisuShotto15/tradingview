@@ -65,6 +65,7 @@ export function BrushDraw({ drawing, chart, candleSeries, selected, onSelect }: 
 
   return (
     <g
+      className="drawing-hit"
       style={{ pointerEvents: "visibleStroke" }}
       onMouseDown={(e) => {
         if (drawing.locked) return;

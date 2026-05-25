@@ -85,6 +85,7 @@ export function ParallelChannelDraw({
       <polygon
         points={`${ax},${ay} ${bx},${by} ${b2x},${b2y} ${a2x},${a2y}`}
         fill={fill}
+        className="drawing-hit"
         style={{ pointerEvents: "all", cursor: "pointer" }}
         onMouseDown={(e) => {
           e.stopPropagation();

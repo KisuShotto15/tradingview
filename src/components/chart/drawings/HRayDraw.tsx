@@ -77,6 +77,7 @@ export function HRayDraw({
         y2={y}
         stroke="transparent"
         strokeWidth={10}
+        className="drawing-hit"
         style={{
           pointerEvents: "stroke",
           cursor: selected ? "move" : "pointer",
