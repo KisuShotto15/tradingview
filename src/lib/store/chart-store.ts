@@ -115,7 +115,7 @@ export const DEFAULT_ADX_STYLE: AdxStyle = {
   adxColor: "#787b86",
   plusDiColor: "#26a69a",
   minusDiColor: "#ef5350",
-  keyLevelColor: "#787b86",
+  keyLevelColor: "#ffffff",
   showAdx: true,
   showPlusDi: true,
   showMinusDi: true,
@@ -836,11 +836,13 @@ export const useChartStore = create<ChartState>()(
         }
         // v4: fill in adxKeyLevel and showKeyLevel defaults for users who persisted
         // state before these fields were added (they'd be undefined otherwise).
+        // Also reset keyLevelColor from old gray to white so it's visible on dark bg.
         if (fromVersion < 4) {
           const cfg = p.config as Record<string, unknown> | undefined;
           if (cfg && cfg.adxKeyLevel === undefined) cfg.adxKeyLevel = 23;
           const adxStyle = p.adxStyle as Record<string, unknown> | undefined;
           if (adxStyle && adxStyle.showKeyLevel === undefined) adxStyle.showKeyLevel = true;
+          if (adxStyle && adxStyle.keyLevelColor === "#787b86") adxStyle.keyLevelColor = "#ffffff";
         }
         return p;
       },

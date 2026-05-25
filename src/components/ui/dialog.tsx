@@ -31,13 +31,16 @@ function DialogOverlay({
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        "fixed inset-0 isolate z-50 bg-black/30 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className
       )}
       {...props}
     />
   )
 }
+
+// Interactive element tags — mousedown on these should not initiate drag
+const NO_DRAG_TAGS = new Set(["input", "textarea", "select", "button", "a", "label"])
 
 function DialogContent({
   className,
@@ -47,21 +50,55 @@ function DialogContent({
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
 }) {
+  const [offset, setOffset] = React.useState({ x: 0, y: 0 })
+  const drag = React.useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
+  const isDragging = React.useRef(false)
+
+  function onMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    const tag = (e.target as HTMLElement).tagName.toLowerCase()
+    if (NO_DRAG_TAGS.has(tag)) return
+    if ((e.target as HTMLElement).closest("button, input, textarea, select, [data-no-drag]")) return
+    drag.current = { sx: e.clientX, sy: e.clientY, ox: offset.x, oy: offset.y }
+    isDragging.current = false
+
+    const onMove = (ev: MouseEvent) => {
+      if (!drag.current) return
+      isDragging.current = true
+      setOffset({
+        x: drag.current.ox + ev.clientX - drag.current.sx,
+        y: drag.current.oy + ev.clientY - drag.current.sy,
+      })
+    }
+    const onUp = () => {
+      drag.current = null
+      window.removeEventListener("mousemove", onMove)
+      window.removeEventListener("mouseup", onUp)
+    }
+    window.addEventListener("mousemove", onMove)
+    window.addEventListener("mouseup", onUp)
+    e.preventDefault()
+  }
+
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] cursor-move gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
           className
         )}
+        style={{
+          transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px))`,
+        }}
+        onMouseDown={onMouseDown}
         {...props}
       >
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
+            data-no-drag
             render={
               <Button
                 variant="ghost"
@@ -70,8 +107,7 @@ function DialogContent({
               />
             }
           >
-            <XIcon
-            />
+            <XIcon />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>
         )}
