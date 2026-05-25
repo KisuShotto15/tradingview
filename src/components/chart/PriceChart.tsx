@@ -1366,7 +1366,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (adxRef.current) adxRef.current.applyOptions({ visible: v("adx") && adxSt.showAdx });
     if (adxPlusDIRef.current) adxPlusDIRef.current.applyOptions({ visible: v("adx") && adxSt.showPlusDi });
     if (adxMinusDIRef.current) adxMinusDIRef.current.applyOptions({ visible: v("adx") && adxSt.showMinusDi });
-    if (adxKeyLevelRef.current) adxKeyLevelRef.current.applyOptions({ visible: v("adx") && adxSt.showKeyLevel });
+    if (adxKeyLevelRef.current) adxKeyLevelRef.current.applyOptions({ visible: v("adx") && (adxSt.showKeyLevel ?? true) });
     // Squeeze pane — respect showMomentum from squeezeStyle
     const sqSt = useChartStore.getState().squeezeStyle;
     if (squeezeHistRef.current) squeezeHistRef.current.applyOptions({ visible: v("squeeze") && sqSt.showMomentum });
@@ -1827,12 +1827,14 @@ export function PriceChart({ symbol, timeframe }: Props) {
       data.map((p) => ({ time: p.time as UTCTimestamp, value: p.minusDI })),
     );
     adxMinusDIRef.current?.applyOptions({ color: style.minusDiColor, visible: style.showMinusDi && adxEnabled });
-    // Key level: constant horizontal line at configured value
+    // Key level: constant horizontal line at configured value.
+    // Use ?? defaults so old persisted state (missing these fields) still works.
     if (adxKeyLevelRef.current && data.length > 0) {
+      const keyLevelValue = cfg.adxKeyLevel ?? 23;
       adxKeyLevelRef.current.setData(
-        data.map((p) => ({ time: p.time as UTCTimestamp, value: cfg.adxKeyLevel })),
+        data.map((p) => ({ time: p.time as UTCTimestamp, value: keyLevelValue })),
       );
-      adxKeyLevelRef.current.applyOptions({ color: style.keyLevelColor, visible: style.showKeyLevel && adxEnabled });
+      adxKeyLevelRef.current.applyOptions({ color: style.keyLevelColor, visible: (style.showKeyLevel ?? true) && adxEnabled });
     }
   }
 

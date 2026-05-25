@@ -815,7 +815,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: "tv-gratis-chart-state",
-      version: 3,
+      version: 4,
       migrate: (persisted, fromVersion) => {
         const p = persisted as Record<string, unknown>;
         if (fromVersion < 3 && Array.isArray(p.watchlist)) {
@@ -833,6 +833,14 @@ export const useChartStore = create<ChartState>()(
           ];
           p.activeWatchlistId = id;
           delete p.watchlist;
+        }
+        // v4: fill in adxKeyLevel and showKeyLevel defaults for users who persisted
+        // state before these fields were added (they'd be undefined otherwise).
+        if (fromVersion < 4) {
+          const cfg = p.config as Record<string, unknown> | undefined;
+          if (cfg && cfg.adxKeyLevel === undefined) cfg.adxKeyLevel = 23;
+          const adxStyle = p.adxStyle as Record<string, unknown> | undefined;
+          if (adxStyle && adxStyle.showKeyLevel === undefined) adxStyle.showKeyLevel = true;
         }
         return p;
       },
