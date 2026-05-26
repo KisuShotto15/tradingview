@@ -66,7 +66,8 @@ export async function GET(req: Request) {
       const [date, value] = parsed;
       // FRED gives dates as YYYY-MM-DD (UTC midnight).
       const time = Math.floor(Date.parse(`${date}T00:00:00Z`) / 1000);
-      if (!isFinite(time)) continue;
+      // lightweight-charts requires positive UTC timestamps (post-1970).
+      if (!isFinite(time) || time <= 0) continue;
       candles.push({
         time,
         open: value,

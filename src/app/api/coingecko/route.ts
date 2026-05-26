@@ -94,9 +94,23 @@ function alignSeries(
   return out;
 }
 
-function toCandle(timeMs: number, value: number): Candle {
-  const t = Math.floor(timeMs / 1000);
-  return { time: t, open: value, high: value, low: value, close: value, volume: 0, isFinal: true };
+/** Build a proper OHLC candle series from a flat close-only value series.
+ *  Each candle's open = previous close, so bodies reflect day-to-day movement. */
+function buildCandles(points: { time: number; value: number }[]): Candle[] {
+  return points.map(({ time, value }, i) => {
+    const t = Math.floor(time / 1000);
+    const open = i === 0 ? value : points[i - 1].value;
+    const close = value;
+    return {
+      time: t,
+      open,
+      high: Math.max(open, close),
+      low: Math.min(open, close),
+      close,
+      volume: 0,
+      isFinal: true,
+    };
+  });
 }
 
 export async function GET(req: Request) {
@@ -123,11 +137,12 @@ export async function GET(req: Request) {
         seriesById[id] = await fetchMarketCaps(id, days);
       }
       const aligned = alignSeries(seriesById);
-      const candles = aligned.map(({ time, values }) => {
+      const points = aligned.map(({ time, values }) => {
         let sum = 0;
         for (const id of ids) sum += values[id] ?? 0;
-        return toCandle(time, sum);
+        return { time, value: sum };
       });
+      const candles = buildCandles(points);
       return NextResponse.json({ candles });
     }
 
@@ -144,13 +159,13 @@ export async function GET(req: Request) {
         { status: 503 },
       );
     }
-    const candles = aligned.map(({ time, values }) => {
+    const points = aligned.map(({ time, values }) => {
       let total = 0;
       for (const id of TOP_COINS) total += values[id] ?? 0;
       const own = values[coin] ?? 0;
-      const pct = total > 0 ? (own / total) * 100 : 0;
-      return toCandle(time, pct);
+      return { time, value: total > 0 ? (own / total) * 100 : 0 };
     });
+    const candles = buildCandles(points);
     return NextResponse.json({ candles });
   } catch (err) {
     return NextResponse.json(
