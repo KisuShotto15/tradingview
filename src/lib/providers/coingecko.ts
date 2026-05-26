@@ -1,6 +1,7 @@
 import type { Candle, Timeframe } from "@/lib/binance/types";
 
-/** Number of days of history to request based on the chart's timeframe. */
+/** Number of days of history to request based on the chart's timeframe.
+ *  Capped at 365 — CoinGecko free tier returns empty data for days > 365. */
 function daysFor(interval: Timeframe): number {
   switch (interval) {
     case "1m":
@@ -18,11 +19,9 @@ function daysFor(interval: Timeframe): number {
       return 180;
     case "1d":
     case "3d":
-      return 365;
     case "1w":
-      return 1825; // 5y
     case "1M":
-      return 3650; // 10y
+      return 365;
   }
 }
 
