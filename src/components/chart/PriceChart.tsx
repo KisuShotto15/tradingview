@@ -2003,6 +2003,15 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
     async function load() {
       try {
+        // Immediately wipe previous symbol's data so stale candles never linger.
+        candlesRef.current = [];
+        globalCandlesRef.current = [];
+        candleSeriesRef.current?.setData([]);
+        lineSeriesRef.current?.setData([]);
+        areaSeriesRef.current?.setData([]);
+        volumeSeriesRef.current?.setData([]);
+        setLastPrice(null);
+
         const source = resolveSource(symbol);
         const synthetic = source.kind === "synthetic";
         const klines = await fetchCandles(symbol, timeframe, 1000);
@@ -2631,7 +2640,16 @@ export function PriceChart({ symbol, timeframe }: Props) {
           <span className="text-tv-text-muted">·</span>
           <span className="font-semibold uppercase text-tv-text-muted">{timeframe}</span>
           <span className="text-tv-text-muted">·</span>
-          <span className="font-semibold text-tv-text-muted">Binance</span>
+          <span className="font-semibold text-tv-text-muted">
+            {(() => {
+              const k = resolveSource(symbol).kind;
+              if (k === "fred") return "FRED";
+              if (k === "coingecko") return "CoinGecko";
+              if (k === "yahoo") return "Yahoo";
+              if (k === "synthetic") return "Synthetic";
+              return "Binance";
+            })()}
+          </span>
           {!hover && lastPrice && (
             <>
               <span className={`font-semibold tabular-nums ${greenOrRed(lastPrice.pct)}`}>

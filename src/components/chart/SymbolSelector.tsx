@@ -143,7 +143,7 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
             autoFocus
             placeholder="BTC, ETH, or expression: BTCUSDT/ETHUSDT…"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => setQuery(e.target.value.toUpperCase())}
             onKeyDown={(e) => {
               if (e.key !== "Enter") return;
               e.preventDefault();
