@@ -785,7 +785,9 @@ export const useChartStore = create<ChartState>()(
             if (from === -1 || to === -1 || from === to) return w;
             const next = [...w.items];
             const [moved] = next.splice(from, 1);
-            next.splice(from < to ? to : to, 0, moved);
+            // After removing `from`, indices > from shift left by 1.
+            // Insert BEFORE the original target: use to-1 when moving down, to when moving up.
+            next.splice(from < to ? to - 1 : to, 0, moved);
             return { ...w, items: next };
           }),
         })),
@@ -815,7 +817,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: "tv-gratis-chart-state",
-      version: 4,
+      version: 5,
       migrate: (persisted, fromVersion) => {
         const p = persisted as Record<string, unknown>;
         if (fromVersion < 3 && Array.isArray(p.watchlist)) {

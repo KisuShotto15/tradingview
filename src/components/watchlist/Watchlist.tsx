@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -78,8 +78,7 @@ export function Watchlist() {
     return () => window.removeEventListener("click", close);
   }, [flagPickerId]);
 
-  // Drag & drop state
-  const draggedId = useRef<string | null>(null);
+  // Drag & drop state — use dataTransfer (not a ref) so stale IDs never block drops.
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   // Collapsed label sections
@@ -229,29 +228,27 @@ export function Watchlist() {
     });
   }, [items, collapsed]);
 
-  // Drag handlers
-  function handleDragStart(id: string) {
-    draggedId.current = id;
+  // Drag handlers — ID is carried via dataTransfer to avoid stale-ref issues.
+  function handleDragStart(e: React.DragEvent, id: string) {
+    e.dataTransfer.setData("text/plain", id);
+    e.dataTransfer.effectAllowed = "move";
   }
 
   function handleDragOver(e: React.DragEvent, id: string) {
     e.preventDefault();
-    if (draggedId.current !== id) setDragOverId(id);
+    e.dataTransfer.dropEffect = "move";
+    setDragOverId(id);
   }
 
-  function handleDrop(targetId: string) {
-    if (!active || !draggedId.current || draggedId.current === targetId) {
-      draggedId.current = null;
-      setDragOverId(null);
-      return;
-    }
-    reorderWatchlistItems(active.id, draggedId.current, targetId);
-    draggedId.current = null;
+  function handleDrop(e: React.DragEvent, targetId: string) {
+    e.preventDefault();
+    const fromId = e.dataTransfer.getData("text/plain");
     setDragOverId(null);
+    if (!active || !fromId || fromId === targetId) return;
+    reorderWatchlistItems(active.id, fromId, targetId);
   }
 
   function handleDragEnd() {
-    draggedId.current = null;
     setDragOverId(null);
   }
 
@@ -319,9 +316,9 @@ export function Watchlist() {
                 <div
                   key={item.id}
                   draggable
-                  onDragStart={() => handleDragStart(item.id)}
+                  onDragStart={(e) => handleDragStart(e, item.id)}
                   onDragOver={(e) => handleDragOver(e, item.id)}
-                  onDrop={() => handleDrop(item.id)}
+                  onDrop={(e) => handleDrop(e, item.id)}
                   onDragEnd={handleDragEnd}
                   onContextMenu={(e) => {
                     e.stopPropagation();
@@ -374,9 +371,9 @@ export function Watchlist() {
               <div
                 key={item.id}
                 draggable
-                onDragStart={() => handleDragStart(item.id)}
+                onDragStart={(e) => handleDragStart(e, item.id)}
                 onDragOver={(e) => handleDragOver(e, item.id)}
-                onDrop={() => handleDrop(item.id)}
+                onDrop={(e) => handleDrop(e, item.id)}
                 onDragEnd={handleDragEnd}
                 onClick={() => setSymbol(s)}
                 onContextMenu={(e) => {

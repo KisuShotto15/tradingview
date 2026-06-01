@@ -37,6 +37,7 @@ export function CoinIcon({ symbol, size = 18 }: Props) {
         alt={base}
         width={size}
         height={size}
+        draggable={false}
         className="shrink-0 rounded-full"
         onError={() => setErrored(true)}
       />
