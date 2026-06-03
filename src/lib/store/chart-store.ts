@@ -815,7 +815,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: "tv-gratis-chart-state",
-      version: 4,
+      version: 5,
       migrate: (persisted, fromVersion) => {
         const p = persisted as Record<string, unknown>;
         if (fromVersion < 3 && Array.isArray(p.watchlist)) {

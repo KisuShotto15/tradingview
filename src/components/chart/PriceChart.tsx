@@ -1367,9 +1367,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (adxPlusDIRef.current) adxPlusDIRef.current.applyOptions({ visible: v("adx") && adxSt.showPlusDi });
     if (adxMinusDIRef.current) adxMinusDIRef.current.applyOptions({ visible: v("adx") && adxSt.showMinusDi });
     if (adxKeyLevelRef.current) adxKeyLevelRef.current.applyOptions({ visible: v("adx") && (adxSt.showKeyLevel ?? true) });
-    // Squeeze pane — respect showMomentum from squeezeStyle
-    const sqSt = useChartStore.getState().squeezeStyle;
-    if (squeezeHistRef.current) squeezeHistRef.current.applyOptions({ visible: v("squeeze") && sqSt.showMomentum });
+    // Squeeze pane — the histogram provides the price-scale anchor for the SVG
+    // overlay; always keep it visible so priceToCoordinate(0) never returns null.
+    // The actual show/hide of the histogram colours is handled by the SVG overlay.
+    if (squeezeHistRef.current) squeezeHistRef.current.applyOptions({ visible: v("squeeze") });
     if (squeezeDotsRef.current) squeezeDotsRef.current.applyOptions({ visible: v("squeeze") });
     // VuManChu pane
     if (obvRef.current) obvRef.current.applyOptions({ visible: v("obv") });
@@ -1867,9 +1868,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
         color: "rgba(0,0,0,0)",
       })),
     );
-    squeezeHistRef.current.applyOptions({
-      visible: style.showMomentum && indicators.squeeze && !hidden.squeeze,
-    });
+    // Keep the histogram visible so its price scale stays valid for priceToCoordinate.
+    // The SVG overlay controls what's actually shown to the user.
+    squeezeHistRef.current.applyOptions({ visible: true });
     setSqueezePts(pts);
     void COLORS;
     // Zero-line dots: invisible line at 0 + colored markers for squeeze state
@@ -2489,7 +2490,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           paneTop={paneOffsets[squeezePaneIdx].top}
           paneHeight={paneOffsets[squeezePaneIdx].height}
           pts={squeezePts}
-          visible={squeezeStyle.showMomentum}
+          visible={squeezeStyle.showMomentum && !hidden.squeeze}
           colorMap={{
             lime: squeezeStyle.momentumIncPos,
             green: squeezeStyle.momentumDecPos,
