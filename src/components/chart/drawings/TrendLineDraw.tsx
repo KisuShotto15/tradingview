@@ -39,6 +39,7 @@ export function TrendLineDraw({
   const color = drawing.color ?? "#2962ff";
   const stroke = color;
   const strokeWidth = drawing.lineWidth ?? 1.5;
+  const strokeDasharray = drawing.lineStyle === 1 ? "6 4" : drawing.lineStyle === 2 ? "2 4" : undefined;
   const { updateLive, commit } = useDrawings();
   const snapshotRef = useRef<TrendLineDrawing | null>(null);
 
@@ -114,6 +115,7 @@ export function TrendLineDraw({
         y2={by}
         stroke={stroke}
         strokeWidth={strokeWidth}
+        strokeDasharray={strokeDasharray}
         style={{ pointerEvents: "none" }}
       />
       {selected && (

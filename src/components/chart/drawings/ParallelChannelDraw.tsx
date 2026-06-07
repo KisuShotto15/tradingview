@@ -42,6 +42,7 @@ export function ParallelChannelDraw({
   const color = drawing.color ?? "#2962ff";
   const stroke = color;
   const strokeWidth = drawing.lineWidth ?? 1.5;
+  const strokeDasharray = drawing.lineStyle === 1 ? "6 4" : drawing.lineStyle === 2 ? "2 4" : undefined;
   const fill = `${color}1a`; // ~10% alpha
   const { updateLive, commit } = useDrawings();
   const snapshotRef = useRef<ParallelChannelDrawing | null>(null);
@@ -92,8 +93,8 @@ export function ParallelChannelDraw({
           onSelect();
         }}
       />
-      <line x1={ax} x2={bx} y1={ay} y2={by} stroke={stroke} strokeWidth={strokeWidth} style={{ pointerEvents: "none" }} />
-      <line x1={a2x} x2={b2x} y1={a2y} y2={b2y} stroke={stroke} strokeWidth={strokeWidth} style={{ pointerEvents: "none" }} />
+      <line x1={ax} x2={bx} y1={ay} y2={by} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={strokeDasharray} style={{ pointerEvents: "none" }} />
+      <line x1={a2x} x2={b2x} y1={a2y} y2={b2y} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={strokeDasharray} style={{ pointerEvents: "none" }} />
       {selected && (
         <>
           <DrawHandle x={ax} y={ay} color={color} selected onMouseDown={dragA} />

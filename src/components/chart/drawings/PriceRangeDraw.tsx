@@ -82,7 +82,8 @@ export function PriceRangeDraw({
         height={bottom - top}
         fill={fill}
         stroke={stroke}
-        strokeWidth={1}
+        strokeWidth={drawing.lineWidth ?? 1}
+        strokeDasharray={drawing.lineStyle === 1 ? "6 4" : drawing.lineStyle === 2 ? "2 4" : undefined}
         className="drawing-hit"
         style={{ pointerEvents: "all", cursor: "pointer" }}
         onMouseDown={(e) => {
