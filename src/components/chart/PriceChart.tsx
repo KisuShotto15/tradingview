@@ -2717,9 +2717,19 @@ export function PriceChart({ symbol, timeframe }: Props) {
                   onRemove={() => removeIndicator("volume")}
                 />
               )}
+              {indicators.keylevels && (
+                <IndicatorPill
+                  name="Key Levels"
+                  color={INDICATOR_COLORS.keylevels}
+                  hidden={hidden.keylevels}
+                  onToggleHide={() => toggleHidden("keylevels")}
+                  onSettings={() => setSettingsTarget("keylevels")}
+                  onRemove={() => removeIndicator("keylevels")}
+                />
+              )}
             </>
           )}
-          {(userEMAs.length > 0 || indicators.volume || ownedSubPanes.length > 0) && (
+          {(userEMAs.length > 0 || indicators.volume || indicators.keylevels || ownedSubPanes.length > 0) && (
             <button
               onClick={() =>
                 useChartStore.getState().setPillsCollapsed(!pillsCollapsed)
