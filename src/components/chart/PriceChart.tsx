@@ -1115,7 +1115,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         {
           color: style.keyLevelColor,
           lineWidth: 1,
-          lineStyle: 2,
+          lineStyle: 0,
           priceLineVisible: false,
           lastValueVisible: false,
           priceScaleId: adxScaleId,
@@ -1193,7 +1193,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           adxRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.adxColor, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId }, paneIndex);
           adxPlusDIRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.plusDiColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId }, paneIndex);
           adxMinusDIRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.minusDiColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId }, paneIndex);
-          adxKeyLevelRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.keyLevelColor, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId, autoscaleInfoProvider: () => null }, paneIndex);
+          adxKeyLevelRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.keyLevelColor, lineWidth: 1, lineStyle: 0, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId, autoscaleInfoProvider: () => null }, paneIndex);
           updateADX();
         }
         // If !adxShouldBeOnTop: Squeeze was added last in this effect → Squeeze already on top
