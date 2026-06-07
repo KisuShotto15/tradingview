@@ -12,7 +12,6 @@ import {
   createSeriesMarkers,
   type IChartApi,
   type ISeriesApi,
-  type IPriceLine,
   type ISeriesMarkersPluginApi,
   type SeriesMarker,
   type Time,
@@ -142,7 +141,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const adxRef = useRef<ISeriesApi<"Line"> | null>(null);
   const adxPlusDIRef = useRef<ISeriesApi<"Line"> | null>(null);
   const adxMinusDIRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const adxKeyLineRef = useRef<IPriceLine | null>(null);
+  const adxKeyLevelRef = useRef<ISeriesApi<"Line"> | null>(null);
   // Squeeze Momentum pane
   const squeezeHistRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const squeezeDotsRef = useRef<ISeriesApi<"Line"> | null>(null);
@@ -1080,7 +1079,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
       try { chartRef.current.removeSeries(adxMinusDIRef.current); } catch {}
       adxMinusDIRef.current = null;
     }
-    adxKeyLineRef.current = null;
+    if (adxKeyLevelRef.current) {
+      try { chartRef.current.removeSeries(adxKeyLevelRef.current); } catch {}
+      adxKeyLevelRef.current = null;
+    }
     if (indicators.adx) {
       const paneIndex = panelIndexFor("adx");
       const style = useChartStore.getState().adxStyle;
@@ -1095,15 +1097,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
         { color: style.adxColor, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId },
         paneIndex,
       );
-      adxKeyLineRef.current = adxRef.current.createPriceLine({
-        price: configRef.current.adxKeyLevel ?? 23,
-        color: style.keyLevelColor,
-        lineWidth: 1,
-        lineStyle: 2,
-        lineVisible: style.showKeyLevel ?? true,
-        axisLabelVisible: false,
-        title: "",
-      });
       adxPlusDIRef.current = chartRef.current.addSeries(
         LineSeries,
         { color: style.plusDiColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId },
@@ -1112,6 +1105,22 @@ export function PriceChart({ symbol, timeframe }: Props) {
       adxMinusDIRef.current = chartRef.current.addSeries(
         LineSeries,
         { color: style.minusDiColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId },
+        paneIndex,
+      );
+      // Key level: constant horizontal line that must not affect price scale auto-fit.
+      // autoscaleInfoProvider: () => null excludes it from the auto-scale calculation
+      // so the ADX line is not compressed by the constant-value series.
+      adxKeyLevelRef.current = chartRef.current.addSeries(
+        LineSeries,
+        {
+          color: style.keyLevelColor,
+          lineWidth: 1,
+          lineStyle: 2,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          priceScaleId: adxScaleId,
+          autoscaleInfoProvider: () => null,
+        },
         paneIndex,
       );
       try {
@@ -1180,19 +1189,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
           if (adxRef.current) { try { chartRef.current.removeSeries(adxRef.current); } catch {} adxRef.current = null; }
           if (adxPlusDIRef.current) { try { chartRef.current.removeSeries(adxPlusDIRef.current); } catch {} adxPlusDIRef.current = null; }
           if (adxMinusDIRef.current) { try { chartRef.current.removeSeries(adxMinusDIRef.current); } catch {} adxMinusDIRef.current = null; }
-          adxKeyLineRef.current = null;
+          if (adxKeyLevelRef.current) { try { chartRef.current.removeSeries(adxKeyLevelRef.current); } catch {} adxKeyLevelRef.current = null; }
           adxRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.adxColor, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId }, paneIndex);
-          adxKeyLineRef.current = adxRef.current.createPriceLine({
-            price: configRef.current.adxKeyLevel ?? 23,
-            color: adxSt.keyLevelColor,
-            lineWidth: 1,
-            lineStyle: 2,
-            lineVisible: adxSt.showKeyLevel ?? true,
-            axisLabelVisible: false,
-            title: "",
-          });
           adxPlusDIRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.plusDiColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId }, paneIndex);
           adxMinusDIRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.minusDiColor, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId }, paneIndex);
+          adxKeyLevelRef.current = chartRef.current.addSeries(LineSeries, { color: adxSt.keyLevelColor, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, priceScaleId: adxScaleId, autoscaleInfoProvider: () => null }, paneIndex);
           updateADX();
         }
         // If !adxShouldBeOnTop: Squeeze was added last in this effect → Squeeze already on top
@@ -1376,7 +1377,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (adxRef.current) adxRef.current.applyOptions({ visible: v("adx") && adxSt.showAdx });
     if (adxPlusDIRef.current) adxPlusDIRef.current.applyOptions({ visible: v("adx") && adxSt.showPlusDi });
     if (adxMinusDIRef.current) adxMinusDIRef.current.applyOptions({ visible: v("adx") && adxSt.showMinusDi });
-    if (adxKeyLineRef.current) adxKeyLineRef.current.applyOptions({ lineVisible: v("adx") && (adxSt.showKeyLevel ?? true) });
+    if (adxKeyLevelRef.current) adxKeyLevelRef.current.applyOptions({ visible: v("adx") && (adxSt.showKeyLevel ?? true) });
     // Squeeze pane — the histogram provides the price-scale anchor for the SVG
     // overlay; always keep it visible so priceToCoordinate(0) never returns null.
     // The actual show/hide of the histogram colours is handled by the SVG overlay.
@@ -1838,12 +1839,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
       data.map((p) => ({ time: p.time as UTCTimestamp, value: p.minusDI })),
     );
     adxMinusDIRef.current?.applyOptions({ color: style.minusDiColor, visible: style.showMinusDi && adxEnabled });
-    if (adxKeyLineRef.current) {
-      adxKeyLineRef.current.applyOptions({
-        price: cfg.adxKeyLevel ?? 23,
-        color: style.keyLevelColor,
-        lineVisible: (style.showKeyLevel ?? true) && adxEnabled,
-      });
+    if (adxKeyLevelRef.current && data.length > 0) {
+      const keyLevelValue = cfg.adxKeyLevel ?? 23;
+      adxKeyLevelRef.current.setData(
+        data.map((p) => ({ time: p.time as UTCTimestamp, value: keyLevelValue })),
+      );
+      adxKeyLevelRef.current.applyOptions({ color: style.keyLevelColor, visible: (style.showKeyLevel ?? true) && adxEnabled });
     }
   }
 
