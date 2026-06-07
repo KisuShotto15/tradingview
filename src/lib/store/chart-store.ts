@@ -109,6 +109,9 @@ export interface AdxStyle {
   showPlusDi: boolean;
   showMinusDi: boolean;
   showKeyLevel: boolean;
+  adxLineWidth: 1 | 2 | 3 | 4;
+  diLineWidth: 1 | 2 | 3 | 4;
+  keyLevelLineWidth: 1 | 2 | 3 | 4;
 }
 
 export const DEFAULT_ADX_STYLE: AdxStyle = {
@@ -120,6 +123,9 @@ export const DEFAULT_ADX_STYLE: AdxStyle = {
   showPlusDi: true,
   showMinusDi: true,
   showKeyLevel: true,
+  adxLineWidth: 2,
+  diLineWidth: 1,
+  keyLevelLineWidth: 1,
 };
 
 export const INDICATOR_COLORS: Record<IndicatorKey, string> = {

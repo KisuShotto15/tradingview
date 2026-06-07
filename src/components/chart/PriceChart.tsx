@@ -1830,21 +1830,21 @@ export function PriceChart({ symbol, timeframe }: Props) {
     const data = adxCalc(c, { diLen: cfg.adxDiLen, adxLen: cfg.adx });
     adxRef.current.setData(data.map((p) => ({ time: p.time as UTCTimestamp, value: p.adx })));
     const adxEnabled = indicators.adx && !hidden.adx;
-    adxRef.current.applyOptions({ color: style.adxColor, visible: style.showAdx && adxEnabled });
+    adxRef.current.applyOptions({ color: style.adxColor, lineWidth: style.adxLineWidth ?? 2, visible: style.showAdx && adxEnabled });
     adxPlusDIRef.current?.setData(
       data.map((p) => ({ time: p.time as UTCTimestamp, value: p.plusDI })),
     );
-    adxPlusDIRef.current?.applyOptions({ color: style.plusDiColor, visible: style.showPlusDi && adxEnabled });
+    adxPlusDIRef.current?.applyOptions({ color: style.plusDiColor, lineWidth: style.diLineWidth ?? 1, visible: style.showPlusDi && adxEnabled });
     adxMinusDIRef.current?.setData(
       data.map((p) => ({ time: p.time as UTCTimestamp, value: p.minusDI })),
     );
-    adxMinusDIRef.current?.applyOptions({ color: style.minusDiColor, visible: style.showMinusDi && adxEnabled });
+    adxMinusDIRef.current?.applyOptions({ color: style.minusDiColor, lineWidth: style.diLineWidth ?? 1, visible: style.showMinusDi && adxEnabled });
     if (adxKeyLevelRef.current && data.length > 0) {
       const keyLevelValue = cfg.adxKeyLevel ?? 23;
       adxKeyLevelRef.current.setData(
         data.map((p) => ({ time: p.time as UTCTimestamp, value: keyLevelValue })),
       );
-      adxKeyLevelRef.current.applyOptions({ color: style.keyLevelColor, visible: (style.showKeyLevel ?? true) && adxEnabled });
+      adxKeyLevelRef.current.applyOptions({ color: style.keyLevelColor, lineWidth: style.keyLevelLineWidth ?? 1, visible: (style.showKeyLevel ?? true) && adxEnabled });
     }
   }
 

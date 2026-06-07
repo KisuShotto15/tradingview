@@ -529,24 +529,54 @@ function AdxStyleSection() {
     setAdxStyle(patch);
   }
 
+  function WidthPicker({ value, onChange }: { value: 1 | 2 | 3 | 4; onChange: (v: 1 | 2 | 3 | 4) => void }) {
+    return (
+      <div className="flex items-center gap-1">
+        {([1, 2, 3, 4] as const).map((w) => (
+          <button
+            key={w}
+            onClick={() => onChange(w)}
+            className={`h-6 w-6 rounded text-[10px] ${
+              value === w ? "bg-tv-blue/20 text-tv-blue" : "text-tv-text-muted hover:bg-tv-panel-hover"
+            }`}
+          >
+            {w}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-2">
       <SectionLabel>Style — Lines</SectionLabel>
       <div className="flex items-center justify-between gap-2">
         <Toggle label="ADX" value={draft.showAdx} onChange={(v) => commit({ showAdx: v })} />
-        <ColorPick label="" value={draft.adxColor} onChange={(v) => commit({ adxColor: v })} />
+        <div className="flex items-center gap-2">
+          <WidthPicker value={draft.adxLineWidth ?? 2} onChange={(v) => commit({ adxLineWidth: v })} />
+          <ColorPick label="" value={draft.adxColor} onChange={(v) => commit({ adxColor: v })} />
+        </div>
       </div>
       <div className="flex items-center justify-between gap-2">
         <Toggle label="+DI" value={draft.showPlusDi} onChange={(v) => commit({ showPlusDi: v })} />
-        <ColorPick label="" value={draft.plusDiColor} onChange={(v) => commit({ plusDiColor: v })} />
+        <div className="flex items-center gap-2">
+          <WidthPicker value={draft.diLineWidth ?? 1} onChange={(v) => commit({ diLineWidth: v })} />
+          <ColorPick label="" value={draft.plusDiColor} onChange={(v) => commit({ plusDiColor: v })} />
+        </div>
       </div>
       <div className="flex items-center justify-between gap-2">
         <Toggle label="-DI" value={draft.showMinusDi} onChange={(v) => commit({ showMinusDi: v })} />
-        <ColorPick label="" value={draft.minusDiColor} onChange={(v) => commit({ minusDiColor: v })} />
+        <div className="flex items-center gap-2">
+          <WidthPicker value={draft.diLineWidth ?? 1} onChange={(v) => commit({ diLineWidth: v })} />
+          <ColorPick label="" value={draft.minusDiColor} onChange={(v) => commit({ minusDiColor: v })} />
+        </div>
       </div>
       <div className="flex items-center justify-between gap-2">
         <Toggle label="Key Level" value={draft.showKeyLevel} onChange={(v) => commit({ showKeyLevel: v })} />
-        <ColorPick label="" value={draft.keyLevelColor} onChange={(v) => commit({ keyLevelColor: v })} />
+        <div className="flex items-center gap-2">
+          <WidthPicker value={draft.keyLevelLineWidth ?? 1} onChange={(v) => commit({ keyLevelLineWidth: v })} />
+          <ColorPick label="" value={draft.keyLevelColor} onChange={(v) => commit({ keyLevelColor: v })} />
+        </div>
       </div>
     </div>
   );
