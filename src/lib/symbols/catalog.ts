@@ -118,12 +118,13 @@ const MACRO: SymbolEntry[] = [
   { ticker: "T10Y2Y",   providerSymbol: "T10Y2Y",   source: "fred", category: "Macro", description: "10-Year minus 2-Year Treasury spread" },
   { ticker: "DFF",      providerSymbol: "DFF",      source: "fred", category: "Macro", description: "Federal Funds Effective Rate" },
   { ticker: "RRPONTSYD",providerSymbol: "RRPONTSYD",source: "fred", category: "Macro", description: "Overnight Reverse Repo (Fed RRP)" },
-  // USBCOI maps to the OECD US Composite Leading Indicator (amplitude adjusted).
-  // The true ISM PMI (35-65 scale) is no longer available free on FRED (NAPM /
-  // NAPMPMI return 404 — discontinued for copyright). The legacy OECD BCI series
-  // BSCICP03USM665S is frozen at 2024-01; USALOLITOAASTSAM is the current,
-  // still-updated proxy on the same ~100 normalized scale.
-  { ticker: "USBCOI",   providerSymbol: "USALOLITOAASTSAM", source: "fred", category: "Macro", description: "US Composite Leading Indicator (OECD, amplitude adjusted)" },
+  // USBCOI maps to the OECD US Business Confidence "net balance" survey series.
+  // The true ISM PMI (35-65 scale) is no longer free on FRED (NAPM / NAPMPMI
+  // return 404 — discontinued for copyright). BSCICP02USM460S is the raw
+  // survey net-balance: still updated (2026) and retains the month-to-month
+  // detail of the PMI, at the cost of a different scale (~-10 to +18) versus
+  // the smoothed CLI (USALOLITOAASTSAM) or the legacy ~100 BCI.
+  { ticker: "USBCOI",   providerSymbol: "BSCICP02USM460S", source: "fred", category: "Macro", description: "US Business Confidence (OECD, net balance)" },
   { ticker: "USEPU",    providerSymbol: "USEPUINDXD",     source: "fred", category: "Macro", description: "US Economic Policy Uncertainty Index" },
 ];
 
