@@ -253,6 +253,30 @@ export type ChartType =
   | "line-with-markers"
   | "step-line";
 
+/** Overrides applied automatically when the user selects a given symbol. */
+const SYMBOL_DEFAULTS: Partial<Record<string, { timeframe?: Timeframe; chartType?: ChartType }>> = {
+  USBCOI:   { timeframe: "1M", chartType: "line" },
+  USM2:     { timeframe: "1M", chartType: "line" },
+  USM1:     { timeframe: "1M", chartType: "line" },
+  WALCL:    { timeframe: "1w", chartType: "line" },
+  CIVPART:  { timeframe: "1M", chartType: "line" },
+  UNRATE:   { timeframe: "1M", chartType: "line" },
+  CPIAUCSL: { timeframe: "1M", chartType: "line" },
+  GDP:      { timeframe: "1M", chartType: "line" },
+  DGS10:    { chartType: "line" },
+  DGS2:     { chartType: "line" },
+  T10Y2Y:   { chartType: "line" },
+  DFF:      { chartType: "line" },
+  RRPONTSYD:{ chartType: "line" },
+  USEPU:    { chartType: "line" },
+  // Dominance / market-cap series
+  "BTC.D":  { timeframe: "1d", chartType: "line" },
+  "ETH.D":  { timeframe: "1d", chartType: "line" },
+  TOTAL:    { timeframe: "1d", chartType: "line" },
+  TOTAL2:   { timeframe: "1d", chartType: "line" },
+  TOTAL3:   { timeframe: "1d", chartType: "line" },
+};
+
 interface ChartState {
   symbol: string;
   timeframe: Timeframe;
@@ -457,7 +481,14 @@ export const useChartStore = create<ChartState>()(
       alertDialogPrice: null,
       currentLivePrice: null,
 
-      setSymbol: (symbol) => set({ symbol }),
+      setSymbol: (symbol) => {
+        const defaults = SYMBOL_DEFAULTS[symbol.toUpperCase()];
+        set({
+          symbol,
+          ...(defaults?.timeframe !== undefined && { timeframe: defaults.timeframe }),
+          ...(defaults?.chartType !== undefined && { chartType: defaults.chartType }),
+        });
+      },
       setTimeframe: (timeframe) => set({ timeframe }),
       setChartType: (chartType) => set({ chartType }),
 
