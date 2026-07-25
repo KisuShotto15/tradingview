@@ -35,6 +35,7 @@ export interface ViewportRange {
 // ── Unified op ───────────────────────────────────────────────────────────────
 export type UnifiedOp =
   | { kind: "drawing"; op: DrawingOp }
+  | { kind: "drawingOrder"; symbol: string; before: string[]; after: string[] }
   | { kind: "chartState"; before: ChartStateSnapshot; after: ChartStateSnapshot }
   | { kind: "viewport"; before: ViewportRange; after: ViewportRange };
 

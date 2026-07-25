@@ -10,15 +10,19 @@ export async function loadDrawings(): Promise<Drawing[]> {
     .from("user_drawings")
     .select("id, symbol, kind, data, alert");
   if (error || !data) return [];
-  return data.map((row) =>
-    rowToDrawing({
-      id: row.id,
-      symbol: row.symbol,
-      kind: row.kind,
-      data: row.data ?? {},
-      alert: row.alert ?? null,
-    }),
-  );
+  return data
+    .map((row) =>
+      rowToDrawing({
+        id: row.id,
+        symbol: row.symbol,
+        kind: row.kind,
+        data: row.data ?? {},
+        alert: row.alert ?? null,
+      }),
+    )
+    // Restore stacking order. Legacy rows without `z` default to 0 and keep
+    // their relative DB order (Array.prototype.sort is stable).
+    .sort((a, b) => (a.z ?? 0) - (b.z ?? 0));
 }
 
 export async function insertDrawing(d: Drawing) {

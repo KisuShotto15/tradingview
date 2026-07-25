@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useChartStore } from "@/lib/store/chart-store";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { useDrawings } from "@/lib/supabase/use-drawings";
+import { useReplayStore } from "@/lib/replay/replay-store";
 
 /**
  * Global keyboard shortcuts for the chart.
@@ -48,6 +49,27 @@ export function useKeyboardShortcuts() {
         e.preventDefault();
         void redo();
         return;
+      }
+
+      // Bar-replay transport (only while replay is running). Handled before the
+      // printable-char branch below so Space doesn't open symbol search.
+      const replay = useReplayStore.getState();
+      if (replay.active && !replay.picking) {
+        if (e.key === " " || e.code === "Space") {
+          e.preventDefault();
+          replay.togglePlay();
+          return;
+        }
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          replay.stepForward();
+          return;
+        }
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          replay.stepBackward();
+          return;
+        }
       }
 
       // Alt+A — open Create Alert dialog

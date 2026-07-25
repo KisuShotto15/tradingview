@@ -57,7 +57,7 @@ export function PlacementPreview({
   const bX = toX(cursor.time);
   const bY = toY(cursor.price);
 
-  if (tool === "trendline" || tool === "ray") {
+  if (tool === "trendline" || tool === "ray" || tool === "arrow") {
     if (aX === null || aY === null || bX === null || bY === null) return null;
     // For a ray, extend the segment through the cursor to the chart edge so
     // the user previews the full infinite line, not just the cursor segment.
@@ -214,6 +214,27 @@ export function PlacementPreview({
           strokeWidth={1}
         />
         <circle cx={aX} cy={aY} r={4} fill={PREVIEW_HANDLE} stroke="#ffffff" strokeWidth={1.5} />
+      </svg>
+    );
+  }
+
+  if (tool === "fib-extension") {
+    const pts = [first, ...extra, cursor];
+    const coords = pts.map((p) => ({ x: toX(p.time), y: toY(p.price) }));
+    if (coords.some((c) => c.x === null || c.y === null)) return null;
+    const pointsStr = coords.map((c) => `${c.x},${c.y}`).join(" ");
+    return (
+      <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full" style={{ overflow: "visible" }}>
+        <polyline
+          points={pointsStr}
+          fill="none"
+          stroke={PREVIEW_STROKE}
+          strokeWidth={1.5}
+          strokeDasharray={PREVIEW_DASH}
+        />
+        {coords.map((c, i) => (
+          <circle key={i} cx={c.x as number} cy={c.y as number} r={3} fill={PREVIEW_STROKE} />
+        ))}
       </svg>
     );
   }

@@ -19,9 +19,13 @@ export async function fetchKlines(
   symbol: string,
   interval: Timeframe,
   limit = 1000,
+  /** Upper bound (ms since epoch). When set, returns the `limit` candles ending
+   *  at/just before this time — used to page older history for bar replay. */
+  endTime?: number,
 ): Promise<Candle[]> {
   const sym = cleanSym(symbol);
-  const url = `${restBase(symbol)}/klines?symbol=${sym}&interval=${interval}&limit=${limit}`;
+  let url = `${restBase(symbol)}/klines?symbol=${sym}&interval=${interval}&limit=${limit}`;
+  if (endTime !== undefined) url += `&endTime=${Math.floor(endTime)}`;
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(`klines ${res.status}`);
   const data = (await res.json()) as unknown[][];

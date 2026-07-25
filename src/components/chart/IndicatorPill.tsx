@@ -40,8 +40,8 @@ export function IndicatorPill({
       <div className="ml-1 flex items-center gap-0.5">
         <button
           onClick={onToggleHide}
-          title={hidden ? "Mostrar" : "Ocultar"}
-          aria-label={hidden ? "Mostrar" : "Ocultar"}
+          title={hidden ? "Show" : "Hide"}
+          aria-label={hidden ? "Show" : "Hide"}
           className="rounded p-0.5 text-tv-text-dim transition-colors hover:bg-tv-panel-hover hover:text-tv-text"
         >
           {hidden ? (
@@ -52,16 +52,16 @@ export function IndicatorPill({
         </button>
         <button
           onClick={onSettings}
-          title="Configurar"
-          aria-label="Configurar"
+          title="Settings"
+          aria-label="Settings"
           className="rounded p-0.5 text-tv-text-dim transition-colors hover:bg-tv-panel-hover hover:text-tv-text"
         >
           <Settings className="h-3 w-3" />
         </button>
         <button
           onClick={onRemove}
-          title="Eliminar"
-          aria-label="Eliminar"
+          title="Remove"
+          aria-label="Remove"
           className="rounded p-0.5 text-tv-text-dim transition-colors hover:bg-tv-panel-hover hover:text-tv-red"
         >
           <X className="h-3 w-3" />

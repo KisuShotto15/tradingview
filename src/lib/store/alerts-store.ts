@@ -5,11 +5,16 @@ import { persist } from "zustand/middleware";
 
 export type AlertCondition = "crossing" | "crossing-up" | "crossing-down";
 export type AlertTrigger = "once" | "every";
+/** What the alert watches. Legacy alerts have no `source` → treated as "price". */
+export type AlertSource = "price" | "rsi" | "macd";
 
 export interface PriceAlert {
   id: string;
   symbol: string;
+  /** Defaults to "price" when absent (back-compat with persisted alerts). */
+  source?: AlertSource;
   condition: AlertCondition;
+  /** Price level, or RSI level. Ignored for MACD (line-crosses-signal). */
   value: number;
   trigger: AlertTrigger;
   expiresAt: number | null;

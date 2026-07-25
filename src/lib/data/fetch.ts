@@ -32,3 +32,23 @@ export async function fetchCandles(
       return fetchKlines(src.symbol, interval, limit);
   }
 }
+
+/**
+ * Page older candles ending strictly before `beforeTimeSec`. Used by bar replay
+ * to give the playhead room behind the initially-loaded window.
+ *
+ * Only Binance sources support paging (the app's focus); other providers return
+ * `[]`, so replay simply runs on whatever candles are already loaded.
+ */
+export async function fetchOlderCandles(
+  symbol: string,
+  interval: Timeframe,
+  beforeTimeSec: number,
+  limit = 1000,
+): Promise<Candle[]> {
+  const src = resolveSource(symbol);
+  if (src.kind !== "binance") return [];
+  // endTime is exclusive-ish; step back 1ms so we don't refetch the boundary bar.
+  const candles = await fetchKlines(src.symbol, interval, limit, beforeTimeSec * 1000 - 1);
+  return candles.filter((c) => c.time < beforeTimeSec);
+}

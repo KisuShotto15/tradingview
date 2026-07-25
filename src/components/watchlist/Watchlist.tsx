@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowDown,
+  ArrowUp,
   ChevronDown,
   ChevronRight,
   ChevronsDown,
@@ -16,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { fetchTickers24h } from "@/lib/binance/rest";
+import { sortWatchlistItems, cycleSort, type WatchSort } from "@/lib/watchlist/sort";
 import { getBinanceWS } from "@/lib/binance/ws";
 import { useChartStore } from "@/lib/store/chart-store";
 import {
@@ -70,6 +73,7 @@ export function Watchlist() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [flagPickerId, setFlagPickerId] = useState<string | null>(null);
+  const [sort, setSort] = useState<WatchSort>({ key: "manual", dir: "desc" });
 
   useEffect(() => {
     if (!flagPickerId) return;
@@ -229,6 +233,13 @@ export function Watchlist() {
     });
   }, [items, collapsed]);
 
+  // Apply active sort (manual = unchanged; price/change = flat sorted symbols).
+  const displayItems = useMemo(
+    () => sortWatchlistItems(visibleItems, rows, sort),
+    [visibleItems, rows, sort],
+  );
+  const isSorted = sort.key !== "manual";
+
   // Drag handlers
   function handleDragStart(id: string) {
     draggedId.current = id;
@@ -302,15 +313,25 @@ export function Watchlist() {
       </div>
       <div className="grid grid-cols-[1fr_auto_auto] gap-2 border-b border-tv-border px-3 py-1.5 text-[10px] uppercase tracking-wider text-tv-text-dim">
         <span>Symbol</span>
-        <span className="text-right">Price</span>
-        <span className="text-right">24h</span>
+        <SortHeader
+          label="Price"
+          active={sort.key === "price"}
+          dir={sort.dir}
+          onClick={() => setSort((s) => cycleSort(s, "price"))}
+        />
+        <SortHeader
+          label="24h"
+          active={sort.key === "change"}
+          dir={sort.dir}
+          onClick={() => setSort((s) => cycleSort(s, "change"))}
+        />
       </div>
       <ScrollArea className="flex-1">
         <div
           className="flex flex-col"
           onContextMenu={(e) => openContextMenu(e, null)}
         >
-          {visibleItems.map((item) => {
+          {displayItems.map((item) => {
             const isDragTarget = dragOverId === item.id;
 
             if (item.type === "label") {
@@ -373,7 +394,7 @@ export function Watchlist() {
             return (
               <div
                 key={item.id}
-                draggable
+                draggable={!isSorted}
                 onDragStart={() => handleDragStart(item.id)}
                 onDragOver={(e) => handleDragOver(e, item.id)}
                 onDrop={() => handleDrop(item.id)}
@@ -596,6 +617,38 @@ function ContextItem({
     >
       <Icon className="h-3.5 w-3.5" />
       <span>{label}</span>
+    </button>
+  );
+}
+
+/** Clickable, sort-aware column header (Price / 24h). */
+function SortHeader({
+  label,
+  active,
+  dir,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  dir: "asc" | "desc";
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={`Sort by ${label}`}
+      className={cn(
+        "flex items-center justify-end gap-0.5 text-right uppercase tracking-wider transition-colors hover:text-tv-text",
+        active ? "text-tv-blue" : "text-tv-text-dim",
+      )}
+    >
+      <span>{label}</span>
+      {active &&
+        (dir === "asc" ? (
+          <ArrowUp className="h-2.5 w-2.5" />
+        ) : (
+          <ArrowDown className="h-2.5 w-2.5" />
+        ))}
     </button>
   );
 }

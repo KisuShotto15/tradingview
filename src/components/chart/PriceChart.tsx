@@ -38,7 +38,7 @@ import {
   DEFAULT_CHART_COLORS,
 } from "@/lib/store/chart-store";
 import { formatPrice, formatVolume } from "@/lib/format";
-import { Bell, ChevronUp } from "lucide-react";
+import { Bell, ChevronUp, Maximize2, Settings2 } from "lucide-react";
 import { IndicatorPill } from "./IndicatorPill";
 import { MeasureOverlay } from "./MeasureOverlay";
 import { DrawingsLayer } from "./drawings/DrawingsLayer";
@@ -50,12 +50,16 @@ import { KeyLevelsOverlay } from "./KeyLevelsOverlay";
 import { computeKeyLevels } from "@/lib/indicators/keylevels";
 import type { SqueezePoint } from "@/lib/indicators/squeeze";
 import { xToTime, timeToX, timeframeToSeconds } from "@/lib/chart/coords";
+import { getTvColors } from "@/lib/chart/theme";
+import { useReplayStore } from "@/lib/replay/replay-store";
+import { ReplayToolbar } from "./ReplayToolbar";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
 import { snapToOHLC } from "@/lib/chart/snap";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { unifiedHistory, registerViewportApplier, isApplyingHistory } from "@/lib/history";
 import { generateId, FIB_LEVELS_DEFAULT } from "@/lib/drawings/types";
+import { FIB_EXT_RATIOS_DEFAULT } from "@/lib/drawings/fib";
 import { useAlertMonitor } from "@/hooks/useAlertMonitor";
 
 interface MeasurePoint {
@@ -84,19 +88,13 @@ interface Props {
   timeframe: Timeframe;
 }
 
-const TV_COLORS = {
-  bg: "#000000",
-  panel: "#0a0a0a",
-  border: "#1a1a1a",
-  text: "#e6e6e6",
-  textMuted: "#8a8a8a",
-  green: "#26a69a",
-  red: "#ef5350",
-  blue: "#2962ff",
-  yellow: "#ffb74d",
-  purple: "#ab47bc",
-  grid: "#0e0e0e",
-};
+// Palette lives in globals.css (`--color-tv-*`); read it once so the chart
+// canvas stays in sync with the CSS/Tailwind theme. See src/lib/chart/theme.ts.
+const TV_COLORS = getTvColors();
+
+// Shared row style for the chart right-click context menu.
+const MENU_ITEM_CLS =
+  "flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-xs text-tv-text hover:bg-tv-panel-hover";
 
 interface HoverInfo {
   o: number;
@@ -159,6 +157,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
   // OBV pane
   const obvRef = useRef<ISeriesApi<"Line"> | null>(null);
   const candlesRef = useRef<Candle[]>([]);
+  // Full candle array snapshot captured when bar replay starts (candlesRef holds
+  // the truncated slice while replay is active).
+  const replayFullRef = useRef<Candle[]>([]);
   const savedPaneHeightsRef = useRef<number[]>([]);
   const firstPointRef = useRef<{ time: number; price: number } | null>(null);
   const placementPointsRef = useRef<Array<{ time: number; price: number }>>([]);
@@ -191,6 +192,13 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const setIndicatorOverlay = useChartStore((s) => s.setIndicatorOverlay);
   const openAlertDialog = useChartStore((s) => s.openAlertDialog);
   const setCurrentLivePrice = useChartStore((s) => s.setCurrentLivePrice);
+
+  // Bar replay state (drives the truncated candle feed below).
+  const replayActive = useReplayStore((s) => s.active);
+  const replayPicking = useReplayStore((s) => s.picking);
+  const replayCursor = useReplayStore((s) => s.cursorIndex);
+  const replayPlaying = useReplayStore((s) => s.playing);
+  const replaySpeed = useReplayStore((s) => s.speed);
   const drawingsApi = useDrawings();
   // Note: useAlertMonitor relies on lastPrice (state); see below where it's invoked.
 
@@ -206,7 +214,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const configRef = useRef(config);
   configRef.current = config;
 
-  const [chartContextMenu, setChartContextMenu] = useState<{ x: number; y: number; price: number } | null>(null);
+  const [chartContextMenu, setChartContextMenu] = useState<{ x: number; y: number; price: number; region: "chart" | "scale" } | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [lastPrice, setLastPrice] = useState<{ value: number; pct: number } | null>(null);
   const [lastValues, setLastValues] = useState<LastValues>({});
@@ -342,6 +350,26 @@ export function PriceChart({ symbol, timeframe }: Props) {
         );
       }
 
+      // Bar-replay start picker: a click chooses the bar to begin replay from.
+      if (useReplayStore.getState().picking) {
+        const arr = replayFullRef.current.length ? replayFullRef.current : candlesRef.current;
+        if (resolvedTime !== null && arr.length) {
+          let idx = arr.findIndex((c) => c.time >= resolvedTime!);
+          if (idx === -1) idx = arr.length - 1;
+          useReplayStore.getState().setTotal(arr.length);
+          useReplayStore.getState().setStart(idx);
+          // Put the chosen bar near the right edge so revealed bars push in.
+          if (chartRef.current) {
+            const bars = useChartStore.getState().visibleBars;
+            chartRef.current.timeScale().setVisibleLogicalRange({
+              from: Math.max(0, idx - bars + 1),
+              to: idx + 4,
+            });
+          }
+        }
+        return;
+      }
+
       // Magnet: Ctrl held → snap price to nearest OHLC of the closest candle
       if (param.sourceEvent?.ctrlKey && resolvedTime !== null) {
         const snapped = snapToOHLC(price, resolvedTime, candlesRef.current);
@@ -398,7 +426,25 @@ export function PriceChart({ symbol, timeframe }: Props) {
         return;
       }
 
-      if (toolRef.current === "trendline" || toolRef.current === "ray") {
+      if (toolRef.current === "text") {
+        if (resolvedTime === null) return;
+        void drawingsApiRef.current.add({
+          id: generateId(),
+          kind: "text",
+          symbol: symbolRef.current,
+          anchor: { time: resolvedTime, price },
+          text: "",
+          ...(useChartStore.getState().toolDefaults["text"] ?? {}),
+        } as Parameters<typeof drawingsApiRef.current.add>[0]);
+        setToolRef.current("cursor");
+        return;
+      }
+
+      if (
+        toolRef.current === "trendline" ||
+        toolRef.current === "ray" ||
+        toolRef.current === "arrow"
+      ) {
         if (resolvedTime === null) return;
         const time = resolvedTime;
         const first = firstPointRef.current;
@@ -559,21 +605,23 @@ export function PriceChart({ symbol, timeframe }: Props) {
         return;
       }
 
-      if (toolRef.current === "parallel-channel") {
+      if (toolRef.current === "parallel-channel" || toolRef.current === "fib-extension") {
         if (resolvedTime === null) return;
         const time = resolvedTime;
+        const kind = toolRef.current;
         placementPointsRef.current.push({ time, price });
         if (placementPointsRef.current.length >= 3) {
           const [a, b, c] = placementPointsRef.current;
           void drawingsApiRef.current.add({
             id: generateId(),
-            kind: "parallel-channel",
+            kind,
             symbol: symbolRef.current,
             a,
             b,
             c,
-            ...(useChartStore.getState().toolDefaults["parallel-channel"] ?? {}),
-          });
+            ...(kind === "fib-extension" ? { levels: FIB_EXT_RATIOS_DEFAULT } : {}),
+            ...(useChartStore.getState().toolDefaults[kind] ?? {}),
+          } as Parameters<typeof drawingsApiRef.current.add>[0]);
           placementPointsRef.current = [];
           setPreviewState(null);
           setToolRef.current("cursor");
@@ -754,10 +802,13 @@ export function PriceChart({ symbol, timeframe }: Props) {
       e.preventDefault();
       if (!candleSeriesRef.current || !containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const price = candleSeriesRef.current.coordinateToPrice(y);
       if (price === null || isNaN(price as number)) return;
-      setChartContextMenu({ x: e.clientX - rect.left, y: e.clientY - rect.top, price: price as number });
+      // Right of the time-scale width = over the price scale (different menu).
+      const region: "chart" | "scale" = x > chart.timeScale().width() ? "scale" : "chart";
+      setChartContextMenu({ x, y, price: price as number, region });
     };
     containerRef.current.addEventListener("contextmenu", onContextMenu);
 
@@ -2155,6 +2206,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
               symbol: s,
               interval: timeframe,
               onCandle: (k) => {
+                if (useReplayStore.getState().active) return; // frozen during replay
                 lastBySym.set(s, k);
                 if (lastBySym.size !== symbols.length) return;
                 const synth = evaluateCandleAt(symbol, lastBySym);
@@ -2216,6 +2268,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           symbol,
           interval: timeframe,
           onCandle: (k) => {
+            if (useReplayStore.getState().active) return; // frozen during replay
             if (!candleSeriesRef.current) return;
             const arr = candlesRef.current;
             const lastCandle = arr[arr.length - 1];
@@ -2270,6 +2323,101 @@ export function PriceChart({ symbol, timeframe }: Props) {
       cancelled = true;
       if (unsub) unsub();
     };
+  }, [symbol, timeframe]);
+
+  // ── Bar replay ─────────────────────────────────────────────────────────────
+  // Push a candle slice through every series + indicator. Indicators read
+  // candlesRef, so pointing it at the slice truncates them for free.
+  function applyReplayCandles(arr: Candle[]) {
+    candlesRef.current = arr;
+    globalCandlesRef.current = arr;
+    if (candleSeriesRef.current) {
+      candleSeriesRef.current.setData(
+        arr.map((k) => ({ time: k.time as UTCTimestamp, open: k.open, high: k.high, low: k.low, close: k.close })),
+      );
+    }
+    const closeData = arr.map((k) => ({ time: k.time as UTCTimestamp, value: k.close }));
+    lineSeriesRef.current?.setData(closeData);
+    areaSeriesRef.current?.setData(closeData);
+    if (volumeSeriesRef.current) {
+      volumeSeriesRef.current.setData(
+        arr.map((k) => ({
+          time: k.time as UTCTimestamp,
+          value: k.volume,
+          color: k.close >= k.open ? `${TV_COLORS.green}66` : `${TV_COLORS.red}66`,
+        })),
+      );
+    }
+    updateEMAs();
+    updateRSI();
+    updateMACD();
+    updateADX();
+    updateSqueeze();
+    updateVumanchu();
+    updateOBV();
+    if (arr.length) {
+      const last = arr[arr.length - 1];
+      const prev = arr[arr.length - 2] ?? last;
+      setLastPrice({ value: last.close, pct: prev.close === 0 ? 0 : ((last.close - prev.close) / prev.close) * 100 });
+      setCurrentLivePrice(last.close);
+    }
+  }
+
+  // Enter: snapshot the full array. Exit: refetch fresh (also catches bars that
+  // closed while replay was frozen) and let the live WS resume.
+  useEffect(() => {
+    if (replayActive) {
+      const full = candlesRef.current.slice();
+      replayFullRef.current = full;
+      useReplayStore.getState().setTotal(full.length);
+    } else if (replayFullRef.current.length) {
+      replayFullRef.current = [];
+      let cancelled = false;
+      (async () => {
+        try {
+          const fresh = await fetchCandles(symbol, timeframe, 1000);
+          if (cancelled || useReplayStore.getState().active) return;
+          applyReplayCandles(fresh);
+        } catch (e) {
+          console.error("Replay exit refetch failed:", e);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replayActive]);
+
+  // Render the truncated slice as the playhead moves, following the right edge
+  // only when the cursor would scroll off (so panning back to inspect is free).
+  useEffect(() => {
+    if (!replayActive || replayPicking) return;
+    const full = replayFullRef.current;
+    if (!full.length) return;
+    applyReplayCandles(full.slice(0, Math.min(replayCursor + 1, full.length)));
+    const ts = chartRef.current?.timeScale();
+    const vr = ts?.getVisibleLogicalRange();
+    if (ts && vr && replayCursor > vr.to - 1) {
+      const width = vr.to - vr.from;
+      ts.setVisibleLogicalRange({ from: replayCursor - width + 4, to: replayCursor + 4 });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replayActive, replayPicking, replayCursor]);
+
+  // Auto-advance while playing (speed = bars per second).
+  useEffect(() => {
+    if (!replayActive || replayPicking || !replayPlaying) return;
+    const id = setInterval(
+      () => useReplayStore.getState().stepForward(),
+      Math.max(50, Math.round(1000 / replaySpeed)),
+    );
+    return () => clearInterval(id);
+  }, [replayActive, replayPicking, replayPlaying, replaySpeed]);
+
+  // Changing symbol/timeframe cancels replay (the load effect reloads fresh data).
+  useEffect(() => {
+    if (useReplayStore.getState().active) useReplayStore.getState().exit();
   }, [symbol, timeframe]);
 
   const greenOrRed = (n: number) =>
@@ -2876,6 +3024,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
         );
       })}
 
+      {/* Bar-replay controls (entry button when inactive, full bar when active) */}
+      <div className="pointer-events-none absolute bottom-3 left-1/2 z-30 -translate-x-1/2">
+        <ReplayToolbar />
+      </div>
+
       {/* Chart right-click context menu */}
       {chartContextMenu && (
         <>
@@ -2885,23 +3038,71 @@ export function PriceChart({ symbol, timeframe }: Props) {
             onMouseDown={() => setChartContextMenu(null)}
           />
           <div
-            style={{ top: chartContextMenu.y, left: chartContextMenu.x }}
-            className="absolute z-50 min-w-52 overflow-hidden rounded border border-tv-border bg-tv-panel py-1 shadow-2xl"
+            style={{
+              top: Math.max(8, Math.min(chartContextMenu.y, containerSize.height - 180)),
+              left: Math.max(8, Math.min(chartContextMenu.x, containerSize.width - 232)),
+            }}
+            className="absolute z-50 min-w-56 overflow-hidden rounded border border-tv-border bg-tv-panel py-1 shadow-2xl"
           >
+            {chartContextMenu.region === "chart" && (
+              <>
+                <button
+                  onMouseDown={() => {
+                    openAlertDialog(chartContextMenu.price);
+                    setChartContextMenu(null);
+                  }}
+                  className={MENU_ITEM_CLS}
+                >
+                  <Bell className="h-3.5 w-3.5 shrink-0 text-tv-yellow" />
+                  <span>
+                    Add alert on{" "}
+                    <span className="font-medium">{symbol}</span> at{" "}
+                    <span className="font-medium">{formatPrice(chartContextMenu.price)}</span>
+                  </span>
+                </button>
+                <div className="my-1 h-px bg-tv-border" />
+              </>
+            )}
+
             <button
               onMouseDown={() => {
-                openAlertDialog(chartContextMenu.price);
+                chartRef.current?.timeScale().fitContent();
+                candleSeriesRef.current?.priceScale().applyOptions({ autoScale: true });
                 setChartContextMenu(null);
               }}
-              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-xs text-tv-text hover:bg-tv-panel-hover"
+              className={MENU_ITEM_CLS}
             >
-              <Bell className="h-3.5 w-3.5 shrink-0 text-tv-yellow" />
-              <span>
-                Add alert on{" "}
-                <span className="font-medium">{symbol}</span> at{" "}
-                <span className="font-medium">{formatPrice(chartContextMenu.price)}</span>
-              </span>
+              <Maximize2 className="h-3.5 w-3.5 shrink-0 text-tv-text-muted" />
+              <span>{chartContextMenu.region === "scale" ? "Auto (fit data)" : "Fit chart to data"}</span>
             </button>
+            <button
+              onMouseDown={() => {
+                useChartStore.getState().setLogScale(!logScale);
+                setChartContextMenu(null);
+              }}
+              className={MENU_ITEM_CLS}
+            >
+              <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center text-[10px] font-bold text-tv-text-muted">
+                L
+              </span>
+              <span>{logScale ? "Switch to linear scale" : "Switch to logarithmic scale"}</span>
+            </button>
+
+            {chartContextMenu.region === "chart" && (
+              <>
+                <div className="my-1 h-px bg-tv-border" />
+                <button
+                  onMouseDown={() => {
+                    useChartStore.getState().setChartSettingsOpen(true);
+                    setChartContextMenu(null);
+                  }}
+                  className={MENU_ITEM_CLS}
+                >
+                  <Settings2 className="h-3.5 w-3.5 shrink-0 text-tv-text-muted" />
+                  <span>Chart settings…</span>
+                </button>
+              </>
+            )}
           </div>
         </>
       )}

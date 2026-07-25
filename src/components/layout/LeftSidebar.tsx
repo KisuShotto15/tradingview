@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import {
   MousePointer2,
   Minus,
+  ArrowUpRight,
   Bell,
   BellOff,
   CalendarRange,
@@ -17,8 +18,10 @@ import {
   RectangleHorizontal,
   Ruler,
   Slash,
+  Star,
   Trash2,
   TrendingUp,
+  Type,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -91,6 +94,7 @@ const TOOL_GROUPS: ToolGroup[] = [
       { key: "hline", icon: Minus, label: "Horizontal line", hint: "Click to mark a price across the chart" },
       { key: "hray", icon: MoveRight, label: "Horizontal ray", hint: "Click anchor — extends to the right" },
       { key: "vline", icon: GripVertical, label: "Vertical line", hint: "Click to mark a time across the chart" },
+      { key: "arrow", icon: ArrowUpRight, label: "Arrow", hint: "Click start, then end — draws a line with an arrowhead" },
     ],
   },
   {
@@ -103,6 +107,7 @@ const TOOL_GROUPS: ToolGroup[] = [
     label: "Fibonacci",
     tools: [
       { key: "fib-retracement", icon: Percent, label: "Fib retracement", hint: "Click swing high, then swing low (or vice versa)" },
+      { key: "fib-extension", icon: TrendingUp, label: "Fib extension", hint: "Click A, B, then C — projects extension levels from C" },
     ],
   },
   {
@@ -133,6 +138,12 @@ const TOOL_GROUPS: ToolGroup[] = [
     ],
   },
   {
+    label: "Annotations",
+    tools: [
+      { key: "text", icon: Type, label: "Text", hint: "Click to place a text label, then type. Double-click to edit" },
+    ],
+  },
+  {
     label: "Tools",
     tools: [
       { key: "measure", icon: Ruler, label: "Measure", hint: "Click two points to measure Δ price, %, bars, volume" },
@@ -140,10 +151,72 @@ const TOOL_GROUPS: ToolGroup[] = [
   },
 ];
 
+/** Flat lookup so the favorites strip can resolve a tool key to its definition. */
+const ALL_TOOLS: Partial<Record<DrawingTool, ToolDef>> = Object.fromEntries(
+  TOOL_GROUPS.flatMap((g) => g.tools).map((t) => [t.key, t]),
+);
+const CURSOR_TOOLS = TOOL_GROUPS.find((g) => !g.label)?.tools ?? [];
+const LABELED_GROUPS = TOOL_GROUPS.filter((g) => g.label);
+
+/**
+ * A single tool button. Right-click toggles favorite (works for every tool,
+ * including single-tool categories that have no flyout). Favorited tools show a
+ * small star badge.
+ */
+function ToolButton({
+  t,
+  active,
+  favorite,
+  onSelect,
+  onToggleFavorite,
+}: {
+  t: ToolDef;
+  active: boolean;
+  favorite: boolean;
+  onSelect: () => void;
+  onToggleFavorite: () => void;
+}) {
+  const Icon = t.icon;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        onClick={onSelect}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onToggleFavorite();
+        }}
+        aria-label={t.label}
+        className={cn(
+          "relative flex h-10 w-10 items-center justify-center rounded transition-colors hover:bg-tv-panel-hover",
+          active
+            ? "bg-tv-blue/15 text-tv-blue"
+            : "text-tv-text-muted hover:text-tv-text",
+        )}
+      >
+        <Icon className="h-5 w-5" />
+        {favorite && (
+          <Star className="absolute right-0.5 top-0.5 h-2 w-2 fill-tv-yellow text-tv-yellow" />
+        )}
+      </TooltipTrigger>
+      <TooltipContent side="right" className="text-xs">
+        <div className="font-medium">{t.label}</div>
+        {t.hint && (
+          <div className="mt-0.5 text-[10px] text-tv-text-muted">{t.hint}</div>
+        )}
+        <div className="mt-0.5 text-[10px] text-tv-text-dim">
+          {favorite ? "Right-click to unfavorite" : "Right-click to favorite"}
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function LeftSidebar() {
   const tool = useChartStore((s) => s.tool);
   const setTool = useChartStore((s) => s.setTool);
   const symbol = useChartStore((s) => s.symbol);
+  const favoriteTools = useChartStore((s) => s.favoriteTools);
+  const toggleFavoriteTool = useChartStore((s) => s.toggleFavoriteTool);
   const selectedId = useDrawingsStore((s) => s.selectedId);
   const drawings = useDrawingsStore((s) => s.drawings);
   const { clear: clearDrawings, update } = useDrawings();
@@ -152,7 +225,7 @@ export function LeftSidebar() {
   const [categoryActive, setCategoryActive] = useState<Record<string, DrawingTool>>(
     () => {
       const m: Record<string, DrawingTool> = {};
-      for (const g of TOOL_GROUPS) {
+      for (const g of LABELED_GROUPS) {
         if (g.label) m[g.label] = g.tools[0].key;
       }
       return m;
@@ -160,7 +233,12 @@ export function LeftSidebar() {
   );
 
   const selected = drawings.find((d) => d.id === selectedId);
-  const canAlert = selected && (selected.kind === "hline" || selected.kind === "hray");
+  const canAlert =
+    selected &&
+    (selected.kind === "hline" ||
+      selected.kind === "hray" ||
+      selected.kind === "trendline" ||
+      selected.kind === "ray");
   const alertOn = canAlert ? !!selected?.alert?.enabled : false;
 
   function toggleAlert() {
@@ -174,20 +252,62 @@ export function LeftSidebar() {
     void update(selected.id, { alert: newAlert } as Partial<Drawing>);
   }
 
+  // Resolve favorites to definitions, skipping the always-present cursor and any
+  // stale keys (e.g. a tool removed in a later version).
+  const favoriteDefs = favoriteTools
+    .filter((k) => k !== "cursor")
+    .map((k) => ALL_TOOLS[k])
+    .filter((t): t is ToolDef => !!t);
+
   return (
     <aside className="flex w-14 flex-col items-center gap-1 border-r border-tv-border bg-tv-panel py-2">
-      {TOOL_GROUPS.map((group, gi) => {
-        if (!group.label) {
-          // Cursor (no category)
-          return group.tools.map((t) => renderSimpleTool(t, tool === t.key, () => setTool(t.key)));
-        }
+      {/* Cursor */}
+      {CURSOR_TOOLS.map((t) => (
+        <ToolButton
+          key={t.key}
+          t={t}
+          active={tool === t.key}
+          favorite={false}
+          onSelect={() => setTool(t.key)}
+          onToggleFavorite={() => {}}
+        />
+      ))}
+
+      {/* Favorites strip */}
+      {favoriteDefs.length > 0 && (
+        <>
+          {favoriteDefs.map((t) => (
+            <ToolButton
+              key={`fav-${t.key}`}
+              t={t}
+              active={tool === t.key}
+              favorite
+              onSelect={() => setTool(t.key)}
+              onToggleFavorite={() => toggleFavoriteTool(t.key)}
+            />
+          ))}
+          <div className="my-1 h-px w-6 bg-tv-border" />
+        </>
+      )}
+
+      {/* Tool categories */}
+      {LABELED_GROUPS.map((group, gi) => {
         if (group.tools.length === 1) {
           // Single-tool category: simple button
           const t = group.tools[0];
-          return renderSimpleTool(t, tool === t.key, () => setTool(t.key), gi);
+          return (
+            <ToolButton
+              key={group.label}
+              t={t}
+              active={tool === t.key}
+              favorite={favoriteTools.includes(t.key)}
+              onSelect={() => setTool(t.key)}
+              onToggleFavorite={() => toggleFavoriteTool(t.key)}
+            />
+          );
         }
         // Multi-tool category: button + dropdown menu
-        const activeKey = categoryActive[group.label] ?? group.tools[0].key;
+        const activeKey = categoryActive[group.label!] ?? group.tools[0].key;
         const activeTool = group.tools.find((t) => t.key === activeKey) ?? group.tools[0];
         const ActiveIcon = activeTool.icon;
         const groupHasActive = group.tools.some((t) => t.key === tool);
@@ -196,15 +316,22 @@ export function LeftSidebar() {
             <Tooltip>
               <TooltipTrigger
                 onClick={() => setTool(activeTool.key)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  toggleFavoriteTool(activeTool.key);
+                }}
                 aria-label={activeTool.label}
                 className={cn(
-                  "flex h-10 w-10 items-center justify-center rounded transition-colors hover:bg-tv-panel-hover",
+                  "relative flex h-10 w-10 items-center justify-center rounded transition-colors hover:bg-tv-panel-hover",
                   groupHasActive
                     ? "bg-tv-blue/15 text-tv-blue"
                     : "text-tv-text-muted hover:text-tv-text",
                 )}
               >
                 <ActiveIcon className="h-5 w-5" />
+                {favoriteTools.includes(activeTool.key) && (
+                  <Star className="absolute right-0.5 top-0.5 h-2 w-2 fill-tv-yellow text-tv-yellow" />
+                )}
               </TooltipTrigger>
               <TooltipContent side="right" className="text-xs">
                 <div className="font-medium">{activeTool.label}</div>
@@ -224,7 +351,7 @@ export function LeftSidebar() {
                 side="right"
                 align="start"
                 sideOffset={4}
-                className="min-w-44 bg-tv-panel"
+                className="min-w-48 bg-tv-panel"
               >
                 <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-tv-text-muted">
                   {group.label}
@@ -232,6 +359,7 @@ export function LeftSidebar() {
                 {group.tools.map((t) => {
                   const Icon = t.icon;
                   const isActive = tool === t.key;
+                  const isFav = favoriteTools.includes(t.key);
                   return (
                     <DropdownMenuItem
                       key={t.key}
@@ -246,6 +374,23 @@ export function LeftSidebar() {
                     >
                       <Icon className="h-4 w-4" />
                       <span>{t.label}</span>
+                      <span
+                        role="button"
+                        aria-label={isFav ? "Remove from favorites" : "Add to favorites"}
+                        title={isFav ? "Remove from favorites" : "Add to favorites"}
+                        // Stop pointerdown too: Base UI's Menu.Item can select on
+                        // pointer events, so this keeps the star from selecting the tool.
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          // Toggle favorite without selecting the tool / closing the menu.
+                          e.preventDefault();
+                          e.stopPropagation();
+                          toggleFavoriteTool(t.key);
+                        }}
+                        className="ml-auto flex h-5 w-5 items-center justify-center rounded text-tv-text-dim hover:bg-tv-panel-hover hover:text-tv-yellow"
+                      >
+                        <Star className={cn("h-3.5 w-3.5", isFav && "fill-tv-yellow text-tv-yellow")} />
+                      </span>
                     </DropdownMenuItem>
                   );
                 })}
@@ -278,8 +423,8 @@ export function LeftSidebar() {
             </div>
             <div className="mt-0.5 text-[10px] text-tv-text-muted">
               {canAlert
-                ? "Beeps + toast when price crosses this level"
-                : "Select a horizontal line or ray first"}
+                ? "Beeps + toast when price crosses this line"
+                : "Select a horizontal/trend line or ray first"}
             </div>
           </TooltipContent>
         </Tooltip>
@@ -301,36 +446,5 @@ export function LeftSidebar() {
         </Tooltip>
       </div>
     </aside>
-  );
-}
-
-function renderSimpleTool(
-  t: ToolDef,
-  active: boolean,
-  onClick: () => void,
-  key?: React.Key,
-) {
-  const Icon = t.icon;
-  return (
-    <Tooltip key={key ?? t.key}>
-      <TooltipTrigger
-        onClick={onClick}
-        aria-label={t.label}
-        className={cn(
-          "flex h-10 w-10 items-center justify-center rounded transition-colors hover:bg-tv-panel-hover",
-          active
-            ? "bg-tv-blue/15 text-tv-blue"
-            : "text-tv-text-muted hover:text-tv-text",
-        )}
-      >
-        <Icon className="h-5 w-5" />
-      </TooltipTrigger>
-      <TooltipContent side="right" className="text-xs">
-        <div className="font-medium">{t.label}</div>
-        {t.hint && (
-          <div className="mt-0.5 text-[10px] text-tv-text-muted">{t.hint}</div>
-        )}
-      </TooltipContent>
-    </Tooltip>
   );
 }

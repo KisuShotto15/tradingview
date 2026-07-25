@@ -10,7 +10,12 @@ import {
 } from "@/components/ui/dialog";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { useChartStore } from "@/lib/store/chart-store";
-import { useAlertsStore, type AlertCondition, type AlertTrigger } from "@/lib/store/alerts-store";
+import {
+  useAlertsStore,
+  type AlertCondition,
+  type AlertTrigger,
+  type AlertSource,
+} from "@/lib/store/alerts-store";
 import { formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -20,14 +25,22 @@ const CONDITION_LABELS: Record<AlertCondition, string> = {
   "crossing-down": "Crossing Down",
 };
 
+const SOURCE_LABELS: Record<AlertSource, string> = {
+  price: "Price",
+  rsi: "RSI",
+  macd: "MACD",
+};
+
 function defaultExpiry(): string {
   const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function autoMsg(symbol: string, condition: AlertCondition, value: number): string {
-  return `${symbol} ${CONDITION_LABELS[condition]} ${formatPrice(value)}`;
+function autoMsg(symbol: string, source: AlertSource, condition: AlertCondition, value: number): string {
+  if (source === "macd") return `${symbol} MACD ${CONDITION_LABELS[condition]} signal`;
+  const level = source === "rsi" ? String(value) : formatPrice(value);
+  return `${symbol} ${SOURCE_LABELS[source]} ${CONDITION_LABELS[condition]} ${level}`;
 }
 
 function priceStep(value: string): string {
@@ -48,6 +61,7 @@ export function CreateAlertDialog() {
 
   const addAlert = useAlertsStore((s) => s.addAlert);
 
+  const [source, setSource] = useState<AlertSource>("price");
   const [condition, setCondition] = useState<AlertCondition>("crossing");
   const [value, setValue] = useState("");
   const [trigger, setTrigger] = useState<AlertTrigger>("once");
@@ -60,6 +74,7 @@ export function CreateAlertDialog() {
   useEffect(() => {
     if (!open) return;
     const price = defaultPrice ?? currentLivePrice ?? 0;
+    setSource("price");
     setValue(price > 0 ? String(parseFloat(formatPrice(price))) : "");
     setCondition("crossing");
     setTrigger("once");
@@ -67,25 +82,35 @@ export function CreateAlertDialog() {
     setAutoMessage(true);
   }, [open, defaultPrice, currentLivePrice]);
 
-  useEffect(() => {
-    if (!autoMessage) return;
-    const num = parseFloat(value);
-    setMessage(isNaN(num) ? "" : autoMsg(symbol, condition, num));
-  }, [autoMessage, symbol, condition, value]);
+  // Switching source resets the value to a sensible default for that source.
+  function changeSource(next: AlertSource) {
+    setSource(next);
+    if (next === "rsi") setValue("70");
+    else if (next === "macd") setValue("0");
+    else setValue(currentLivePrice && currentLivePrice > 0 ? String(parseFloat(formatPrice(currentLivePrice))) : "");
+  }
 
   const numVal = parseFloat(value);
-  const valid = !isNaN(numVal) && numVal > 0;
+  // MACD watches a line cross (no level); price/RSI need a numeric level.
+  const valid = source === "macd" ? true : !isNaN(numVal) && numVal > 0;
+  const needsValue = source !== "macd";
+
+  useEffect(() => {
+    if (!autoMessage) return;
+    setMessage(autoMsg(symbol, source, condition, parseFloat(value) || 0));
+  }, [autoMessage, symbol, source, condition, value]);
 
   function handleCreate() {
     if (!valid) return;
     const expiresAt = expiry ? new Date(expiry).getTime() : null;
     addAlert({
       symbol,
+      source,
       condition,
-      value: numVal,
+      value: needsValue ? numVal : 0,
       trigger,
       expiresAt,
-      message: message || autoMsg(symbol, condition, numVal),
+      message: message || autoMsg(symbol, source, condition, numVal || 0),
       sound,
       toast,
     });
@@ -119,10 +144,16 @@ export function CreateAlertDialog() {
             <div className="grid grid-cols-[110px_1fr] gap-x-4 px-4 py-3">
               <span className="pt-1.5 text-xs text-tv-text-muted">Condition</span>
               <div className="flex flex-col gap-2">
-                {/* Source: Price (static) */}
-                <div className="flex items-center rounded border border-tv-border bg-tv-bg px-3 py-1.5">
-                  <span className="text-xs text-tv-text">Price</span>
-                </div>
+                {/* Source */}
+                <select
+                  value={source}
+                  onChange={(e) => changeSource(e.target.value as AlertSource)}
+                  className="rounded border border-tv-border bg-tv-bg px-3 py-1.5 text-xs text-tv-text outline-none focus:border-tv-blue"
+                >
+                  <option value="price">Price</option>
+                  <option value="rsi">RSI</option>
+                  <option value="macd">MACD (crosses signal)</option>
+                </select>
                 {/* Operator */}
                 <select
                   value={condition}
@@ -133,21 +164,24 @@ export function CreateAlertDialog() {
                   <option value="crossing-up">Crossing Up</option>
                   <option value="crossing-down">Crossing Down</option>
                 </select>
-                {/* Value row */}
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center rounded border border-tv-border bg-tv-bg px-3 py-1.5">
-                    <span className="text-xs text-tv-text-muted">Value</span>
+                {/* Value row (hidden for MACD, which has no level) */}
+                {needsValue && (
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center rounded border border-tv-border bg-tv-bg px-3 py-1.5">
+                      <span className="text-xs text-tv-text-muted">{source === "rsi" ? "Level" : "Value"}</span>
+                    </div>
+                    <input
+                      type="number"
+                      value={value}
+                      step={source === "rsi" ? "1" : priceStep(value)}
+                      min={0}
+                      max={source === "rsi" ? 100 : undefined}
+                      onChange={(e) => setValue(e.target.value)}
+                      className="flex-1 rounded border border-tv-border bg-tv-bg px-3 py-1.5 text-xs text-tv-text outline-none focus:border-tv-blue"
+                      placeholder={source === "rsi" ? "RSI level (0–100)" : "Price level"}
+                    />
                   </div>
-                  <input
-                    type="number"
-                    value={value}
-                    step={priceStep(value)}
-                    min={0}
-                    onChange={(e) => setValue(e.target.value)}
-                    className="flex-1 rounded border border-tv-border bg-tv-bg px-3 py-1.5 text-xs text-tv-text outline-none focus:border-tv-blue"
-                    placeholder="Price level"
-                  />
-                </div>
+                )}
               </div>
             </div>
 
@@ -218,7 +252,7 @@ export function CreateAlertDialog() {
             {!valid && value !== "" && (
               <span className="mr-auto flex items-center gap-1 text-xs text-tv-red">
                 <AlertTriangle className="h-3 w-3" />
-                Enter a valid price
+                {source === "rsi" ? "Enter a valid RSI level" : "Enter a valid price"}
               </span>
             )}
             <button

@@ -17,7 +17,10 @@ export type DrawingKind =
   | "short"
   | "brush"
   | "highlighter"
-  | "rectangle";
+  | "rectangle"
+  | "arrow"
+  | "text"
+  | "fib-extension";
 
 export interface AlertConfig {
   enabled: boolean;
@@ -37,6 +40,9 @@ interface BaseDrawing {
   /** When true, the drawing cannot be moved or resized (UI handlers must
    *  short-circuit). Toggled from the floating context toolbar. */
   locked?: boolean;
+  /** Explicit stacking order = array index at save time. Persisted so the
+   *  object-tree ordering survives a reload; higher = painted on top. */
+  z?: number;
   alert?: AlertConfig | null;
 }
 
@@ -144,6 +150,31 @@ export interface RectangleDrawing extends BaseDrawing {
   fillOpacity?: number;
 }
 
+/** Trend line with an arrowhead at point B. Shares the {a,b} shape so it reuses
+ *  the trend-line placement/drag path. */
+export interface ArrowDrawing extends BaseDrawing {
+  kind: "arrow";
+  a: Point;
+  b: Point;
+}
+
+/** Free-floating text label anchored to a (time, price). */
+export interface TextDrawing extends BaseDrawing {
+  kind: "text";
+  anchor: Point;
+  text: string;
+  fontSize?: number;
+}
+
+/** Trend-based Fibonacci extension: A→B move projected forward from C. */
+export interface FibExtensionDrawing extends BaseDrawing {
+  kind: "fib-extension";
+  a: Point;
+  b: Point;
+  c: Point;
+  levels: number[];
+}
+
 export type Drawing =
   | HLineDrawing
   | VLineDrawing
@@ -158,7 +189,10 @@ export type Drawing =
   | ShortPositionDrawing
   | BrushDrawing
   | HighlighterDrawing
-  | RectangleDrawing;
+  | RectangleDrawing
+  | ArrowDrawing
+  | TextDrawing
+  | FibExtensionDrawing;
 
 export const FIB_LEVELS_DEFAULT = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 

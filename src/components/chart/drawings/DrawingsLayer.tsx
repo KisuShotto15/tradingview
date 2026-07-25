@@ -19,6 +19,9 @@ import { DateRangeDraw } from "./DateRangeDraw";
 import { PositionDraw } from "./PositionDraw";
 import { BrushDraw } from "./BrushDraw";
 import { RectangleDraw } from "./RectangleDraw";
+import { ArrowDraw } from "./ArrowDraw";
+import { TextDraw } from "./TextDraw";
+import { FibExtensionDraw } from "./FibExtensionDraw";
 
 interface Props {
   symbol: string;
@@ -372,6 +375,76 @@ function renderDrawing(args: RenderArgs) {
           ay={ay}
           bx={bx}
           by={by}
+          selected={selected}
+          onSelect={onSelect}
+          onEdit={onEdit}
+          chart={chart}
+          candleSeries={candleSeries}
+          container={container}
+        />
+      );
+    }
+    case "arrow": {
+      const ax = timeToX(chart, Number(d.a.time), globalCandlesRef.current, _intervalSec);
+      const ay = candleSeries.priceToCoordinate(d.a.price);
+      const bx = timeToX(chart, Number(d.b.time), globalCandlesRef.current, _intervalSec);
+      const by = candleSeries.priceToCoordinate(d.b.price);
+      if (ax === null || ay === null || bx === null || by === null) return null;
+      return (
+        <ArrowDraw
+          key={d.id}
+          drawing={d}
+          ax={ax}
+          ay={ay}
+          bx={bx}
+          by={by}
+          selected={selected}
+          onSelect={onSelect}
+          onEdit={onEdit}
+          chart={chart}
+          candleSeries={candleSeries}
+          container={container}
+        />
+      );
+    }
+    case "text": {
+      const x = timeToX(chart, Number(d.anchor.time), globalCandlesRef.current, _intervalSec);
+      const y = candleSeries.priceToCoordinate(d.anchor.price);
+      if (x === null || y === null) return null;
+      return (
+        <TextDraw
+          key={d.id}
+          drawing={d}
+          x={x}
+          y={y}
+          selected={selected}
+          onSelect={onSelect}
+          onEdit={onEdit}
+          chart={chart}
+          candleSeries={candleSeries}
+          container={container}
+        />
+      );
+    }
+    case "fib-extension": {
+      const ax = timeToX(chart, Number(d.a.time), globalCandlesRef.current, _intervalSec);
+      const ay = candleSeries.priceToCoordinate(d.a.price);
+      const bx = timeToX(chart, Number(d.b.time), globalCandlesRef.current, _intervalSec);
+      const by = candleSeries.priceToCoordinate(d.b.price);
+      const cx = timeToX(chart, Number(d.c.time), globalCandlesRef.current, _intervalSec);
+      const cy = candleSeries.priceToCoordinate(d.c.price);
+      if (ax === null || ay === null || bx === null || by === null || cx === null || cy === null) return null;
+      return (
+        <FibExtensionDraw
+          key={d.id}
+          drawing={d}
+          ax={ax}
+          ay={ay}
+          bx={bx}
+          by={by}
+          cx={cx}
+          cy={cy}
+          width={width}
           selected={selected}
           onSelect={onSelect}
           onEdit={onEdit}

@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --import ./test/register.mjs --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-isolation=none \"src/**/*.test.ts\"",
+    "test:watch": "node --import ./test/register.mjs --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-isolation=none --watch \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",

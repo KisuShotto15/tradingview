@@ -40,6 +40,7 @@
   --color-tv-blue: #2962ff;
   --color-tv-yellow: #ffb74d;
   --color-tv-purple: #ab47bc;
+  --color-tv-grid: #0e0e0e;
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);

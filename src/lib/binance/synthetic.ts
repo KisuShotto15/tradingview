@@ -19,6 +19,9 @@ const OPS = /[+\-*/()]/;
 const NUMBERS_ONLY = /^[\d\s+\-*/(). ]+$/;
 /** A token is a sequence of uppercase letters and digits (a Binance symbol). */
 const SYMBOL_TOKEN = /\b[A-Z][A-Z0-9]*\b/g;
+/** Non-global twin of SYMBOL_TOKEN for stateless `.test()` (the global regex
+ *  advances lastIndex, so reusing it in `.test()` is non-idempotent). */
+const SYMBOL_TOKEN_TEST = /\b[A-Z][A-Z0-9]*\b/;
 
 /**
  * An expression is considered "synthetic" if it contains any binary operator
@@ -26,7 +29,7 @@ const SYMBOL_TOKEN = /\b[A-Z][A-Z0-9]*\b/g;
  */
 export function isSyntheticExpression(s: string): boolean {
   if (!s) return false;
-  return OPS.test(s) && SYMBOL_TOKEN.test(s);
+  return OPS.test(s) && SYMBOL_TOKEN_TEST.test(s);
 }
 
 /** Extract the unique symbol tokens from the expression, sorted. */
