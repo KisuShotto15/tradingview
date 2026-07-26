@@ -92,6 +92,32 @@ interface Props {
 // canvas stays in sync with the CSS/Tailwind theme. See src/lib/chart/theme.ts.
 const TV_COLORS = getTvColors();
 
+// Tools whose second point snaps to a horizontal/vertical axis while Shift is held.
+const AXIS_CONSTRAIN_TOOLS = new Set<string>(["trendline", "ray", "arrow"]);
+
+/**
+ * With Shift held, snap `cur` to a horizontal or vertical line relative to
+ * `first` — whichever the drag is closer to, measured in screen pixels (so the
+ * decision isn't skewed by price/time having wildly different scales).
+ */
+function constrainToAxis(
+  chart: IChartApi,
+  candleSeries: ISeriesApi<"Candlestick">,
+  candles: Candle[],
+  intervalSec: number,
+  first: { time: number; price: number },
+  cur: { time: number; price: number },
+): { time: number; price: number } {
+  const fx = timeToX(chart, first.time, candles, intervalSec);
+  const fy = candleSeries.priceToCoordinate(first.price);
+  const cx = timeToX(chart, cur.time, candles, intervalSec);
+  const cy = candleSeries.priceToCoordinate(cur.price);
+  if (fx === null || fy === null || cx === null || cy === null) return cur;
+  return Math.abs(cx - fx) >= Math.abs(cy - fy)
+    ? { time: cur.time, price: first.price } // horizontal
+    : { time: first.time, price: cur.price }; // vertical
+}
+
 // Shared row style for the chart right-click context menu.
 const MENU_ITEM_CLS =
   "flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-xs text-tv-text hover:bg-tv-panel-hover";
@@ -285,6 +311,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
       rightPriceScale: {
         borderColor: TV_COLORS.border,
         textColor: TV_COLORS.textMuted,
+        // Less headroom above the highest bar (default top is ~0.2, which on a
+        // log scale squeezes the candles). Bottom leaves room for the volume overlay.
+        scaleMargins: { top: 0.06, bottom: 0.08 },
       },
       timeScale: {
         borderColor: TV_COLORS.border,
@@ -497,12 +526,16 @@ export function PriceChart({ symbol, timeframe }: Props) {
           firstPointRef.current = { time, price };
           setPreviewState({ first: { time, price }, extra: [], cursor: { time, price } });
         } else {
+          let b = { time, price };
+          if (param.sourceEvent?.shiftKey && candleSeriesRef.current) {
+            b = constrainToAxis(chart, candleSeriesRef.current, candlesRef.current, intervalSec, first, b);
+          }
           void drawingsApiRef.current.add({
             id: generateId(),
             kind,
             symbol: symbolRef.current,
             a: first,
-            b: { time, price },
+            b,
             ...(useChartStore.getState().toolDefaults[kind] ?? {}),
           } as Parameters<typeof drawingsApiRef.current.add>[0]);
           firstPointRef.current = null;
@@ -773,6 +806,16 @@ export function PriceChart({ symbol, timeframe }: Props) {
         if (param.sourceEvent?.ctrlKey) {
           const snapped = snapToOHLC(cursorPrice, cursorTime, candlesRef.current);
           if (snapped !== null) pc = { time: cursorTime, price: snapped };
+        }
+        // Shift held → constrain the preview to horizontal/vertical for line tools.
+        if (
+          param.sourceEvent?.shiftKey &&
+          firstPointRef.current &&
+          AXIS_CONSTRAIN_TOOLS.has(toolRef.current) &&
+          candleSeriesRef.current
+        ) {
+          const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
+          pc = constrainToAxis(chart, candleSeriesRef.current, candlesRef.current, intervalSec, firstPointRef.current, pc);
         }
         setPreviewState((prev) => (prev ? { ...prev, cursor: pc } : prev));
       }
