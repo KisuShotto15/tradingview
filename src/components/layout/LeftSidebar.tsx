@@ -203,7 +203,7 @@ function ToolButton({
           active ? "bg-tv-blue/15 text-tv-blue" : "text-tv-text-muted hover:text-tv-text",
         )}
       >
-        <Icon className="h-6 w-6" />
+        <Icon className="h-7 w-7" />
         {favorite && <Star className="absolute right-0.5 top-0.5 h-2 w-2 fill-tv-yellow text-tv-yellow" />}
       </TooltipTrigger>
       <TooltipContent side="right" className="text-xs">
@@ -322,7 +322,7 @@ export function LeftSidebar() {
                   groupHasActive ? "bg-tv-blue/15 text-tv-blue" : "text-tv-text-muted hover:text-tv-text",
                 )}
               >
-                <ActiveIcon className="h-6 w-6" />
+                <ActiveIcon className="h-7 w-7" />
                 {favoriteTools.includes(activeTool.key) && (
                   <Star className="absolute right-0.5 top-0.5 h-2 w-2 fill-tv-yellow text-tv-yellow" />
                 )}
@@ -356,9 +356,10 @@ export function LeftSidebar() {
                             setTool(t.key);
                             setCategoryActive((m) => ({ ...m, [group.label!]: t.key }));
                           }}
-                          className={cn("flex items-center gap-2 text-xs", isActive && "bg-tv-blue/15 text-tv-blue")}
+                          className={cn("flex items-center gap-2.5 text-xs", isActive && "bg-tv-blue/15 text-tv-blue")}
                         >
-                          <Icon className="h-4 w-4" />
+                          {/* `size-7` (not h-7 w-7) so it beats the menu's default svg size-4 rule */}
+                          <Icon className="size-7" />
                           <span>{t.label}</span>
                           <span
                             role="button"
@@ -400,7 +401,7 @@ export function LeftSidebar() {
               canAlert && !alertOn && "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
             )}
           >
-            {alertOn ? <Bell className="h-6 w-6" /> : <BellOff className="h-6 w-6" />}
+            {alertOn ? <Bell className="h-7 w-7" /> : <BellOff className="h-7 w-7" />}
           </TooltipTrigger>
           <TooltipContent side="right" className="text-xs">
             <div className="font-medium">{alertOn ? "Disable alert" : "Enable alert"}</div>
@@ -416,7 +417,7 @@ export function LeftSidebar() {
             aria-label="Clear drawings"
             className="flex h-10 w-10 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-red"
           >
-            <Trash2 className="h-6 w-6" />
+            <Trash2 className="h-7 w-7" />
           </TooltipTrigger>
           <TooltipContent side="right" className="text-xs">
             <div className="font-medium">Clear drawings</div>
