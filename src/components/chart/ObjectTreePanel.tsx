@@ -7,10 +7,12 @@ import {
   CalendarRange,
   Eye,
   EyeOff,
+  GitFork,
   GripVertical,
   Highlighter,
   Layers3,
   Lock,
+  MessageSquare,
   Minus,
   MoveRight,
   Pencil,
@@ -18,6 +20,7 @@ import {
   RectangleHorizontal,
   Ruler,
   Slash,
+  Spline,
   Trash2,
   TrendingUp,
   Type,
@@ -48,6 +51,9 @@ const KIND_META: Record<DrawingKind, { label: string; icon: LucideIcon }> = {
   arrow: { label: "Arrow", icon: ArrowUpRight },
   text: { label: "Text", icon: Type },
   "fib-extension": { label: "Fib extension", icon: Percent },
+  pitchfork: { label: "Pitchfork", icon: GitFork },
+  callout: { label: "Callout", icon: MessageSquare },
+  xabcd: { label: "XABCD pattern", icon: Spline },
 };
 
 function metaFor(kind: DrawingKind) {

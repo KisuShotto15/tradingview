@@ -22,6 +22,9 @@ import { RectangleDraw } from "./RectangleDraw";
 import { ArrowDraw } from "./ArrowDraw";
 import { TextDraw } from "./TextDraw";
 import { FibExtensionDraw } from "./FibExtensionDraw";
+import { PitchforkDraw } from "./PitchforkDraw";
+import { CalloutDraw } from "./CalloutDraw";
+import { XabcdDraw } from "./XabcdDraw";
 
 interface Props {
   symbol: string;
@@ -445,6 +448,70 @@ function renderDrawing(args: RenderArgs) {
           cx={cx}
           cy={cy}
           width={width}
+          selected={selected}
+          onSelect={onSelect}
+          onEdit={onEdit}
+          chart={chart}
+          candleSeries={candleSeries}
+          container={container}
+        />
+      );
+    }
+    case "pitchfork": {
+      const ax = timeToX(chart, Number(d.a.time), globalCandlesRef.current, _intervalSec);
+      const ay = candleSeries.priceToCoordinate(d.a.price);
+      const bx = timeToX(chart, Number(d.b.time), globalCandlesRef.current, _intervalSec);
+      const by = candleSeries.priceToCoordinate(d.b.price);
+      const cx = timeToX(chart, Number(d.c.time), globalCandlesRef.current, _intervalSec);
+      const cy = candleSeries.priceToCoordinate(d.c.price);
+      if (ax === null || ay === null || bx === null || by === null || cx === null || cy === null) return null;
+      return (
+        <PitchforkDraw
+          key={d.id}
+          drawing={d}
+          ax={ax} ay={ay} bx={bx} by={by} cx={cx} cy={cy}
+          width={width}
+          height={height}
+          selected={selected}
+          onSelect={onSelect}
+          onEdit={onEdit}
+          chart={chart}
+          candleSeries={candleSeries}
+          container={container}
+        />
+      );
+    }
+    case "callout": {
+      const anchorX = timeToX(chart, Number(d.anchor.time), globalCandlesRef.current, _intervalSec);
+      const anchorY = candleSeries.priceToCoordinate(d.anchor.price);
+      const targetX = timeToX(chart, Number(d.target.time), globalCandlesRef.current, _intervalSec);
+      const targetY = candleSeries.priceToCoordinate(d.target.price);
+      if (anchorX === null || anchorY === null || targetX === null || targetY === null) return null;
+      return (
+        <CalloutDraw
+          key={d.id}
+          drawing={d}
+          anchorX={anchorX} anchorY={anchorY} targetX={targetX} targetY={targetY}
+          selected={selected}
+          onSelect={onSelect}
+          onEdit={onEdit}
+          chart={chart}
+          candleSeries={candleSeries}
+          container={container}
+        />
+      );
+    }
+    case "xabcd": {
+      const pts = d.points.map((p) => ({
+        x: timeToX(chart, Number(p.time), globalCandlesRef.current, _intervalSec),
+        y: candleSeries.priceToCoordinate(p.price),
+      }));
+      if (pts.some((p) => p.x === null || p.y === null)) return null;
+      return (
+        <XabcdDraw
+          key={d.id}
+          drawing={d}
+          pts={pts as { x: number; y: number }[]}
           selected={selected}
           onSelect={onSelect}
           onEdit={onEdit}

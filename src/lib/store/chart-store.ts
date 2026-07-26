@@ -36,7 +36,10 @@ export type DrawingTool =
   | "rectangle"
   | "arrow"
   | "text"
-  | "fib-extension";
+  | "fib-extension"
+  | "pitchfork"
+  | "callout"
+  | "xabcd";
 
 export interface IndicatorConfig {
   rsi: number;

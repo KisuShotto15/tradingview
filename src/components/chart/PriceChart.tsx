@@ -436,6 +436,54 @@ export function PriceChart({ symbol, timeframe }: Props) {
         return;
       }
 
+      // Callout: click 1 = the point it marks, click 2 = the text-box position.
+      if (toolRef.current === "callout") {
+        if (resolvedTime === null) return;
+        const time = resolvedTime;
+        const first = firstPointRef.current;
+        if (!first) {
+          firstPointRef.current = { time, price };
+          setPreviewState({ first: { time, price }, extra: [], cursor: { time, price } });
+        } else {
+          void drawingsApiRef.current.add({
+            id: generateId(),
+            kind: "callout",
+            symbol: symbolRef.current,
+            anchor: first,
+            target: { time, price },
+            text: "",
+            ...(useChartStore.getState().toolDefaults["callout"] ?? {}),
+          } as Parameters<typeof drawingsApiRef.current.add>[0]);
+          firstPointRef.current = null;
+          setPreviewState(null);
+          setToolRef.current("cursor");
+        }
+        return;
+      }
+
+      // XABCD harmonic: five clicks (X, A, B, C, D).
+      if (toolRef.current === "xabcd") {
+        if (resolvedTime === null) return;
+        const time = resolvedTime;
+        placementPointsRef.current.push({ time, price });
+        if (placementPointsRef.current.length >= 5) {
+          void drawingsApiRef.current.add({
+            id: generateId(),
+            kind: "xabcd",
+            symbol: symbolRef.current,
+            points: [...placementPointsRef.current],
+            ...(useChartStore.getState().toolDefaults["xabcd"] ?? {}),
+          } as Parameters<typeof drawingsApiRef.current.add>[0]);
+          placementPointsRef.current = [];
+          setPreviewState(null);
+          setToolRef.current("cursor");
+        } else {
+          const pts = placementPointsRef.current;
+          setPreviewState({ first: pts[0] ?? null, extra: pts.slice(1), cursor: { time, price } });
+        }
+        return;
+      }
+
       if (
         toolRef.current === "trendline" ||
         toolRef.current === "ray" ||
@@ -601,7 +649,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
         return;
       }
 
-      if (toolRef.current === "parallel-channel" || toolRef.current === "fib-extension") {
+      if (
+        toolRef.current === "parallel-channel" ||
+        toolRef.current === "fib-extension" ||
+        toolRef.current === "pitchfork"
+      ) {
         if (resolvedTime === null) return;
         const time = resolvedTime;
         const kind = toolRef.current;

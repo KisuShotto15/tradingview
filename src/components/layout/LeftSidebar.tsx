@@ -9,15 +9,18 @@ import {
   BellOff,
   CalendarRange,
   ChevronRight,
+  GitFork,
   GripVertical,
   Highlighter,
   Layers3,
+  MessageSquare,
   MoveRight,
   Pencil,
   Percent,
   RectangleHorizontal,
   Ruler,
   Slash,
+  Spline,
   Star,
   Trash2,
   TrendingUp,
@@ -101,6 +104,13 @@ const TOOL_GROUPS: ToolGroup[] = [
     label: "Channels",
     tools: [
       { key: "parallel-channel", icon: Layers3, label: "Parallel channel", hint: "Click A, then B (baseline), then C (parallel offset)" },
+      { key: "pitchfork", icon: GitFork, label: "Pitchfork", hint: "Click A, then B and C — draws the Andrews median + tines" },
+    ],
+  },
+  {
+    label: "Patterns",
+    tools: [
+      { key: "xabcd", icon: Spline, label: "XABCD pattern", hint: "Click five points (X, A, B, C, D) — shows leg ratios" },
     ],
   },
   {
@@ -141,6 +151,7 @@ const TOOL_GROUPS: ToolGroup[] = [
     label: "Annotations",
     tools: [
       { key: "text", icon: Type, label: "Text", hint: "Click to place a text label, then type. Double-click to edit" },
+      { key: "callout", icon: MessageSquare, label: "Callout", hint: "Click the point to mark, then the bubble position, then type" },
     ],
   },
   {

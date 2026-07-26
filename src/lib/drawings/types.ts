@@ -20,7 +20,10 @@ export type DrawingKind =
   | "rectangle"
   | "arrow"
   | "text"
-  | "fib-extension";
+  | "fib-extension"
+  | "pitchfork"
+  | "callout"
+  | "xabcd";
 
 export interface AlertConfig {
   enabled: boolean;
@@ -175,6 +178,30 @@ export interface FibExtensionDrawing extends BaseDrawing {
   levels: number[];
 }
 
+/** Andrews pitchfork: median from A through the midpoint of B-C, plus parallel
+ *  tines through B and C. */
+export interface PitchforkDrawing extends BaseDrawing {
+  kind: "pitchfork";
+  a: Point;
+  b: Point;
+  c: Point;
+}
+
+/** Text bubble that points at `anchor` from a `target` box position. */
+export interface CalloutDrawing extends BaseDrawing {
+  kind: "callout";
+  anchor: Point;
+  target: Point;
+  text: string;
+  fontSize?: number;
+}
+
+/** Harmonic pattern: five points X-A-B-C-D connected, with leg-ratio labels. */
+export interface XabcdDrawing extends BaseDrawing {
+  kind: "xabcd";
+  points: Point[];
+}
+
 export type Drawing =
   | HLineDrawing
   | VLineDrawing
@@ -192,7 +219,10 @@ export type Drawing =
   | RectangleDrawing
   | ArrowDrawing
   | TextDrawing
-  | FibExtensionDrawing;
+  | FibExtensionDrawing
+  | PitchforkDrawing
+  | CalloutDrawing
+  | XabcdDrawing;
 
 export const FIB_LEVELS_DEFAULT = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 

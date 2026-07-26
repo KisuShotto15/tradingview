@@ -44,3 +44,28 @@ export function extendLine(
   const start = extendRay(b, a, width, height);
   return { start, end };
 }
+
+/** Midpoint of two points. Used by the Andrews pitchfork (median through BC). */
+export function midpoint(a: PixelPoint, b: PixelPoint): PixelPoint {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+/**
+ * Harmonic-pattern leg ratios for an X-A-B-C-D price sequence:
+ *   AB/XA, BC/AB, CD/BC  (absolute price distances).
+ * Returns NaN for a ratio whose denominator leg is zero.
+ */
+export function harmonicRatios(prices: number[]): {
+  abXa: number;
+  bcAb: number;
+  cdBc: number;
+} {
+  const [x, a, b, c, d] = prices;
+  const leg = (p: number, q: number) => Math.abs(q - p);
+  const ratio = (num: number, den: number) => (den === 0 ? NaN : num / den);
+  return {
+    abXa: ratio(leg(a, b), leg(x, a)),
+    bcAb: ratio(leg(b, c), leg(a, b)),
+    cdBc: ratio(leg(c, d), leg(b, c)),
+  };
+}

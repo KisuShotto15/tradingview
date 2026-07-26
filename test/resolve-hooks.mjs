@@ -2,7 +2,7 @@
 // things the TS toolchain provides but the bare Node resolver doesn't:
 //   1. the "@/..." path alias  ->  <repo>/src/...
 //   2. extensionless imports    ->  add .ts / .tsx / /index.ts
-import { existsSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 

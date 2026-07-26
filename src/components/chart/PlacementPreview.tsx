@@ -57,7 +57,7 @@ export function PlacementPreview({
   const bX = toX(cursor.time);
   const bY = toY(cursor.price);
 
-  if (tool === "trendline" || tool === "ray" || tool === "arrow") {
+  if (tool === "trendline" || tool === "ray" || tool === "arrow" || tool === "callout") {
     if (aX === null || aY === null || bX === null || bY === null) return null;
     // For a ray, extend the segment through the cursor to the chart edge so
     // the user previews the full infinite line, not just the cursor segment.
@@ -218,7 +218,7 @@ export function PlacementPreview({
     );
   }
 
-  if (tool === "fib-extension") {
+  if (tool === "fib-extension" || tool === "pitchfork" || tool === "xabcd") {
     const pts = [first, ...extra, cursor];
     const coords = pts.map((p) => ({ x: toX(p.time), y: toY(p.price) }));
     if (coords.some((c) => c.x === null || c.y === null)) return null;
