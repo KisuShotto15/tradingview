@@ -189,16 +189,25 @@ export const MeasureToolIcon = (p: IconProps) => (
 
 export const LongPositionToolIcon = (p: IconProps) => (
   <Svg {...p}>
-    <rect x="4" y="4" width="16" height="7" opacity={0.5} />
-    <rect x="4" y="11" width="16" height="7" opacity={0.9} />
-    <path d="M12 8 L12 14 M9.5 11.5 L12 14 L14.5 11.5" />
+    {/* Reward (target) zone on top, faintly filled */}
+    <rect x="6" y="4" width="14" height="8" fill="currentColor" stroke="none" opacity={0.16} />
+    <rect x="6" y="4" width="14" height="13" rx="0.5" />
+    {/* Entry line */}
+    <line x1="6" y1="12" x2="20" y2="12" strokeWidth={1.9} />
+    <Dot cx={6} cy={4} />
+    <Dot cx={6} cy={12} />
+    <Dot cx={6} cy={17} />
   </Svg>
 );
 
 export const ShortPositionToolIcon = (p: IconProps) => (
   <Svg {...p}>
-    <rect x="4" y="4" width="16" height="7" opacity={0.9} />
-    <rect x="4" y="11" width="16" height="7" opacity={0.5} />
-    <path d="M12 14 L12 8 M9.5 10.5 L12 8 L14.5 10.5" />
+    {/* Reward (target) zone on the bottom for a short */}
+    <rect x="6" y="9" width="14" height="8" fill="currentColor" stroke="none" opacity={0.16} />
+    <rect x="6" y="4" width="14" height="13" rx="0.5" />
+    <line x1="6" y1="9" x2="20" y2="9" strokeWidth={1.9} />
+    <Dot cx={6} cy={4} />
+    <Dot cx={6} cy={9} />
+    <Dot cx={6} cy={17} />
   </Svg>
 );

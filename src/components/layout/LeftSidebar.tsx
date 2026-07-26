@@ -203,7 +203,7 @@ function ToolButton({
           active ? "bg-tv-blue/15 text-tv-blue" : "text-tv-text-muted hover:text-tv-text",
         )}
       >
-        <Icon className="h-5 w-5" />
+        <Icon className="h-6 w-6" />
         {favorite && <Star className="absolute right-0.5 top-0.5 h-2 w-2 fill-tv-yellow text-tv-yellow" />}
       </TooltipTrigger>
       <TooltipContent side="right" className="text-xs">
@@ -322,7 +322,7 @@ export function LeftSidebar() {
                   groupHasActive ? "bg-tv-blue/15 text-tv-blue" : "text-tv-text-muted hover:text-tv-text",
                 )}
               >
-                <ActiveIcon className="h-5 w-5" />
+                <ActiveIcon className="h-6 w-6" />
                 {favoriteTools.includes(activeTool.key) && (
                   <Star className="absolute right-0.5 top-0.5 h-2 w-2 fill-tv-yellow text-tv-yellow" />
                 )}
@@ -400,7 +400,7 @@ export function LeftSidebar() {
               canAlert && !alertOn && "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
             )}
           >
-            {alertOn ? <Bell className="h-5 w-5" /> : <BellOff className="h-5 w-5" />}
+            {alertOn ? <Bell className="h-6 w-6" /> : <BellOff className="h-6 w-6" />}
           </TooltipTrigger>
           <TooltipContent side="right" className="text-xs">
             <div className="font-medium">{alertOn ? "Disable alert" : "Enable alert"}</div>
@@ -416,7 +416,7 @@ export function LeftSidebar() {
             aria-label="Clear drawings"
             className="flex h-10 w-10 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-red"
           >
-            <Trash2 className="h-5 w-5" />
+            <Trash2 className="h-6 w-6" />
           </TooltipTrigger>
           <TooltipContent side="right" className="text-xs">
             <div className="font-medium">Clear drawings</div>
