@@ -196,9 +196,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
   // Bar replay state (drives the truncated candle feed below).
   const replayActive = useReplayStore((s) => s.active);
   const replayPicking = useReplayStore((s) => s.picking);
-  const replayCursor = useReplayStore((s) => s.cursorIndex);
   const replayPlaying = useReplayStore((s) => s.playing);
   const replaySpeed = useReplayStore((s) => s.speed);
+  // NOTE: cursorIndex is intentionally NOT subscribed as a selector — it changes
+  // up to ~60×/s, and re-rendering this large component per tick crashes the
+  // renderer. The feed reads it imperatively and coalesces to one frame (below).
   const drawingsApi = useDrawings();
   // Note: useAlertMonitor relies on lastPrice (state); see below where it's invoked.
 
@@ -2389,21 +2391,46 @@ export function PriceChart({ symbol, timeframe }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [replayActive]);
 
-  // Render the truncated slice as the playhead moves, following the right edge
-  // only when the cursor would scroll off (so panning back to inspect is free).
+  // Render the truncated slice as the playhead moves. We subscribe to the replay
+  // store imperatively and coalesce work to a single animation frame: holding the
+  // step key (or a fast play speed) advances the cursor faster than the chart can
+  // redraw, so we always render only the LATEST cursor once per frame — bounding
+  // the work regardless of input rate (fixes the renderer OOM crash).
   useEffect(() => {
-    if (!replayActive || replayPicking) return;
-    const full = replayFullRef.current;
-    if (!full.length) return;
-    applyReplayCandles(full.slice(0, Math.min(replayCursor + 1, full.length)));
-    const ts = chartRef.current?.timeScale();
-    const vr = ts?.getVisibleLogicalRange();
-    if (ts && vr && replayCursor > vr.to - 1) {
-      const width = vr.to - vr.from;
-      ts.setVisibleLogicalRange({ from: replayCursor - width + 4, to: replayCursor + 4 });
-    }
+    if (!replayActive) return;
+    let raf = 0;
+    let lastRendered = -1;
+
+    const apply = () => {
+      raf = 0;
+      const { cursorIndex, picking, active } = useReplayStore.getState();
+      if (!active || picking) return;
+      const full = replayFullRef.current;
+      if (!full.length || cursorIndex === lastRendered) return;
+      lastRendered = cursorIndex;
+      applyReplayCandles(full.slice(0, Math.min(cursorIndex + 1, full.length)));
+      // Follow the right edge only when the cursor scrolls off (panning back is free).
+      const ts = chartRef.current?.timeScale();
+      const vr = ts?.getVisibleLogicalRange();
+      if (ts && vr && cursorIndex > vr.to - 1) {
+        const width = vr.to - vr.from;
+        ts.setVisibleLogicalRange({ from: cursorIndex - width + 4, to: cursorIndex + 4 });
+      }
+    };
+
+    const schedule = () => {
+      if (raf) return; // one apply per frame — coalesce rapid ticks
+      raf = requestAnimationFrame(apply);
+    };
+
+    schedule(); // render the starting slice
+    const unsub = useReplayStore.subscribe(schedule);
+    return () => {
+      unsub();
+      if (raf) cancelAnimationFrame(raf);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [replayActive, replayPicking, replayCursor]);
+  }, [replayActive]);
 
   // Auto-advance while playing (speed = bars per second).
   useEffect(() => {
