@@ -360,14 +360,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
           if (idx === -1) idx = arr.length - 1;
           useReplayStore.getState().setTotal(arr.length);
           useReplayStore.getState().setStart(idx);
-          // Put the chosen bar near the right edge so revealed bars push in.
-          if (chartRef.current) {
-            const bars = useChartStore.getState().visibleBars;
-            chartRef.current.timeScale().setVisibleLogicalRange({
-              from: Math.max(0, idx - bars + 1),
-              to: idx + 4,
-            });
-          }
+          // Deliberately do NOT move the viewport: the later candles just vanish
+          // in place, leaving room to the right for replay to reveal them.
         }
         return;
       }
@@ -2407,9 +2401,13 @@ export function PriceChart({ symbol, timeframe }: Props) {
       if (!active || picking) return;
       const full = replayFullRef.current;
       if (!full.length || cursorIndex === lastRendered) return;
+      const isFirst = lastRendered === -1; // the initial placement render
       lastRendered = cursorIndex;
       applyReplayCandles(full.slice(0, Math.min(cursorIndex + 1, full.length)));
-      // Follow the right edge only when the cursor scrolls off (panning back is free).
+      // Never move the viewport on the initial pick — later candles just vanish
+      // in place. Once advancing, follow the right edge only when the cursor
+      // scrolls off (so panning back to inspect stays free).
+      if (isFirst) return;
       const ts = chartRef.current?.timeScale();
       const vr = ts?.getVisibleLogicalRange();
       if (ts && vr && cursorIndex > vr.to - 1) {
