@@ -2,6 +2,7 @@
 
 import { Header } from "@/components/layout/Header";
 import { LeftSidebar } from "@/components/layout/LeftSidebar";
+import { FavoritesBar } from "@/components/layout/FavoritesBar";
 import { RightSidebar } from "@/components/layout/RightSidebar";
 import { BottomPanel } from "@/components/layout/BottomPanel";
 import { PositionsPanel } from "@/components/layout/PositionsPanel";
@@ -41,6 +42,7 @@ export default function HomePage() {
           <div className="min-h-0 flex-1">
             <PriceChart symbol={symbol} timeframe={timeframe} />
           </div>
+          <FavoritesBar />
           <PositionsPanel />
         </main>
         <RightSidebar />
