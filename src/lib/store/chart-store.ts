@@ -326,10 +326,12 @@ interface ChartState {
   pinnedTimeframes: Timeframe[];
 
   /**
-   * Drawing tools the user starred. Rendered as a quick-access favorites strip
-   * at the top of the left toolbar (TradingView parity).
+   * Drawing tools the user starred. Rendered in the floating favorites bar.
    */
   favoriteTools: DrawingTool[];
+  /** Persisted position (px, relative to the chart area) of the floating
+   *  favorites bar. Null = not placed yet (defaults to top-centered). */
+  favoritesBarPos: { x: number; y: number } | null;
 
   /**
    * Per-drawing-kind defaults (color, lineWidth, lineStyle). Applied to new
@@ -388,6 +390,9 @@ interface ChartState {
   setPaneZOrder: (host: IndicatorKey, order: IndicatorKey[]) => void;
   setPinnedTimeframes: (tfs: Timeframe[]) => void;
   toggleFavoriteTool: (t: DrawingTool) => void;
+  /** Replace the favorites order (drag-to-reorder in the favorites bar). */
+  setFavoriteTools: (tools: DrawingTool[]) => void;
+  setFavoritesBarPos: (pos: { x: number; y: number } | null) => void;
   setToolDefault: (
     kind: string,
     patch: { color?: string; lineWidth?: number; lineStyle?: 0 | 1 | 2; [key: string]: unknown },
@@ -483,6 +488,7 @@ export const useChartStore = create<ChartState>()(
       paneZOrder: {},
       pinnedTimeframes: ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"] as Timeframe[],
       favoriteTools: [],
+      favoritesBarPos: null,
       toolDefaults: {},
       ...initialWatchlists(),
       chartColors: { ...DEFAULT_CHART_COLORS },
@@ -711,6 +717,8 @@ export const useChartStore = create<ChartState>()(
             ? s.favoriteTools.filter((x) => x !== t)
             : [...s.favoriteTools, t],
         })),
+      setFavoriteTools: (favoriteTools) => set({ favoriteTools }),
+      setFavoritesBarPos: (favoritesBarPos) => set({ favoritesBarPos }),
 
       applySnapshot: (snap) => {
         withoutHistory(() => {
@@ -922,6 +930,7 @@ export const useChartStore = create<ChartState>()(
         paneZOrder: s.paneZOrder,
         pinnedTimeframes: s.pinnedTimeframes,
         favoriteTools: s.favoriteTools,
+        favoritesBarPos: s.favoritesBarPos,
         toolDefaults: s.toolDefaults,
         watchlists: s.watchlists,
         activeWatchlistId: s.activeWatchlistId,
