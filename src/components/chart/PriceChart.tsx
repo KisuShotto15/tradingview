@@ -192,6 +192,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
   // Last unconstrained cursor (time/price) — lets Shift snap the preview the
   // instant it's pressed, without needing a mouse move.
   const lastCursorRef = useRef<{ time: number; price: number } | null>(null);
+  // Tracked Shift state — the chart's crosshair events don't reliably carry the
+  // modifier while moving, so we key the axis-constrain off our own ref.
+  const shiftHeldRef = useRef(false);
   const chartColorsRef = useRef(DEFAULT_CHART_COLORS);
 
   const indicators = useChartStore((s) => s.indicators);
@@ -530,7 +533,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           setPreviewState({ first: { time, price }, extra: [], cursor: { time, price } });
         } else {
           let b = { time, price };
-          if (param.sourceEvent?.shiftKey && candleSeriesRef.current) {
+          if ((shiftHeldRef.current || param.sourceEvent?.shiftKey) && candleSeriesRef.current) {
             b = constrainToAxis(chart, candleSeriesRef.current, candlesRef.current, intervalSec, first, b);
           }
           void drawingsApiRef.current.add({
@@ -812,8 +815,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
           if (snapped !== null) pc = { time: cursorTime, price: snapped };
         }
         // Shift held → constrain the preview to horizontal/vertical for line tools.
+        // Uses our tracked ref because the chart's move events don't reliably
+        // carry the modifier state.
         if (
-          param.sourceEvent?.shiftKey &&
+          shiftHeldRef.current &&
           firstPointRef.current &&
           AXIS_CONSTRAIN_TOOLS.has(toolRef.current) &&
           candleSeriesRef.current
@@ -2688,6 +2693,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   useEffect(() => {
     function onShiftToggle(e: KeyboardEvent) {
       if (e.key !== "Shift") return;
+      shiftHeldRef.current = e.shiftKey; // keydown → true, keyup → false
       const first = firstPointRef.current;
       const last = lastCursorRef.current;
       if (

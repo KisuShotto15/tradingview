@@ -189,6 +189,12 @@ export const MeasureToolIcon = (p: IconProps) => (
   </Svg>
 );
 
+// Small filled anchor dot used only by the position icons (kept as they were
+// before the hollow-ring change, which the user preferred here).
+const SmallDot = ({ cx, cy }: { cx: number; cy: number }) => (
+  <circle cx={cx} cy={cy} r={1.7} fill="currentColor" stroke="none" />
+);
+
 export const LongPositionToolIcon = (p: IconProps) => (
   <Svg {...p}>
     {/* Reward (target) zone on top, faintly filled */}
@@ -196,9 +202,9 @@ export const LongPositionToolIcon = (p: IconProps) => (
     <rect x="6" y="4" width="14" height="13" rx="0.5" />
     {/* Entry line */}
     <line x1="6" y1="12" x2="20" y2="12" strokeWidth={1.9} />
-    <Dot cx={6} cy={4} />
-    <Dot cx={6} cy={12} />
-    <Dot cx={6} cy={17} />
+    <SmallDot cx={6} cy={4} />
+    <SmallDot cx={6} cy={12} />
+    <SmallDot cx={6} cy={17} />
   </Svg>
 );
 
@@ -208,8 +214,8 @@ export const ShortPositionToolIcon = (p: IconProps) => (
     <rect x="6" y="9" width="14" height="8" fill="currentColor" stroke="none" opacity={0.16} />
     <rect x="6" y="4" width="14" height="13" rx="0.5" />
     <line x1="6" y1="9" x2="20" y2="9" strokeWidth={1.9} />
-    <Dot cx={6} cy={4} />
-    <Dot cx={6} cy={9} />
-    <Dot cx={6} cy={17} />
+    <SmallDot cx={6} cy={4} />
+    <SmallDot cx={6} cy={9} />
+    <SmallDot cx={6} cy={17} />
   </Svg>
 );
