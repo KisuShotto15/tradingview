@@ -23,8 +23,10 @@ function Svg({ className, children }: IconProps & { children: React.ReactNode })
   );
 }
 
+// Hollow anchor circle (like TradingView). Filled with the panel background so
+// the line underneath is covered, leaving a clean ring. Drawn after the lines.
 const Dot = ({ cx, cy }: { cx: number; cy: number }) => (
-  <circle cx={cx} cy={cy} r={1.7} fill="currentColor" stroke="none" />
+  <circle cx={cx} cy={cy} r={2.7} fill="var(--color-tv-panel)" stroke="currentColor" strokeWidth={1.3} />
 );
 
 export const TrendLineToolIcon = (p: IconProps) => (

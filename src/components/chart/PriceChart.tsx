@@ -189,6 +189,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const savedPaneHeightsRef = useRef<number[]>([]);
   const firstPointRef = useRef<{ time: number; price: number } | null>(null);
   const placementPointsRef = useRef<Array<{ time: number; price: number }>>([]);
+  // Last unconstrained cursor (time/price) — lets Shift snap the preview the
+  // instant it's pressed, without needing a mouse move.
+  const lastCursorRef = useRef<{ time: number; price: number } | null>(null);
   const chartColorsRef = useRef(DEFAULT_CHART_COLORS);
 
   const indicators = useChartStore((s) => s.indicators);
@@ -801,6 +804,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
       // Drawing-tool placement preview (follow cursor between clicks)
       if (cursorTime !== null && cursorPrice !== null) {
+        lastCursorRef.current = { time: cursorTime, price: cursorPrice };
         // Apply snap to preview cursor if Ctrl held
         let pc: { time: number; price: number } = { time: cursorTime, price: cursorPrice };
         if (param.sourceEvent?.ctrlKey) {
@@ -2654,6 +2658,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
     function onShiftCapture(e: MouseEvent) {
       const isPlacing = measureRef.current.phase === "placing";
       if (!e.shiftKey && !isPlacing) return;
+      // Don't hijack shift+click while a drawing tool is active — there Shift
+      // means "constrain the line to horizontal/vertical", handled by the chart
+      // click handler. The quick-measure shortcut only applies from the cursor.
+      if (!isPlacing && toolRef.current !== "cursor") return;
       if (!containerRef.current || !chartRef.current || !candleSeriesRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -2673,6 +2681,36 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
     outer.addEventListener("mousedown", onShiftCapture, { capture: true });
     return () => outer.removeEventListener("mousedown", onShiftCapture, { capture: true });
+  }, []);
+
+  // Pressing/releasing Shift snaps the placement preview to horizontal/vertical
+  // instantly (no mouse move needed), matching TradingView.
+  useEffect(() => {
+    function onShiftToggle(e: KeyboardEvent) {
+      if (e.key !== "Shift") return;
+      const first = firstPointRef.current;
+      const last = lastCursorRef.current;
+      if (
+        !first ||
+        !last ||
+        !AXIS_CONSTRAIN_TOOLS.has(toolRef.current) ||
+        !chartRef.current ||
+        !candleSeriesRef.current
+      ) {
+        return;
+      }
+      const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
+      const pc = e.shiftKey
+        ? constrainToAxis(chartRef.current, candleSeriesRef.current, candlesRef.current, intervalSec, first, last)
+        : last;
+      setPreviewState((prev) => (prev ? { ...prev, cursor: pc } : prev));
+    }
+    window.addEventListener("keydown", onShiftToggle);
+    window.addEventListener("keyup", onShiftToggle);
+    return () => {
+      window.removeEventListener("keydown", onShiftToggle);
+      window.removeEventListener("keyup", onShiftToggle);
+    };
   }, []);
 
   let measureRender: React.ReactNode = null;
