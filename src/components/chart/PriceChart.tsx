@@ -1890,7 +1890,24 @@ export function PriceChart({ symbol, timeframe }: Props) {
         if (snapped !== null) price = snapped;
         setMagnetTarget({ time, price });
       }
-      setPreviewState((prev) => (prev ? { ...prev, cursor: { time, price } } : prev));
+      lastCursorRef.current = { time, price };
+      // Shift → keep the line horizontal/vertical while moving (line tools).
+      let cur = { time, price };
+      if (
+        (shiftHeldRef.current || e.shiftKey) &&
+        firstPointRef.current &&
+        AXIS_CONSTRAIN_TOOLS.has(toolRef.current)
+      ) {
+        cur = constrainToAxis(
+          chartRef.current,
+          candleSeriesRef.current,
+          candlesRef.current,
+          intervalSec,
+          firstPointRef.current,
+          cur,
+        );
+      }
+      setPreviewState((prev) => (prev ? { ...prev, cursor: cur } : prev));
     }
     window.addEventListener("mousemove", onMove);
     return () => {
