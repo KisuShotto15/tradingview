@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
+import { bybitGetOrders, BybitError } from "@/lib/exchanges/bybit";
 
 const SPOT_PROD = "https://api.binance.com/api/v3";
 const SPOT_TEST = "https://testnet.binance.vision/api/v3";
@@ -22,9 +23,20 @@ export async function GET(req: Request) {
     const testnet = url.searchParams.get("testnet") === "true";
     const isPerp = url.searchParams.get("isPerp") === "true";
     const symbol = url.searchParams.get("symbol") ?? "";
+    const exchange = url.searchParams.get("exchange") ?? "binance";
 
     if (!apiKey || !apiSecret) {
       return NextResponse.json({ error: "Missing credentials" }, { status: 400 });
+    }
+
+    if (exchange === "bybit") {
+      try {
+        const orders = await bybitGetOrders({ apiKey, apiSecret, testnet }, isPerp, symbol);
+        return NextResponse.json(orders);
+      } catch (e) {
+        const code = e instanceof BybitError ? e.code : -1;
+        return NextResponse.json({ msg: String(e), code }, { status: 400 });
+      }
     }
 
     const params: Record<string, string> = {

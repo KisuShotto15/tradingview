@@ -30,9 +30,10 @@ function cleanSymbol(s: string): string {
 export async function getSymbolInfo(
   symbol: string,
   testnet: boolean,
+  exchange: string = "binance",
 ): Promise<SymbolInfo> {
   const sym = cleanSymbol(symbol);
-  const cacheKey = `${sym}|${testnet}`;
+  const cacheKey = `${sym}|${testnet}|${exchange}`;
   const cached = CACHE.get(cacheKey);
   if (cached) return cached;
   const inflight = INFLIGHT.get(cacheKey);
@@ -40,7 +41,7 @@ export async function getSymbolInfo(
 
   const p = (async () => {
     const res = await fetch(
-      `/api/trade/exchange-info?symbol=${encodeURIComponent(sym)}&testnet=${testnet}`,
+      `/api/trade/exchange-info?symbol=${encodeURIComponent(sym)}&testnet=${testnet}&exchange=${exchange}`,
       { cache: "force-cache" },
     );
     if (!res.ok) throw new Error(`exchange-info ${res.status}`);
@@ -59,14 +60,15 @@ export async function getSymbolInfo(
 /** React hook — returns either a real SymbolInfo or the defaults. */
 export function useSymbolInfo(symbol: string): SymbolInfo {
   const testnet = useTradingStore((s) => s.testnet);
+  const exchange = useTradingStore((s) => s.exchange);
   const [info, setInfo] = useState<SymbolInfo>(() => {
-    const cached = CACHE.get(`${cleanSymbol(symbol)}|${testnet}`);
+    const cached = CACHE.get(`${cleanSymbol(symbol)}|${testnet}|${exchange}`);
     return cached ?? { ...DEFAULT_SYMBOL_INFO, symbol: cleanSymbol(symbol) };
   });
 
   useEffect(() => {
     let cancelled = false;
-    void getSymbolInfo(symbol, testnet)
+    void getSymbolInfo(symbol, testnet, exchange)
       .then((data) => {
         if (!cancelled) setInfo(data);
       })
@@ -76,7 +78,7 @@ export function useSymbolInfo(symbol: string): SymbolInfo {
     return () => {
       cancelled = true;
     };
-  }, [symbol, testnet]);
+  }, [symbol, testnet, exchange]);
 
   return info;
 }

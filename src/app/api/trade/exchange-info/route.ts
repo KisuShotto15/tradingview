@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { bybitGetInstrumentPublic } from "@/lib/exchanges/bybit";
 
 /**
  * GET /api/trade/exchange-info?symbol=BTCUSDT&testnet=true
@@ -36,8 +37,21 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const symbol = url.searchParams.get("symbol")?.trim().toUpperCase();
   const testnet = url.searchParams.get("testnet") === "true";
+  const exchange = url.searchParams.get("exchange") ?? "binance";
   if (!symbol) {
     return NextResponse.json({ error: "Missing symbol" }, { status: 400 });
+  }
+
+  if (exchange === "bybit") {
+    try {
+      const info = await bybitGetInstrumentPublic(testnet, true, symbol);
+      return NextResponse.json(info);
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : "failed" },
+        { status: 400 },
+      );
+    }
   }
 
   const base = testnet ? PERP_TEST : PERP_PROD;

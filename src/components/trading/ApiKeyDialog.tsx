@@ -8,8 +8,11 @@ import { cn } from "@/lib/utils";
 export function ApiKeyDialog({ onClose }: { onClose: () => void }) {
   const { apiKey, apiSecret, testnet, setCredentials, fetchBalance } = useTradingStore();
   const setConnected = useTradingStore((s) => s.setConnected);
+  const exchange = useTradingStore((s) => s.exchange);
+  const setExchange = useTradingStore((s) => s.setExchange);
   const symbol = "BTCUSDT";
 
+  const [ex, setEx] = useState(exchange);
   const [key, setKey] = useState(apiKey);
   const [secret, setSecret] = useState(apiSecret);
   const [tn, setTn] = useState(testnet);
@@ -17,12 +20,15 @@ export function ApiKeyDialog({ onClose }: { onClose: () => void }) {
   const [testResult, setTestResult] = useState<"ok" | "fail" | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
 
+  const exLabel = ex === "bybit" ? "Bybit" : "Binance";
+
   async function tryBalance(isPerp: boolean): Promise<{ ok: boolean; error?: string }> {
     const params = new URLSearchParams({
       apiKey: key,
       apiSecret: secret,
       testnet: String(tn),
       isPerp: String(isPerp),
+      exchange: ex,
     });
     try {
       const res = await fetch(`/api/trade/balance?${params}`);
@@ -38,8 +44,9 @@ export function ApiKeyDialog({ onClose }: { onClose: () => void }) {
     setTesting(true);
     setTestResult(null);
     setTestError(null);
+    setExchange(ex);
     setCredentials(key, secret, tn);
-    useTradingStore.setState({ apiKey: key, apiSecret: secret, testnet: tn });
+    useTradingStore.setState({ exchange: ex, apiKey: key, apiSecret: secret, testnet: tn });
 
     // The Binance spot testnet (testnet.binance.vision) and futures testnet
     // (testnet.binancefuture.com) are SEPARATE: each requires its own API key.
@@ -70,6 +77,7 @@ export function ApiKeyDialog({ onClose }: { onClose: () => void }) {
   }
 
   function save() {
+    setExchange(ex);
     setCredentials(key, secret, tn);
     onClose();
   }
@@ -81,7 +89,7 @@ export function ApiKeyDialog({ onClose }: { onClose: () => void }) {
         <div className="flex items-center justify-between border-b border-tv-border px-4 py-3">
           <div className="flex items-center gap-2">
             <KeyRound className="h-4 w-4 text-tv-blue" />
-            <span className="text-sm font-semibold text-tv-text">Binance API Credentials</span>
+            <span className="text-sm font-semibold text-tv-text">{exLabel} API Credentials</span>
           </div>
           <button onClick={onClose} className="text-tv-text-muted hover:text-tv-text">
             <X className="h-4 w-4" />
@@ -89,6 +97,31 @@ export function ApiKeyDialog({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="space-y-4 p-4">
+          {/* Exchange selector */}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-tv-text-muted">Exchange</span>
+            <div className="flex gap-1 rounded-md border border-tv-border p-0.5">
+              {(["bybit", "binance"] as const).map((e) => (
+                <button
+                  key={e}
+                  onClick={() => {
+                    setEx(e);
+                    setTestResult(null);
+                    setTestError(null);
+                  }}
+                  className={cn(
+                    "rounded px-3 py-1 text-xs capitalize transition-colors",
+                    ex === e
+                      ? "bg-tv-blue text-white"
+                      : "text-tv-text-muted hover:bg-tv-panel-hover",
+                  )}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Testnet toggle */}
           <div className="flex items-center justify-between">
             <span className="text-xs text-tv-text-muted">Network</span>
@@ -131,7 +164,7 @@ export function ApiKeyDialog({ onClose }: { onClose: () => void }) {
               type="text"
               value={key}
               onChange={(e) => setKey(e.target.value)}
-              placeholder="Enter your Binance API Key"
+              placeholder={`Enter your ${exLabel} API Key`}
               className="w-full rounded border border-tv-border bg-tv-bg px-3 py-2 text-xs text-tv-text outline-none focus:border-tv-blue"
             />
           </div>
@@ -143,13 +176,15 @@ export function ApiKeyDialog({ onClose }: { onClose: () => void }) {
               type="password"
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
-              placeholder="Enter your Binance API Secret"
+              placeholder={`Enter your ${exLabel} API Secret`}
               className="w-full rounded border border-tv-border bg-tv-bg px-3 py-2 text-xs text-tv-text outline-none focus:border-tv-blue"
             />
           </div>
 
           <p className="text-[10px] text-tv-text-dim">
-            Keys are stored locally in your browser. Enable &quot;Futures Trading&quot; permission on your API key.
+            {ex === "bybit"
+              ? "Keys are stored locally in your browser. Use a Unified Trading Account key with Contract/Order + Position read-write permissions."
+              : "Keys are stored locally in your browser. Enable “Futures Trading” permission on your API key."}
           </p>
 
           {/* Test result */}

@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
+import { bybitSetLeverage, BybitError } from "@/lib/exchanges/bybit";
+import type { Exchange } from "@/lib/binance/trading-types";
 
 const PERP_PROD = "https://fapi.binance.com/fapi/v1";
 const PERP_TEST = "https://testnet.binancefuture.com/fapi/v1";
@@ -23,14 +25,33 @@ interface SetLeverageBody {
   testnet?: boolean;
   symbol: string;
   leverage: number;
+  exchange?: Exchange;
 }
 
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as SetLeverageBody;
-    const { apiKey, apiSecret, testnet, symbol, leverage } = body;
+    const { apiKey, apiSecret, testnet, symbol, leverage, exchange } = body;
     if (!apiKey || !apiSecret || !symbol || !leverage) {
       return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
+    }
+
+    if (exchange === "bybit") {
+      try {
+        const result = await bybitSetLeverage(
+          { apiKey, apiSecret, testnet: !!testnet },
+          symbol,
+          leverage,
+        );
+        return NextResponse.json(result);
+      } catch (e) {
+        // Bybit returns retCode 110043 when leverage is already set — treat as ok.
+        if (e instanceof BybitError && e.code === 110043) {
+          return NextResponse.json({ ok: true, note: "leverage unchanged" });
+        }
+        const code = e instanceof BybitError ? e.code : -1;
+        return NextResponse.json({ msg: String(e), code }, { status: 400 });
+      }
     }
 
     const qs = new URLSearchParams({

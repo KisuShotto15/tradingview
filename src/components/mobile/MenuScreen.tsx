@@ -22,7 +22,9 @@ import { cn } from "@/lib/utils";
 export function MenuScreen() {
   const apiKey = useTradingStore((s) => s.apiKey);
   const testnet = useTradingStore((s) => s.testnet);
+  const exchange = useTradingStore((s) => s.exchange);
   const openSheet = useMobileStore((s) => s.openSheet);
+  const exLabel = exchange === "bybit" ? "Bybit" : "Binance";
 
   // Open the chart settings dialog (reuse desktop component).
   function openChartSettings() {
@@ -41,7 +43,7 @@ export function MenuScreen() {
             {apiKey ? "Connected" : "Not connected"}
           </span>
           <span className="text-[11px] text-tv-text-muted">
-            {apiKey ? `Binance · ${testnet ? "Testnet" : "Mainnet"}` : "Add your API keys to trade"}
+            {apiKey ? `${exLabel} · ${testnet ? "Testnet" : "Mainnet"}` : "Add your API keys to trade"}
           </span>
         </div>
       </header>

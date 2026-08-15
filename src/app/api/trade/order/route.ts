@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import type { PlaceOrderParams, CancelOrderParams } from "@/lib/binance/trading-types";
+import { bybitPlaceOrder, bybitCancelOrder, BybitError } from "@/lib/exchanges/bybit";
 
 const SPOT_PROD = "https://api.binance.com/api/v3";
 const SPOT_TEST = "https://testnet.binance.vision/api/v3";
@@ -19,9 +20,32 @@ function sign(data: string, secret: string) {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as PlaceOrderParams;
-    const { apiKey, apiSecret, testnet, isPerp, ...rest } = body;
+    const { apiKey, apiSecret, testnet, isPerp, exchange, ...rest } = body;
     if (!apiKey || !apiSecret) {
       return NextResponse.json({ error: "Missing credentials" }, { status: 400 });
+    }
+
+    if (exchange === "bybit") {
+      try {
+        const result = await bybitPlaceOrder(
+          { apiKey, apiSecret, testnet },
+          {
+            isPerp,
+            symbol: rest.symbol,
+            side: rest.side,
+            type: rest.type,
+            quantity: rest.quantity,
+            price: rest.price,
+            stopPrice: rest.stopPrice,
+            reduceOnly: rest.reduceOnly,
+            timeInForce: rest.timeInForce,
+          },
+        );
+        return NextResponse.json(result);
+      } catch (e) {
+        const code = e instanceof BybitError ? e.code : -1;
+        return NextResponse.json({ msg: String(e), code }, { status: 400 });
+      }
     }
 
     const params: Record<string, string> = {
@@ -60,9 +84,19 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   try {
     const body = (await req.json()) as CancelOrderParams;
-    const { apiKey, apiSecret, testnet, isPerp, symbol, orderId } = body;
+    const { apiKey, apiSecret, testnet, isPerp, symbol, orderId, exchange } = body;
     if (!apiKey || !apiSecret) {
       return NextResponse.json({ error: "Missing credentials" }, { status: 400 });
+    }
+
+    if (exchange === "bybit") {
+      try {
+        const result = await bybitCancelOrder({ apiKey, apiSecret, testnet }, isPerp, symbol, orderId);
+        return NextResponse.json(result);
+      } catch (e) {
+        const code = e instanceof BybitError ? e.code : -1;
+        return NextResponse.json({ msg: String(e), code }, { status: 400 });
+      }
     }
 
     const qs = new URLSearchParams({

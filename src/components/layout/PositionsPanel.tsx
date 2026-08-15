@@ -20,6 +20,7 @@ export function PositionsPanel() {
   const apiKey = useTradingStore((s) => s.apiKey);
   const apiSecret = useTradingStore((s) => s.apiSecret);
   const testnet = useTradingStore((s) => s.testnet);
+  const exchange = useTradingStore((s) => s.exchange);
   const positions = useTradingStore((s) => s.positions);
   const orders = useTradingStore((s) => s.orders);
   const balance = useTradingStore((s) => s.balance);
@@ -117,7 +118,7 @@ export function PositionsPanel() {
               valueClass={unrealizedPnL >= 0 ? "text-tv-green" : "text-tv-red"}
             />
             <span className="ml-auto text-[9px] uppercase tracking-wider text-tv-text-muted">
-              {testnet ? "Testnet" : "Mainnet"}
+              {exchange} · {testnet ? "Testnet" : "Mainnet"}
             </span>
           </div>
 

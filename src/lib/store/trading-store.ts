@@ -12,6 +12,7 @@ import type {
   TimeInForce,
   PlaceOrderParams,
   SizingMode,
+  Exchange,
 } from "@/lib/binance/trading-types";
 
 export interface OrderForm {
@@ -39,6 +40,7 @@ export interface OrderForm {
 
 interface TradingState {
   // Credentials
+  exchange: Exchange;
   apiKey: string;
   apiSecret: string;
   testnet: boolean;
@@ -61,6 +63,7 @@ interface TradingState {
   modifyingOrderId: number | string | null;
 
   // Actions
+  setExchange: (exchange: Exchange) => void;
   setCredentials: (apiKey: string, apiSecret: string, testnet: boolean) => void;
   setConnected: (v: boolean) => void;
   setTradingPanelOpen: (v: boolean) => void;
@@ -125,6 +128,7 @@ function defaultForm(): OrderForm {
 export const useTradingStore = create<TradingState>()(
   persist(
     (set, get) => ({
+      exchange: "binance",
       apiKey: "",
       apiSecret: "",
       testnet: true,
@@ -139,6 +143,10 @@ export const useTradingStore = create<TradingState>()(
       lastError: null,
       modifyingOrderId: null,
 
+      setExchange: (exchange) => {
+        // Switching exchange invalidates the current connection + cached data.
+        set({ exchange, isConnected: false, orders: [], positions: [], balance: [] });
+      },
       setCredentials: (apiKey, apiSecret, testnet) => {
         set({ apiKey, apiSecret, testnet, isConnected: false, lastError: null });
       },
@@ -159,7 +167,7 @@ export const useTradingStore = create<TradingState>()(
         })),
 
       fetchBalance: async (symbol) => {
-        const { apiKey, apiSecret, testnet } = get();
+        const { apiKey, apiSecret, testnet, exchange } = get();
         if (!apiKey || !apiSecret) return;
         const perp = isPerp(symbol);
         const params = new URLSearchParams({
@@ -167,6 +175,7 @@ export const useTradingStore = create<TradingState>()(
           apiSecret,
           testnet: String(testnet),
           isPerp: String(perp),
+          exchange,
         });
         try {
           const res = await fetch(`/api/trade/balance?${params}`);
@@ -179,7 +188,7 @@ export const useTradingStore = create<TradingState>()(
       },
 
       fetchOrders: async (symbol) => {
-        const { apiKey, apiSecret, testnet } = get();
+        const { apiKey, apiSecret, testnet, exchange } = get();
         if (!apiKey || !apiSecret) return;
         const perp = isPerp(symbol);
         const sym = cleanSym(symbol);
@@ -189,6 +198,7 @@ export const useTradingStore = create<TradingState>()(
           testnet: String(testnet),
           isPerp: String(perp),
           symbol: sym,
+          exchange,
         });
         try {
           const res = await fetch(`/api/trade/orders?${params}`);
@@ -219,7 +229,7 @@ export const useTradingStore = create<TradingState>()(
       },
 
       fetchPositions: async (symbol) => {
-        const { apiKey, apiSecret, testnet } = get();
+        const { apiKey, apiSecret, testnet, exchange } = get();
         if (!apiKey || !apiSecret || !isPerp(symbol)) return;
         const sym = cleanSym(symbol);
         const params = new URLSearchParams({
@@ -227,6 +237,7 @@ export const useTradingStore = create<TradingState>()(
           apiSecret,
           testnet: String(testnet),
           symbol: sym,
+          exchange,
         });
         try {
           const res = await fetch(`/api/trade/positions?${params}`);
@@ -246,7 +257,7 @@ export const useTradingStore = create<TradingState>()(
       },
 
       placeOrder: async (symbol, overrides) => {
-        const { apiKey, apiSecret, testnet, form } = get();
+        const { apiKey, apiSecret, testnet, exchange, form } = get();
         if (!apiKey || !apiSecret) return { ok: false, error: "No API credentials set." };
         const f = { ...form, ...overrides };
         const perp = isPerp(symbol);
@@ -258,6 +269,7 @@ export const useTradingStore = create<TradingState>()(
           apiKey,
           apiSecret,
           testnet,
+          exchange,
           symbol: sym,
           isPerp: perp,
           side: f.side,
@@ -293,7 +305,7 @@ export const useTradingStore = create<TradingState>()(
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                apiKey, apiSecret, testnet,
+                apiKey, apiSecret, testnet, exchange,
                 symbol: sym, isPerp: true,
                 side: slSide, type: "STOP_MARKET",
                 quantity: f.qty, stopPrice: f.sl,
@@ -309,7 +321,7 @@ export const useTradingStore = create<TradingState>()(
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                apiKey, apiSecret, testnet,
+                apiKey, apiSecret, testnet, exchange,
                 symbol: sym, isPerp: true,
                 side: tpSide, type: "TAKE_PROFIT_MARKET",
                 quantity: f.qty, stopPrice: f.tp,
@@ -329,20 +341,20 @@ export const useTradingStore = create<TradingState>()(
       },
 
       cancelOrder: async (symbol, orderId) => {
-        const { apiKey, apiSecret, testnet } = get();
+        const { apiKey, apiSecret, testnet, exchange } = get();
         if (!apiKey || !apiSecret) return;
         const perp = isPerp(symbol);
         const sym = cleanSym(symbol);
         await fetch("/api/trade/order", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ apiKey, apiSecret, testnet, symbol: sym, isPerp: perp, orderId }),
+          body: JSON.stringify({ apiKey, apiSecret, testnet, exchange, symbol: sym, isPerp: perp, orderId }),
         });
         void get().fetchOrders(symbol);
       },
 
       modifyOrder: async (symbol, order, newPrice) => {
-        const { apiKey, apiSecret, testnet } = get();
+        const { apiKey, apiSecret, testnet, exchange } = get();
         if (!apiKey || !apiSecret) return { ok: false, error: "No credentials" };
         const perp = isPerp(symbol);
         const sym = cleanSym(symbol);
@@ -354,7 +366,7 @@ export const useTradingStore = create<TradingState>()(
             method: "DELETE",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              apiKey, apiSecret, testnet,
+              apiKey, apiSecret, testnet, exchange,
               symbol: sym, isPerp: perp, orderId: order.orderId,
             }),
           });
@@ -374,7 +386,7 @@ export const useTradingStore = create<TradingState>()(
         const isTrigger =
           order.type === "STOP_MARKET" || order.type === "TAKE_PROFIT_MARKET";
         const body: PlaceOrderParams = {
-          apiKey, apiSecret, testnet,
+          apiKey, apiSecret, testnet, exchange,
           symbol: sym, isPerp: perp,
           side: order.side, type: order.type,
           quantity: String(order.origQty),
@@ -404,7 +416,7 @@ export const useTradingStore = create<TradingState>()(
       },
 
       closePosition: async (symbol, position) => {
-        const { apiKey, apiSecret, testnet } = get();
+        const { apiKey, apiSecret, testnet, exchange } = get();
         if (!apiKey || !apiSecret) return { ok: false, error: "No credentials" };
         const perp = isPerp(symbol);
         const sym = cleanSym(symbol);
@@ -416,7 +428,7 @@ export const useTradingStore = create<TradingState>()(
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              apiKey, apiSecret, testnet,
+              apiKey, apiSecret, testnet, exchange,
               symbol: sym, isPerp: perp,
               side: closeSide, type: "MARKET",
               quantity: String(qty),
@@ -439,13 +451,34 @@ export const useTradingStore = create<TradingState>()(
       },
 
       setPositionTpSl: async (symbol, position, { tp, sl }) => {
-        const { apiKey, apiSecret, testnet, orders } = get();
+        const { apiKey, apiSecret, testnet, exchange, orders } = get();
         if (!apiKey || !apiSecret) return { ok: false, error: "No credentials" };
         const perp = isPerp(symbol);
         const sym = cleanSym(symbol);
         if (!perp) return { ok: false, error: "Position TP/SL only on perp" };
         const qty = Math.abs(position.positionAmt);
         const closeSide: OrderSide = position.positionAmt > 0 ? "SELL" : "BUY";
+
+        // Bybit sets TP/SL directly on the position via /position/trading-stop.
+        if (exchange === "bybit") {
+          try {
+            const res = await fetch("/api/trade/trading-stop", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ apiKey, apiSecret, testnet, symbol: sym, tp, sl }),
+            });
+            const data = (await res.json().catch(() => ({}))) as { msg?: string };
+            if (!res.ok) {
+              set({ lastError: data.msg ?? "tp/sl failed" });
+              return { ok: false, error: data.msg ?? "tp/sl failed" };
+            }
+            void get().fetchPositions(symbol);
+            return { ok: true };
+          } catch (e) {
+            set({ lastError: String(e) });
+            return { ok: false, error: String(e) };
+          }
+        }
 
         // Cancel any existing reduceOnly TP / SL orders for this symbol on the
         // opposite side before placing new ones.
@@ -462,7 +495,7 @@ export const useTradingStore = create<TradingState>()(
               method: "DELETE",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                apiKey, apiSecret, testnet,
+                apiKey, apiSecret, testnet, exchange,
                 symbol: sym, isPerp: true, orderId: o.orderId,
               }),
             });
@@ -473,7 +506,7 @@ export const useTradingStore = create<TradingState>()(
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              apiKey, apiSecret, testnet,
+              apiKey, apiSecret, testnet, exchange,
               symbol: sym, isPerp: true,
               side: closeSide, type,
               quantity: String(qty), stopPrice: String(stopPrice),
@@ -500,7 +533,7 @@ export const useTradingStore = create<TradingState>()(
       },
 
       setLeverage: async (symbol, leverage) => {
-        const { apiKey, apiSecret, testnet } = get();
+        const { apiKey, apiSecret, testnet, exchange } = get();
         if (!apiKey || !apiSecret) return { ok: false, error: "No credentials" };
         const sym = cleanSym(symbol);
         // Optimistic update so the UI feels snappy.
@@ -509,7 +542,7 @@ export const useTradingStore = create<TradingState>()(
           const res = await fetch("/api/trade/leverage", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ apiKey, apiSecret, testnet, symbol: sym, leverage }),
+            body: JSON.stringify({ apiKey, apiSecret, testnet, exchange, symbol: sym, leverage }),
           });
           const data = (await res.json().catch(() => ({}))) as { msg?: string };
           if (!res.ok) {
@@ -527,6 +560,7 @@ export const useTradingStore = create<TradingState>()(
       name: "trading-store",
       version: 2,
       partialize: (s) => ({
+        exchange: s.exchange,
         apiKey: s.apiKey,
         apiSecret: s.apiSecret,
         testnet: s.testnet,

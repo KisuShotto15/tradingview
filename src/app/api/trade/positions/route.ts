@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
+import { bybitGetPositions, BybitError } from "@/lib/exchanges/bybit";
 
 const PERP_PROD = "https://fapi.binance.com/fapi/v2";
 const PERP_TEST = "https://testnet.binancefuture.com/fapi/v2";
@@ -15,9 +16,20 @@ export async function GET(req: Request) {
     const apiSecret = url.searchParams.get("apiSecret") ?? "";
     const testnet = url.searchParams.get("testnet") === "true";
     const symbol = url.searchParams.get("symbol") ?? "";
+    const exchange = url.searchParams.get("exchange") ?? "binance";
 
     if (!apiKey || !apiSecret) {
       return NextResponse.json({ error: "Missing credentials" }, { status: 400 });
+    }
+
+    if (exchange === "bybit") {
+      try {
+        const positions = await bybitGetPositions({ apiKey, apiSecret, testnet }, symbol);
+        return NextResponse.json(positions);
+      } catch (e) {
+        const code = e instanceof BybitError ? e.code : -1;
+        return NextResponse.json({ msg: String(e), code }, { status: 400 });
+      }
     }
 
     const params: Record<string, string> = {

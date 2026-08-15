@@ -12,6 +12,7 @@ import type { Order } from "@/lib/binance/trading-types";
 const LIMIT_COLOR = "#2962ff";
 const TP_COLOR = "#26a69a";
 const SL_COLOR = "#fbc02d";
+const LIQ_COLOR = "#ff5252";
 
 interface Props {
   chart: IChartApi | null;
@@ -23,7 +24,7 @@ interface Props {
 }
 
 interface LineSpec {
-  kind: "LIMIT" | "TP" | "SL";
+  kind: "LIMIT" | "TP" | "SL" | "LIQ";
   price: number;
   /** Quantity in base asset shown on the pill. */
   qty: number;
@@ -31,10 +32,14 @@ interface LineSpec {
   side: "BUY" | "SELL";
   /** Optional anchor entry price used to compute USD P&L for TP/SL pills. */
   entryPrice?: number;
+  /** Live unrealized P&L in USD (open positions only) shown on the EP pill. */
+  livePnl?: number;
   /** Drag handler. If undefined the line is read-only. */
   onDrag?: (price: number) => void;
   /** Optional commit when drag ends — used by drag-to-modify on open orders. */
   onCommit?: (price: number) => void;
+  /** Optional close action — renders a close (×) button on the line (EP line). */
+  onClose?: () => void;
   /** When true, render the line in a "modifying…" muted style. */
   modifying?: boolean;
   /** When true, the line represents an OPEN POSITION (uses "EP" label and
@@ -47,16 +52,30 @@ function colorOf(kind: LineSpec["kind"]): string {
     case "LIMIT": return LIMIT_COLOR;
     case "TP":    return TP_COLOR;
     case "SL":    return SL_COLOR;
+    case "LIQ":   return LIQ_COLOR;
   }
 }
 
 function pillText(line: LineSpec): { left: string; right: string } {
   const qtyStr = line.qty > 0 ? line.qty.toString() : "";
+  if (line.kind === "LIQ") {
+    return { left: "Liq.", right: formatPrice(line.price) };
+  }
   if (line.kind === "LIMIT") {
-    const tag = line.isPosition ? "EP" : "Limit";
+    if (line.isPosition) {
+      // Open position line: side + qty on the left, live PnL + EP on the right.
+      const pnl =
+        line.livePnl !== undefined
+          ? `${line.livePnl >= 0 ? "+" : "−"}${Math.abs(line.livePnl).toFixed(2)} `
+          : "";
+      return {
+        left: `${line.side === "BUY" ? "Long" : "Short"} ${qtyStr}`.trim(),
+        right: `${pnl}· ${formatPrice(line.price)}`,
+      };
+    }
     return {
       left: `${line.side} ${qtyStr}`.trim(),
-      right: `${tag} ${formatPrice(line.price)}`,
+      right: `Limit ${formatPrice(line.price)}`,
     };
   }
   if (line.entryPrice && line.qty > 0) {
@@ -96,6 +115,11 @@ function LineRow({
   const { left, right } = pillText(line);
   const label = modifying ? "Modifying…" : `${left} · ${right}`;
   const labelW = Math.max(label.length * 6.2 + 14, 90);
+  const hasClose = !!line.onClose && !modifying;
+  const closeW = hasClose ? 18 : 0;
+  const textColor = line.kind === "SL" ? "#000" : "#fff";
+  // Right edge of the pill group (leaves room for the close button after it).
+  const pillRight = width - closeW - 2;
 
   return (
     <g style={{ opacity: modifying ? 0.55 : 1 }}>
@@ -116,18 +140,18 @@ function LineRow({
       {/* Visible line */}
       <line
         x1={0}
-        x2={width - labelW - 4}
+        x2={pillRight - labelW - 4}
         y1={y}
         y2={y}
         stroke={color}
-        strokeWidth={1.2}
+        strokeWidth={line.isPosition && line.kind === "LIMIT" ? 1.6 : 1.2}
         strokeDasharray={dashed ? "5,4" : undefined}
         style={{ pointerEvents: "none" }}
       />
       {/* Label pill */}
       <g style={{ pointerEvents: "none" }}>
         <rect
-          x={width - labelW - 2}
+          x={pillRight - labelW}
           y={y - 9}
           width={labelW}
           height={18}
@@ -135,9 +159,9 @@ function LineRow({
           rx={2}
         />
         <text
-          x={width - labelW / 2 - 2}
+          x={pillRight - labelW / 2}
           y={y + 4}
-          fill={line.kind === "SL" ? "#000" : "#fff"}
+          fill={textColor}
           fontSize={10}
           fontFamily="var(--font-mono), monospace"
           textAnchor="middle"
@@ -145,6 +169,33 @@ function LineRow({
           {label}
         </text>
       </g>
+      {/* Close button (open positions) */}
+      {hasClose && (
+        <g
+          style={{ pointerEvents: "all", cursor: "pointer" }}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            line.onClose?.();
+          }}
+        >
+          <rect x={width - 18} y={y - 9} width={16} height={18} fill={color} rx={2} />
+          <text
+            x={width - 10}
+            y={y + 4}
+            fill={textColor}
+            fontSize={12}
+            fontWeight="bold"
+            textAnchor="middle"
+          >
+            ×
+          </text>
+        </g>
+      )}
     </g>
   );
 }
@@ -165,6 +216,7 @@ export function OrderLinesLayer({
   const updateForm = useTradingStore((s) => s.updateForm);
   const modifyOrder = useTradingStore((s) => s.modifyOrder);
   const setPositionTpSl = useTradingStore((s) => s.setPositionTpSl);
+  const closePosition = useTradingStore((s) => s.closePosition);
   const modifyingOrderId = useTradingStore((s) => s.modifyingOrderId);
 
   // `renderTick` is already a prop from PriceChart — receiving it as a prop
@@ -212,6 +264,7 @@ export function OrderLinesLayer({
 
   const perp = isPerp(symbol);
   const lines: LineSpec[] = [];
+  const zones: { y1: number; y2: number; color: string; opacity: number }[] = [];
 
   /* ── Preview lines from the form (while the panel is open) ───────── */
   const entryPrice = parseFloat(form.price);
@@ -296,16 +349,30 @@ export function OrderLinesLayer({
     const closeSide: "BUY" | "SELL" = isLong ? "SELL" : "BUY";
     const qty = Math.abs(pos.positionAmt);
 
-    // Entry line (read-only — position is already filled).
+    // Entry line (read-only price, but carries live PnL + a close button).
     lines.push({
       kind: "LIMIT",
       price: pos.entryPrice,
       qty,
       side: posSide,
       isPosition: true,
+      livePnl: pos.unrealizedProfit,
+      onClose: () => void closePosition(symbol, pos),
     });
 
-    // Find existing reduceOnly TP / SL orders for this position.
+    // Liquidation line (read-only).
+    if (pos.liquidationPrice > 0) {
+      lines.push({
+        kind: "LIQ",
+        price: pos.liquidationPrice,
+        qty,
+        side: posSide,
+        isPosition: true,
+      });
+    }
+
+    // TP / SL: prefer the values attached to the position (Bybit), otherwise
+    // fall back to matching reduceOnly orders (Binance).
     const tpOrder = orders.find(
       (o) => o.symbol === cleanedSym && o.side === closeSide && o.reduceOnly &&
         (o.type === "TAKE_PROFIT_MARKET" || o.type === "TAKE_PROFIT"),
@@ -314,43 +381,71 @@ export function OrderLinesLayer({
       (o) => o.symbol === cleanedSym && o.side === closeSide && o.reduceOnly &&
         (o.type === "STOP_MARKET" || o.type === "STOP" || o.type === "STOP_LIMIT"),
     );
+    const tpPrice = pos.takeProfit ?? tpOrder?.stopPrice ?? null;
+    const slPrice = pos.stopLoss ?? slOrder?.stopPrice ?? null;
 
-    if (tpOrder?.stopPrice) {
+    if (tpPrice && tpPrice > 0) {
       lines.push({
         kind: "TP",
-        price: tpOrder.stopPrice,
+        price: tpPrice,
         qty,
         side: posSide,
         entryPrice: pos.entryPrice,
         isPosition: true,
         onDrag: () => { /* live preview only; commit fires on mouseup */ },
         onCommit: async (newPrice) => {
-          if (Math.abs(newPrice - (tpOrder.stopPrice ?? 0)) < 1e-9) return;
+          if (Math.abs(newPrice - tpPrice) < 1e-9) return;
           await setPositionTpSl(symbol, pos, { tp: newPrice });
         },
-        modifying: modifyingOrderId === tpOrder.orderId,
+        modifying: modifyingOrderId === tpOrder?.orderId,
       });
     }
-    if (slOrder?.stopPrice) {
+    if (slPrice && slPrice > 0) {
       lines.push({
         kind: "SL",
-        price: slOrder.stopPrice,
+        price: slPrice,
         qty,
         side: posSide,
         entryPrice: pos.entryPrice,
         isPosition: true,
         onDrag: () => { /* live preview only */ },
         onCommit: async (newPrice) => {
-          if (Math.abs(newPrice - (slOrder.stopPrice ?? 0)) < 1e-9) return;
+          if (Math.abs(newPrice - slPrice) < 1e-9) return;
           await setPositionTpSl(symbol, pos, { sl: newPrice });
         },
-        modifying: modifyingOrderId === slOrder.orderId,
+        modifying: modifyingOrderId === slOrder?.orderId,
       });
+    }
+
+    // Shaded zones for the open position (entry↔TP green, entry↔SL red).
+    const yEntryPos = candleSeries.priceToCoordinate(pos.entryPrice);
+    if (yEntryPos !== null) {
+      if (tpPrice && tpPrice > 0) {
+        const yTp = candleSeries.priceToCoordinate(tpPrice);
+        if (yTp !== null) {
+          zones.push({
+            y1: Math.min(yEntryPos as number, yTp as number),
+            y2: Math.max(yEntryPos as number, yTp as number),
+            color: TP_COLOR,
+            opacity: 0.07,
+          });
+        }
+      }
+      if (slPrice && slPrice > 0) {
+        const ySl = candleSeries.priceToCoordinate(slPrice);
+        if (ySl !== null) {
+          zones.push({
+            y1: Math.min(yEntryPos as number, ySl as number),
+            y2: Math.max(yEntryPos as number, ySl as number),
+            color: SL_COLOR,
+            opacity: 0.06,
+          });
+        }
+      }
     }
   }
 
-  /* ── Shaded zones (only for preview, between entry↔TP and entry↔SL) ── */
-  const zones: { y1: number; y2: number; color: string; opacity: number }[] = [];
+  /* ── Shaded zones for the form preview (entry↔TP and entry↔SL) ── */
   if (hasPreviewEntry) {
     const yEntry = candleSeries.priceToCoordinate(entryPrice);
     if (yEntry !== null) {

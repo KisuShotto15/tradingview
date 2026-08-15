@@ -52,7 +52,15 @@ export interface Position {
   /** Maintenance margin requirement. */
   maintMargin: number;
   marginType: "isolated" | "cross";
+  /** Take-profit price attached to the position (Bybit exposes this on the
+   *  position itself; Binance leaves it undefined and uses reduceOnly orders). */
+  takeProfit?: number;
+  /** Stop-loss price attached to the position (see takeProfit). */
+  stopLoss?: number;
 }
+
+/** Which exchange the trading credentials + routes target. */
+export type Exchange = "binance" | "bybit";
 
 export interface AssetBalance {
   asset: string;
@@ -75,6 +83,7 @@ export interface PlaceOrderParams {
   reduceOnly?: boolean;
   closePosition?: boolean;
   workingType?: "MARK_PRICE" | "CONTRACT_PRICE";
+  exchange?: Exchange;
 }
 
 export interface CancelOrderParams {
@@ -84,6 +93,7 @@ export interface CancelOrderParams {
   symbol: string;
   isPerp: boolean;
   orderId: number | string;
+  exchange?: Exchange;
 }
 
 /** Sizing modes shown in the Bybit-style order panel dropdown. */
