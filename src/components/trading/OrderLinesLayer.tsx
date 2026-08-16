@@ -415,6 +415,36 @@ interface AxisLevel {
 }
 
 /**
+ * The reduceOnly TP/SL orders that belong to an open position.
+ *
+ * A position's stop can surface twice: as an order in `orders` AND as the
+ * position's own `takeProfit`/`stopLoss` field. Both render at the same price
+ * so they normally overlap invisibly — but the position line is draggable, so
+ * a drag would leave the order's line stranded at the old price, reading as a
+ * duplicate. Callers use this to render the position line only and skip the
+ * order it already covers.
+ */
+function findTpSlOrders(
+  pos: Position,
+  orders: Order[],
+  cleanedSym: string,
+): { tpOrder?: Order; slOrder?: Order } {
+  const closeSide: "BUY" | "SELL" = pos.positionAmt > 0 ? "SELL" : "BUY";
+  const owns = (o: Order) =>
+    o.symbol === cleanedSym && o.side === closeSide && o.reduceOnly;
+  return {
+    tpOrder: orders.find(
+      (o) => owns(o) && (o.type === "TAKE_PROFIT_MARKET" || o.type === "TAKE_PROFIT"),
+    ),
+    slOrder: orders.find(
+      (o) =>
+        owns(o) &&
+        (o.type === "STOP_MARKET" || o.type === "STOP" || o.type === "STOP_LIMIT"),
+    ),
+  };
+}
+
+/**
  * Levels for the open position (EP/TP/SL/liquidation) to mirror as native
  * price lines, so the price scale shows a color-matched axis label — and the
  * line itself spans the full pane width (uncut by our custom SVG boxes),
@@ -437,17 +467,9 @@ function computeAxisLevels(
   const out: AxisLevel[] = [];
   for (const pos of positions) {
     if (pos.positionAmt === 0 || pos.symbol !== cleanedSym) continue;
-    const closeSide: "BUY" | "SELL" = pos.positionAmt > 0 ? "SELL" : "BUY";
     out.push({ id: `${cleanedSym}-EP`, price: pos.entryPrice, color: LIMIT_COLOR });
 
-    const tpOrder = orders.find(
-      (o) => o.symbol === cleanedSym && o.side === closeSide && o.reduceOnly &&
-        (o.type === "TAKE_PROFIT_MARKET" || o.type === "TAKE_PROFIT"),
-    );
-    const slOrder = orders.find(
-      (o) => o.symbol === cleanedSym && o.side === closeSide && o.reduceOnly &&
-        (o.type === "STOP_MARKET" || o.type === "STOP" || o.type === "STOP_LIMIT"),
-    );
+    const { tpOrder, slOrder } = findTpSlOrders(pos, orders, cleanedSym);
     const tpPrice = pos.takeProfit ?? tpOrder?.stopPrice ?? null;
     const slPrice = pos.stopLoss ?? slOrder?.stopPrice ?? null;
 
@@ -648,7 +670,19 @@ export function OrderLinesLayer({
   }
 
   /* ── Lines for open orders on the exchange ──────────────────────── */
+  // Orders that an open position already draws (its TP/SL) are skipped here, so
+  // dragging the position's line can't leave the order's copy behind.
+  const cleanedSymForOrders = cleanSym(symbol);
+  const coveredOrderIds = new Set<number | string>();
+  for (const pos of positions) {
+    if (pos.positionAmt === 0 || pos.symbol !== cleanedSymForOrders) continue;
+    const { tpOrder, slOrder } = findTpSlOrders(pos, orders, cleanedSymForOrders);
+    if (tpOrder) coveredOrderIds.add(tpOrder.orderId);
+    if (slOrder) coveredOrderIds.add(slOrder.orderId);
+  }
+
   for (const order of orders) {
+    if (coveredOrderIds.has(order.orderId)) continue;
     const price = order.stopPrice ?? order.price;
     if (!price || price <= 0) continue;
     const kind: LineSpec["kind"] =
@@ -687,7 +721,6 @@ export function OrderLinesLayer({
     if (pos.positionAmt === 0 || pos.symbol !== cleanedSym) continue;
     const isLong = pos.positionAmt > 0;
     const posSide: "BUY" | "SELL" = isLong ? "BUY" : "SELL";
-    const closeSide: "BUY" | "SELL" = isLong ? "SELL" : "BUY";
     const qty = Math.abs(pos.positionAmt);
 
     // Entry line (read-only price, but carries live PnL + a close button).
@@ -721,14 +754,7 @@ export function OrderLinesLayer({
 
     // TP / SL: prefer the values attached to the position (Bybit), otherwise
     // fall back to matching reduceOnly orders (Binance).
-    const tpOrder = orders.find(
-      (o) => o.symbol === cleanedSym && o.side === closeSide && o.reduceOnly &&
-        (o.type === "TAKE_PROFIT_MARKET" || o.type === "TAKE_PROFIT"),
-    );
-    const slOrder = orders.find(
-      (o) => o.symbol === cleanedSym && o.side === closeSide && o.reduceOnly &&
-        (o.type === "STOP_MARKET" || o.type === "STOP" || o.type === "STOP_LIMIT"),
-    );
+    const { tpOrder, slOrder } = findTpSlOrders(pos, orders, cleanedSym);
     const tpPrice = pos.takeProfit ?? tpOrder?.stopPrice ?? null;
     const slPrice = pos.stopLoss ?? slOrder?.stopPrice ?? null;
 
