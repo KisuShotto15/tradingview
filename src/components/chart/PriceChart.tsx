@@ -60,6 +60,7 @@ import { snapToOHLC } from "@/lib/chart/snap";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { unifiedHistory, registerViewportApplier, isApplyingHistory } from "@/lib/history";
+import { registerPricePerPixel } from "@/lib/chart/nudge";
 import { generateId, FIB_LEVELS_DEFAULT } from "@/lib/drawings/types";
 import { FIB_EXT_RATIOS_DEFAULT } from "@/lib/drawings/fib";
 import { useAlertMonitor } from "@/hooks/useAlertMonitor";
@@ -871,6 +872,18 @@ export function PriceChart({ symbol, timeframe }: Props) {
     // Register viewport applier so undo/redo can restore pan/zoom
     registerViewportApplier((range) => {
       chart.timeScale().setVisibleLogicalRange({ from: range.from, to: range.to });
+    });
+
+    // Expose the vertical scale so keyboard nudging can move a drawing by whole
+    // pixels regardless of the symbol's price magnitude.
+    registerPricePerPixel(() => {
+      const series = candleSeriesRef.current;
+      if (!series) return null;
+      const top = series.coordinateToPrice(100);
+      const bottom = series.coordinateToPrice(200);
+      if (top === null || bottom === null) return null;
+      const perPixel = Math.abs((top as number) - (bottom as number)) / 100;
+      return perPixel > 0 ? perPixel : null;
     });
 
     let zoomSaveTimer: ReturnType<typeof setTimeout> | null = null;

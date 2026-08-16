@@ -152,3 +152,6 @@ Centralized in `src/hooks/useKeyboardShortcuts.ts`. The chart-level handler is g
 | `Ctrl+Z` / `Cmd+Z` | Undo |
 | `Ctrl+Shift+Z` / `Ctrl+Y` | Redo |
 | `Del` / `Backspace` | Delete selected drawing |
+| `←` `→` `↑` `↓` | Nudge selected drawing (`Shift` = 10x) |
+
+Arrow nudging translates via the pure `translateDrawing()` (`src/lib/drawings/translate.ts`) and follows the drag convention — `updateLive` per keypress, one `commit` once the run settles — so holding a key doesn't spam history or the cloud. Vertical steps are one screen pixel, which the hook gets from a probe `PriceChart` registers in `src/lib/chart/nudge.ts` (same registry pattern as the viewport applier), since only the live chart knows the price-per-pixel scale.
