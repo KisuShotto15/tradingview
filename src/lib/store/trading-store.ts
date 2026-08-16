@@ -27,15 +27,13 @@ export interface OrderForm {
   qty: string;
   /** Currently selected sizing mode. Determines which input is editable. */
   sizingMode: SizingMode;
-  /** Raw text of the editable sizing input (parsed lazily). */
-  sizingInput: string;
   /**
-   * Held risk budget in USD ("" = not risk-driven). When set, it is the fixed
-   * quantity and `qty` becomes the derived one: moving the stop re-sizes the
-   * position instead of changing how much is at stake. Editing the size
-   * directly clears it.
+   * Raw text of the editable sizing input (parsed lazily), in whatever unit
+   * `sizingMode` selects. In the risk modes this is the risk budget, and it is
+   * the value held fixed: moving the stop re-sizes the position rather than
+   * changing how much is at stake.
    */
-  riskUsd: string;
+  sizingInput: string;
   slEnabled: boolean;
   /** Canonical stop-loss PRICE. `slMode` only changes how it's entered. */
   sl: string;
@@ -133,7 +131,6 @@ function defaultForm(): OrderForm {
     qty: "",
     sizingMode: "AMOUNT",
     sizingInput: "",
-    riskUsd: "",
     slEnabled: false,
     sl: "",
     slMode: "PRICE",

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, ChevronUp, KeyRound, RefreshCw } from "lucide-react";
 import { useTradingStore } from "@/lib/store/trading-store";
 import { useChartStore } from "@/lib/store/chart-store";
@@ -49,6 +50,65 @@ const SL_MODE_HINTS: Record<SlMode, string> = {
 /** Fixed-decimal string without trailing zeros — keeps derived inputs typable. */
 function trimNum(n: number, decimals: number): string {
   return String(parseFloat(n.toFixed(decimals)));
+}
+
+/**
+ * Floating menu anchored under `anchorRef`. Rendered in a portal with fixed
+ * positioning: the panel body scrolls (`overflow-y-auto`), which clips
+ * absolutely-positioned children, so a menu opening near the bottom would be
+ * cut off. Closes on outside click, Escape, or scroll/resize.
+ */
+function FloatingMenu({
+  open, onClose, anchorRef, children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  anchorRef: React.RefObject<HTMLElement | null>;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [rect, setRect] = useState<{ left: number; top: number; width: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open || !anchorRef.current) return;
+    const r = anchorRef.current.getBoundingClientRect();
+    setRect({ left: r.left, top: r.bottom + 4, width: r.width });
+  }, [open, anchorRef]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e: MouseEvent) {
+      const t = e.target as Node;
+      if (!ref.current?.contains(t) && !anchorRef.current?.contains(t)) onClose();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    // Capture phase so the menu closes even where a child stops propagation.
+    document.addEventListener("mousedown", onPointerDown, true);
+    document.addEventListener("keydown", onKey);
+    // A fixed menu can't follow the panel, so dismiss rather than drift.
+    window.addEventListener("scroll", onClose, true);
+    window.addEventListener("resize", onClose);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown, true);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onClose, true);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [open, onClose, anchorRef]);
+
+  if (!open || !rect || typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      ref={ref}
+      style={{ position: "fixed", left: rect.left, top: rect.top, minWidth: rect.width }}
+      className="z-50 overflow-hidden rounded-md border border-tv-border bg-tv-panel shadow-xl"
+    >
+      {children}
+    </div>,
+    document.body,
+  );
 }
 
 const TIF_OPTIONS: TimeInForce[] = ["GTC", "IOC", "FOK", "GTX"];
@@ -132,28 +192,21 @@ export function OrderPanel() {
     [referencePrice, sl, tp],
   );
 
-  // While a risk budget is held, it — not the size — is the fixed quantity, so
-  // moving the stop (or the entry) re-sizes the position and leaves the amount
-  // at stake untouched. `ctx` carries the stop, so this reacts to chart drags
-  // too. Writing only on a real change keeps it from looping.
-  const riskTarget = parseFloat(form.riskUsd);
+  // In the risk modes the typed risk is the fixed side, so moving the stop (or
+  // the entry) re-sizes the position instead of changing what's at stake.
+  // `ctx` carries the stop, so this reacts to chart drags too; writing only on
+  // a real change keeps it from looping.
   useEffect(() => {
-    if (!isFinite(riskTarget) || riskTarget <= 0) return;
-    // Without a stop there's no distance to spread the risk over. Release the
-    // lock rather than zeroing out the size the user already had.
-    if (sl === null) {
-      updateForm({ riskUsd: "" });
-      return;
-    }
-    const newQty = sizingToQty("RISK_USD", riskTarget, ctx);
+    if (!modeRequiresSl(form.sizingMode) || sl === null) return;
+    const risk = parseFloat(form.sizingInput);
+    if (!isFinite(risk) || risk <= 0) return;
+    const newQty = sizingToQty(form.sizingMode, risk, ctx);
     const formatted = newQty > 0 ? newQty.toFixed(symInfo.quantityPrecision) : "";
-    if (formatted === form.qty) return;
-    const next = qtyToSizings(newQty, ctx);
-    updateForm({
-      qty: formatted,
-      sizingInput: formatForMode(next[form.sizingMode], form.sizingMode),
-    });
-  }, [riskTarget, sl, ctx, form.qty, form.sizingMode, symInfo.quantityPrecision, updateForm]);
+    if (formatted !== form.qty) updateForm({ qty: formatted });
+  }, [
+    form.sizingMode, form.sizingInput, form.qty, sl, ctx,
+    symInfo.quantityPrecision, updateForm,
+  ]);
 
   if (!apiKey || !apiSecret) {
     return (
@@ -225,42 +278,16 @@ export function OrderPanel() {
             }
           }}
           onChangeInput={(raw) => {
-            // Sizing directly releases any held risk budget — the size is now
-            // the fixed side and the risk goes back to being derived.
             const value = parseFloat(raw);
             if (isFinite(value) && value > 0) {
               const newQty = sizingToQty(form.sizingMode, value, ctx);
               updateForm({
                 sizingInput: raw,
-                riskUsd: "",
                 qty: newQty > 0 ? newQty.toFixed(symInfo.quantityPrecision) : "",
               });
             } else {
-              updateForm({ sizingInput: raw, riskUsd: "", qty: "" });
+              updateForm({ sizingInput: raw, qty: "" });
             }
-          }}
-        />
-
-        <RiskControl
-          value={form.riskUsd}
-          derivedUsd={derived.RISK_USD}
-          riskPct={derived.RISK_PCT}
-          hasSl={sl !== null}
-          onChangeRisk={(raw) => {
-            // Holding the risk makes it the fixed side; the effect above keeps
-            // qty in step from here on (including when the stop moves).
-            const parsed = parseFloat(raw);
-            if (!isFinite(parsed) || parsed <= 0) {
-              updateForm({ riskUsd: raw });
-              return;
-            }
-            const newQty = sizingToQty("RISK_USD", parsed, ctx);
-            const next = qtyToSizings(newQty, ctx);
-            updateForm({
-              riskUsd: raw,
-              qty: newQty > 0 ? newQty.toFixed(symInfo.quantityPrecision) : "",
-              sizingInput: formatForMode(next[form.sizingMode], form.sizingMode),
-            });
           }}
         />
 
@@ -479,6 +506,7 @@ function SizingControl({
   onChangeInput: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement>(null);
   void qtyNum;
   void ctx;
 
@@ -490,7 +518,7 @@ function SizingControl({
   }
 
   return (
-    <div className="space-y-1">
+    <div ref={anchorRef} className="space-y-1">
       <div className="flex items-center justify-between">
         <button
           onClick={() => setOpen((o) => !o)}
@@ -513,83 +541,27 @@ function SizingControl({
           {suffix(mode)}
         </span>
       </div>
-      {open && (
-        <div className="rounded border border-tv-border bg-tv-bg/60">
-          {(Object.keys(SIZING_LABELS) as SizingMode[]).map((m) => (
-            <button
-              key={m}
-              onClick={() => { onChangeMode(m); setOpen(false); }}
-              className={cn(
-                "flex w-full items-center justify-between px-2 py-1 text-[10px]",
-                m === mode
-                  ? "bg-tv-blue/15 text-tv-text"
-                  : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
-              )}
-            >
-              <span>{m === "AMOUNT" ? `Amount (${baseAsset})` : SIZING_LABELS[m]}</span>
-              <span className="font-mono tabular-nums">
-                {derived[m] > 0 ? derived[m].toFixed(m === "AMOUNT" ? 6 : 2) : "—"}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * Risk row: how much this trade loses if the stop hits. Editing it works
- * backwards — risk over the stop distance fixes the position size — which is
- * the "I'll risk 10 USD on this idea" workflow. Needs a stop to measure from.
- */
-function RiskControl({
-  value, derivedUsd, riskPct, hasSl, onChangeRisk,
-}: {
-  /** Held risk budget ("" = risk is merely derived from the current size). */
-  value: string;
-  derivedUsd: number;
-  riskPct: number;
-  hasSl: boolean;
-  onChangeRisk: (raw: string) => void;
-}) {
-  const held = value !== "";
-  const shown = held ? value : derivedUsd > 0 ? derivedUsd.toFixed(2) : "";
-
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wider text-tv-text-muted">
-          Risk{held && <span className="ml-1 text-tv-blue">· locked</span>}
-        </span>
-        {hasSl && riskPct > 0 && (
-          <span className="text-[10px] text-tv-text-muted">
-            {riskPct.toFixed(2)}% of balance
-          </span>
-        )}
-      </div>
-      <div className="relative">
-        <input
-          type="number"
-          step="any"
-          disabled={!hasSl}
-          value={shown}
-          onChange={(e) => onChangeRisk(e.target.value)}
-          placeholder={hasSl ? "0" : "Set a stop loss first"}
-          title={
-            hasSl
-              ? "Max loss if the stop hits. Once set it stays fixed — moving the stop resizes the position instead."
-              : "Enable a stop loss to size the trade by risk"
-          }
-          className={cn(
-            "w-full rounded border bg-tv-bg px-2 py-1.5 pr-10 font-mono text-xs text-tv-text tabular-nums outline-none placeholder:font-sans placeholder:text-[10px] focus:border-tv-blue disabled:cursor-not-allowed disabled:opacity-50",
-            held ? "border-tv-blue/60" : "border-tv-border",
-          )}
-        />
-        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-tv-text-muted">
-          USD
-        </span>
-      </div>
+      <FloatingMenu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef}>
+        {(Object.keys(SIZING_LABELS) as SizingMode[]).map((m) => (
+          <button
+            key={m}
+            onClick={() => { onChangeMode(m); setOpen(false); }}
+            className={cn(
+              "flex w-full items-center justify-between gap-4 px-2.5 py-1.5 text-[10px]",
+              m === mode
+                ? "bg-tv-blue/15 text-tv-text"
+                : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
+            )}
+          >
+            <span className="whitespace-nowrap">
+              {m === "AMOUNT" ? `Amount (${baseAsset})` : SIZING_LABELS[m]}
+            </span>
+            <span className="font-mono tabular-nums">
+              {derived[m] > 0 ? derived[m].toFixed(m === "AMOUNT" ? 6 : 2) : "—"}
+            </span>
+          </button>
+        ))}
+      </FloatingMenu>
     </div>
   );
 }
@@ -608,6 +580,7 @@ function ExitsSection({
 }) {
   const [open, setOpen] = useState(true);
   const [slMenuOpen, setSlMenuOpen] = useState(false);
+  const slAnchorRef = useRef<HTMLDivElement>(null);
   /** Raw text while the SL field is being typed in; null = show the derived
    *  value, so a stop dragged on the chart flows straight back in here. */
   const [slDraft, setSlDraft] = useState<string | null>(null);
@@ -666,7 +639,7 @@ function ExitsSection({
             )}
           </div>
 
-          <div className="space-y-1">
+          <div ref={slAnchorRef} className="space-y-1">
             <div className="flex items-center justify-between">
               <button
                 onClick={() => setSlMenuOpen((o) => !o)}
@@ -677,34 +650,36 @@ function ExitsSection({
               </button>
               <Switch checked={form.slEnabled} onChange={(v) => onPatch({ slEnabled: v })} />
             </div>
-            {slMenuOpen && (
-              <div className="rounded border border-tv-border bg-tv-bg/60">
-                {(Object.keys(SL_MODE_LABELS) as SlMode[]).map((m) => (
-                  <button
-                    key={m}
-                    title={SL_MODE_HINTS[m]}
-                    onClick={() => {
-                      setSlDraft(null);
-                      onPatch({ slMode: m, slEnabled: true });
-                      setSlMenuOpen(false);
-                    }}
-                    className={cn(
-                      "flex w-full items-center justify-between px-2 py-1 text-[10px]",
-                      m === form.slMode
-                        ? "bg-tv-blue/15 text-tv-text"
-                        : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
-                    )}
-                  >
-                    <span>{SL_MODE_LABELS[m]}</span>
-                    <span className="font-mono tabular-nums">
-                      {slPriceToInput(m, slPrice, slCtx) > 0
-                        ? trimNum(slPriceToInput(m, slPrice, slCtx), m === "PRICE" ? pricePrecision : 2)
-                        : "—"}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
+            <FloatingMenu
+              open={slMenuOpen}
+              onClose={() => setSlMenuOpen(false)}
+              anchorRef={slAnchorRef}
+            >
+              {(Object.keys(SL_MODE_LABELS) as SlMode[]).map((m) => (
+                <button
+                  key={m}
+                  title={SL_MODE_HINTS[m]}
+                  onClick={() => {
+                    setSlDraft(null);
+                    onPatch({ slMode: m, slEnabled: true });
+                    setSlMenuOpen(false);
+                  }}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-4 px-2.5 py-1.5 text-[10px]",
+                    m === form.slMode
+                      ? "bg-tv-blue/15 text-tv-text"
+                      : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
+                  )}
+                >
+                  <span className="whitespace-nowrap">{SL_MODE_LABELS[m]}</span>
+                  <span className="font-mono tabular-nums">
+                    {slPriceToInput(m, slPrice, slCtx) > 0
+                      ? trimNum(slPriceToInput(m, slPrice, slCtx), m === "PRICE" ? pricePrecision : 2)
+                      : "—"}
+                  </span>
+                </button>
+              ))}
+            </FloatingMenu>
             {form.slEnabled && (
               <div className="grid grid-cols-[1fr,auto] gap-2">
                 <div className="relative">
