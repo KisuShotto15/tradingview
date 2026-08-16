@@ -112,16 +112,13 @@ interface DragState {
 }
 
 function LineRow({
-  line, y, width, modifying, pending, onMouseDown, onDiscard, onConfirm,
+  line, y, width, modifying, onMouseDown,
 }: {
   line: LineSpec;
   y: number;
   width: number;
   modifying: boolean;
-  pending: boolean;
   onMouseDown: (e: React.MouseEvent) => void;
-  onDiscard?: () => void;
-  onConfirm?: () => void;
 }) {
   const color = colorOf(line.kind);
   // Open-position lines (EP/SL/TP/liq) are solid like TradingView; only pending
@@ -135,13 +132,6 @@ function LineRow({
   const textColor = line.kind === "SL" ? "#000" : "#fff";
   // Right edge of the pill group (leaves room for the close button after it).
   const pillRight = width - closeW - 2;
-
-  // Discard / Confirm controls sit just left of the pill while a change is pending.
-  const DISCARD_W = 58;
-  const CONFIRM_W = 58;
-  const BTN_GAP = 4;
-  const confirmX = pillRight - labelW - BTN_GAP - CONFIRM_W;
-  const discardX = confirmX - BTN_GAP - DISCARD_W;
 
   return (
     <g style={{ opacity: modifying ? 0.55 : 1 }}>
@@ -162,7 +152,7 @@ function LineRow({
       {/* Visible line */}
       <line
         x1={0}
-        x2={(pending ? discardX : pillRight - labelW) - 4}
+        x2={pillRight - labelW - 4}
         y1={y}
         y2={y}
         stroke={color}
@@ -191,31 +181,6 @@ function LineRow({
           {label}
         </text>
       </g>
-      {/* Discard / Confirm (pending dragged change) */}
-      {pending && (
-        <g style={{ pointerEvents: "all" }}>
-          <g
-            style={{ cursor: "pointer" }}
-            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDiscard?.(); }}
-          >
-            <rect x={discardX} y={y - 9} width={DISCARD_W} height={18} rx={3} fill="#2a2e39" stroke="#434651" />
-            <text x={discardX + DISCARD_W / 2} y={y + 4} fill="#d1d4dc" fontSize={10} textAnchor="middle">
-              Discard
-            </text>
-          </g>
-          <g
-            style={{ cursor: "pointer" }}
-            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onConfirm?.(); }}
-          >
-            <rect x={confirmX} y={y - 9} width={CONFIRM_W} height={18} rx={3} fill={LIMIT_COLOR} />
-            <text x={confirmX + CONFIRM_W / 2} y={y + 4} fill="#fff" fontSize={10} fontWeight="bold" textAnchor="middle">
-              Confirm
-            </text>
-          </g>
-        </g>
-      )}
       {/* Close button (open positions) */}
       {hasClose && (
         <g
@@ -243,6 +208,130 @@ function LineRow({
           </text>
         </g>
       )}
+    </g>
+  );
+}
+
+function stopEvt(e: React.MouseEvent) {
+  e.preventDefault();
+  e.stopPropagation();
+}
+
+const chipWidth = (s: string) => Math.max(s.length * 6.4 + 12, 22);
+
+interface PendingCtl {
+  kind: "TP" | "SL";
+  onConfirm: () => void;
+  onDiscard: () => void;
+}
+
+/**
+ * TradingView-style position toolbar rendered on the entry line: a right-aligned
+ * row of chips — [Discard] [Confirm] [TP/SL] [size] [P&L %] [×] — where the
+ * Discard/Confirm/tag chips only appear while a TP/SL drag is pending.
+ */
+function EntryToolbarRow({
+  y, width, qty, pnlPct, onClose, pending,
+}: {
+  y: number;
+  width: number;
+  qty: number;
+  pnlPct: number;
+  onClose?: () => void;
+  pending: PendingCtl | null;
+}) {
+  const H = 18;
+  const GAP = 4;
+  const yTop = y - 9;
+  const chips: { w: number; el: (x: number) => React.ReactNode }[] = [];
+
+  // Close (rightmost).
+  chips.push({
+    w: 18,
+    el: (x) => (
+      <g key="close" style={{ pointerEvents: "all", cursor: "pointer" }} onMouseDown={stopEvt}
+         onClick={(e) => { stopEvt(e); onClose?.(); }}>
+        <rect x={x} y={yTop} width={18} height={H} rx={3} fill={LIMIT_COLOR} />
+        <text x={x + 9} y={y + 4} fill="#fff" fontSize={12} fontWeight="bold" textAnchor="middle">×</text>
+      </g>
+    ),
+  });
+
+  // P&L percent.
+  const pnlStr = `${pnlPct >= 0 ? "+" : "−"}${Math.abs(pnlPct).toFixed(2)}%`;
+  const pnlColor = pnlPct >= 0 ? TP_COLOR : LIQ_COLOR;
+  const pnlW = chipWidth(pnlStr);
+  chips.push({
+    w: pnlW,
+    el: (x) => (
+      <g key="pnl">
+        <rect x={x} y={yTop} width={pnlW} height={H} rx={3} fill="#1e222d" />
+        <text x={x + pnlW / 2} y={y + 4} fill={pnlColor} fontSize={10} fontFamily="var(--font-mono), monospace" textAnchor="middle">{pnlStr}</text>
+      </g>
+    ),
+  });
+
+  // Position size.
+  const sizeStr = String(qty);
+  const sizeW = chipWidth(sizeStr);
+  chips.push({
+    w: sizeW,
+    el: (x) => (
+      <g key="size">
+        <rect x={x} y={yTop} width={sizeW} height={H} rx={3} fill={LIMIT_COLOR} />
+        <text x={x + sizeW / 2} y={y + 4} fill="#fff" fontSize={10} fontWeight="bold" fontFamily="var(--font-mono), monospace" textAnchor="middle">{sizeStr}</text>
+      </g>
+    ),
+  });
+
+  if (pending) {
+    const tagColor = pending.kind === "TP" ? TP_COLOR : SL_COLOR;
+    const tagW = chipWidth(pending.kind);
+    chips.push({
+      w: tagW,
+      el: (x) => (
+        <g key="tag">
+          <rect x={x} y={yTop} width={tagW} height={H} rx={3} fill="none" stroke={tagColor} strokeDasharray="3,2" />
+          <text x={x + tagW / 2} y={y + 4} fill={tagColor} fontSize={10} fontWeight="bold" textAnchor="middle">{pending.kind}</text>
+        </g>
+      ),
+    });
+    chips.push({
+      w: 58,
+      el: (x) => (
+        <g key="confirm" style={{ pointerEvents: "all", cursor: "pointer" }} onMouseDown={stopEvt}
+           onClick={(e) => { stopEvt(e); pending.onConfirm(); }}>
+          <rect x={x} y={yTop} width={58} height={H} rx={3} fill={LIMIT_COLOR} />
+          <text x={x + 29} y={y + 4} fill="#fff" fontSize={10} fontWeight="bold" textAnchor="middle">Confirm</text>
+        </g>
+      ),
+    });
+    chips.push({
+      w: 58,
+      el: (x) => (
+        <g key="discard" style={{ pointerEvents: "all", cursor: "pointer" }} onMouseDown={stopEvt}
+           onClick={(e) => { stopEvt(e); pending.onDiscard(); }}>
+          <rect x={x} y={yTop} width={58} height={H} rx={3} fill="#2a2e39" stroke="#434651" />
+          <text x={x + 29} y={y + 4} fill="#d1d4dc" fontSize={10} textAnchor="middle">Discard</text>
+        </g>
+      ),
+    });
+  }
+
+  // Lay chips out right→left starting at the price axis.
+  let x = width - 2;
+  const placed: React.ReactNode[] = [];
+  for (const c of chips) {
+    x -= c.w;
+    placed.push(c.el(x));
+    x -= GAP;
+  }
+  const lineEnd = Math.max(0, x);
+
+  return (
+    <g>
+      <line x1={0} x2={lineEnd} y1={y} y2={y} stroke={LIMIT_COLOR} strokeWidth={1.6} style={{ pointerEvents: "none" }} />
+      {placed}
     </g>
   );
 }
@@ -565,41 +654,67 @@ export function OrderLinesLayer({
         ))}
 
         {/* Lines */}
-        {lines.map((line, i) => {
-          // While dragging (preview) or awaiting confirmation (pending), draw the
-          // line at the dragged price instead of the stored one.
-          const isPending = !!line.id && pending?.id === line.id;
-          const effPrice =
-            line.id && preview?.id === line.id
-              ? preview.price
-              : isPending
-                ? (pending as { price: number }).price
-                : line.price;
-          const renderLine = effPrice === line.price ? line : { ...line, price: effPrice };
-          const y = candleSeries.priceToCoordinate(effPrice);
-          if (y === null) return null;
-          const yPx = y as number;
-          if (yPx < 0 || yPx > mainPaneHeight) return null;
-          return (
-            <LineRow
-              key={line.id ?? `line-${i}-${line.kind}`}
-              line={renderLine}
-              y={yPx}
-              width={width}
-              modifying={line.modifying ?? false}
-              pending={isPending}
-              onMouseDown={(e) => {
-                if (line.onDrag) startDrag(e, line.onDrag, line.onCommit);
-              }}
-              onDiscard={() => setPending(null)}
-              onConfirm={() => {
-                const pr = (pending as { price: number }).price;
-                setPending(null);
-                void line.confirm?.(pr);
-              }}
-            />
-          );
-        })}
+        {(() => {
+          // Resolve the pending (TP/SL) line so its Discard/Confirm controls can
+          // be shown on the entry-price toolbar.
+          const pendingLine = pending ? lines.find((l) => l.id === pending.id) : undefined;
+          const pendingCtl: PendingCtl | null =
+            pending && pendingLine && (pendingLine.kind === "TP" || pendingLine.kind === "SL")
+              ? {
+                  kind: pendingLine.kind,
+                  onConfirm: () => {
+                    const pr = pending.price;
+                    setPending(null);
+                    void pendingLine.confirm?.(pr);
+                  },
+                  onDiscard: () => setPending(null),
+                }
+              : null;
+
+          return lines.map((line, i) => {
+            // While dragging (preview) or awaiting confirmation (pending), draw the
+            // line at the dragged price instead of the stored one.
+            const effPrice =
+              line.id && preview?.id === line.id
+                ? preview.price
+                : line.id && pending?.id === line.id
+                  ? pending.price
+                  : line.price;
+            const y = candleSeries.priceToCoordinate(effPrice);
+            if (y === null) return null;
+            const yPx = y as number;
+            if (yPx < 0 || yPx > mainPaneHeight) return null;
+
+            // The open-position entry line renders as the chip toolbar.
+            if (line.kind === "LIMIT" && line.isPosition) {
+              return (
+                <EntryToolbarRow
+                  key={line.id ?? `entry-${i}`}
+                  y={yPx}
+                  width={width}
+                  qty={line.qty}
+                  pnlPct={line.livePct ?? 0}
+                  onClose={line.onClose}
+                  pending={pendingCtl}
+                />
+              );
+            }
+
+            const renderLine = effPrice === line.price ? line : { ...line, price: effPrice };
+            return (
+              <LineRow
+                key={line.id ?? `line-${i}-${line.kind}`}
+                line={renderLine}
+                y={yPx}
+                width={width}
+                modifying={line.modifying ?? false}
+                onMouseDown={(e) => {
+                  if (line.onDrag) startDrag(e, line.onDrag, line.onCommit);
+                }}
+              />
+            );
+          });
+        })()}
       </g>
     </svg>
   );
