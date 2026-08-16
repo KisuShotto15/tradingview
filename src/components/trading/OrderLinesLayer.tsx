@@ -13,6 +13,8 @@ const LIMIT_COLOR = "#2962ff";
 const TP_COLOR = "#26a69a";
 const SL_COLOR = "#fbc02d";
 const LIQ_COLOR = "#ff5252";
+/** Gap kept between the labels/toolbar and the price scale on the right. */
+const AXIS_GAP = 16;
 
 interface Props {
   chart: IChartApi | null;
@@ -94,8 +96,9 @@ function pillText(line: LineSpec): { left: string; right: string } {
         ? Math.abs(line.price - line.entryPrice) * line.qty
         : Math.abs(line.entryPrice - line.price) * line.qty;
     const sign = line.kind === "TP" ? "+" : "−";
+    // Only the USD amount on TP/SL pills — the size lives on the entry toolbar.
     return {
-      left: qtyStr,
+      left: "",
       right: `${sign}${pnl.toFixed(2)} USD`,
     };
   }
@@ -125,13 +128,13 @@ function LineRow({
   // orders and form previews stay dashed.
   const dashed = !line.isPosition && line.kind !== "LIMIT";
   const { left, right } = pillText(line);
-  const label = modifying ? "Modifying…" : `${left} · ${right}`;
+  const label = modifying ? "Modifying…" : [left, right].filter(Boolean).join(" · ");
   const labelW = Math.max(label.length * 6.2 + 14, 90);
   const hasClose = !!line.onClose && !modifying;
   const closeW = hasClose ? 18 : 0;
   const textColor = line.kind === "SL" ? "#000" : "#fff";
-  // Right edge of the pill group (leaves room for the close button after it).
-  const pillRight = width - closeW - 2;
+  // Right edge of the pill group (leaves room for the close button + axis gap).
+  const pillRight = width - closeW - AXIS_GAP;
 
   return (
     <g style={{ opacity: modifying ? 0.55 : 1 }}>
@@ -195,9 +198,9 @@ function LineRow({
             line.onClose?.();
           }}
         >
-          <rect x={width - 18} y={y - 9} width={16} height={18} fill={color} rx={2} />
+          <rect x={width - AXIS_GAP - 16} y={y - 9} width={16} height={18} fill={color} rx={2} />
           <text
-            x={width - 10}
+            x={width - AXIS_GAP - 8}
             y={y + 4}
             fill={textColor}
             fontSize={12}
@@ -318,8 +321,8 @@ function EntryToolbarRow({
     });
   }
 
-  // Lay chips out right→left starting at the price axis.
-  let x = width - 2;
+  // Lay chips out right→left, kept clear of the price scale.
+  let x = width - AXIS_GAP;
   const placed: React.ReactNode[] = [];
   for (const c of chips) {
     x -= c.w;
