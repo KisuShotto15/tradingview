@@ -60,10 +60,10 @@ interface LineSpec {
   isPreviewOrder?: boolean;
   /** Order type shown on the preview toolbar (e.g. "Limit", "Stop"). */
   typeLabel?: string;
-  tpEnabled?: boolean;
-  slEnabled?: boolean;
-  onToggleTp?: () => void;
-  onToggleSl?: () => void;
+  /** Press-and-drag handlers for the TP/SL placement chips. Only set while the
+   *  corresponding bracket is unset. */
+  onPlaceTp?: (e: React.MouseEvent) => void;
+  onPlaceSl?: (e: React.MouseEvent) => void;
   /** Dismiss the staged order (clears the preview line from the chart). */
   onCancel?: () => void;
   /** When true, render the line in a "modifying…" muted style. */
@@ -298,6 +298,44 @@ function stopEvt(e: React.MouseEvent) {
 
 const chipWidth = (s: string) => Math.max(s.length * 7 + 12, 24);
 
+/**
+ * "Place a TP/SL" chip. Shown only while that bracket is unset; pressing it
+ * starts a drag that positions the new level (a plain click drops it at a
+ * default offset), so it reads like grabbing the line straight off the button.
+ */
+function bracketChip(
+  key: string,
+  label: string,
+  color: string,
+  y: number,
+  yTop: number,
+  h: number,
+  onMouseDown: (e: React.MouseEvent) => void,
+) {
+  const w = chipWidth(label);
+  return {
+    w,
+    el: (x: number) => (
+      <g
+        key={key}
+        style={{ pointerEvents: "all", cursor: "ns-resize" }}
+        onMouseDown={onMouseDown}
+      >
+        <rect
+          x={x} y={yTop} width={w} height={h} rx={3}
+          fill="#0a0a0a" stroke={color} strokeDasharray="3,2"
+        />
+        <text
+          x={x + w / 2} y={y + 4}
+          fill={color} fontSize={11} fontWeight="bold" textAnchor="middle"
+        >
+          {label}
+        </text>
+      </g>
+    ),
+  };
+}
+
 interface PendingCtl {
   kind: "TP" | "SL";
   onConfirm: () => void;
@@ -310,7 +348,7 @@ interface PendingCtl {
  * Discard/Confirm/tag chips only appear while a TP/SL drag is pending.
  */
 function EntryToolbarRow({
-  y, width, qty, pnlPct, onClose, pending,
+  y, width, qty, pnlPct, onClose, pending, onPlaceTp, onPlaceSl,
 }: {
   y: number;
   width: number;
@@ -318,6 +356,9 @@ function EntryToolbarRow({
   pnlPct: number;
   onClose?: () => void;
   pending: PendingCtl | null;
+  /** Present only while that bracket is unset — press-and-drag to place it. */
+  onPlaceTp?: (e: React.MouseEvent) => void;
+  onPlaceSl?: (e: React.MouseEvent) => void;
 }) {
   const H = 20;
   const GAP = 4;
@@ -366,6 +407,10 @@ function EntryToolbarRow({
       </g>
     ),
   });
+
+  // Bracket placement chips, to the left of the size chip.
+  if (onPlaceSl) chips.push(bracketChip("place-sl", "SL", SL_COLOR, y, yTop, H, onPlaceSl));
+  if (onPlaceTp) chips.push(bracketChip("place-tp", "TP", TP_COLOR, y, yTop, H, onPlaceTp));
 
   if (pending) {
     const tagColor = pending.kind === "TP" ? TP_COLOR : SL_COLOR;
@@ -421,22 +466,22 @@ function EntryToolbarRow({
 
 /**
  * Toolbar for the order being staged in the form (not yet sent to the
- * exchange): a dashed line plus [Buy] [TP] [SL] [qty] [Limit] [×] chips. TP/SL
- * toggle their bracket levels, × dismisses the staged order.
+ * exchange): a dashed line plus [Buy] [TP] [SL] [qty] [Limit] [×] chips. The
+ * TP/SL chips are press-and-drag affordances for placing those brackets, and
+ * × dismisses the staged order.
  */
 function PreviewOrderRow({
-  y, width, qty, side, typeLabel, tpEnabled, slEnabled,
-  onToggleTp, onToggleSl, onCancel, onMouseDown,
+  y, width, qty, side, typeLabel,
+  onPlaceTp, onPlaceSl, onCancel, onMouseDown,
 }: {
   y: number;
   width: number;
   qty: number;
   side: "BUY" | "SELL";
   typeLabel: string;
-  tpEnabled: boolean;
-  slEnabled: boolean;
-  onToggleTp?: () => void;
-  onToggleSl?: () => void;
+  /** Present only while that bracket is unset — press-and-drag to place it. */
+  onPlaceTp?: (e: React.MouseEvent) => void;
+  onPlaceSl?: (e: React.MouseEvent) => void;
   onCancel?: () => void;
   onMouseDown: (e: React.MouseEvent) => void;
 }) {
@@ -475,45 +520,10 @@ function PreviewOrderRow({
     ),
   });
 
-  // SL then TP — dashed outlines, filled in when the bracket is active.
-  const bracket = (
-    key: string,
-    label: string,
-    color: string,
-    enabled: boolean,
-    onToggle?: () => void,
-  ) => {
-    const w = chipWidth(label);
-    return {
-      w,
-      el: (x: number) => (
-        <g
-          key={key}
-          style={{ pointerEvents: "all", cursor: "pointer" }}
-          onMouseDown={stopEvt}
-          onClick={(e) => { stopEvt(e); onToggle?.(); }}
-        >
-          <rect
-            x={x} y={yTop} width={w} height={H} rx={3}
-            fill={enabled ? color : "#0a0a0a"}
-            stroke={color}
-            strokeDasharray={enabled ? undefined : "3,2"}
-          />
-          <text
-            x={x + w / 2} y={y + 4}
-            fill={enabled ? "#0a0a0a" : color}
-            fontSize={11} fontWeight="bold" textAnchor="middle"
-          >
-            {label}
-          </text>
-        </g>
-      ),
-    };
-  };
-  // Brackets are perp-only; the handlers are omitted elsewhere, so skip the
-  // chips rather than offer a toggle that can't do anything.
-  if (onToggleSl) chips.push(bracket("sl", "SL", SL_COLOR, slEnabled, onToggleSl));
-  if (onToggleTp) chips.push(bracket("tp", "TP", TP_COLOR, tpEnabled, onToggleTp));
+  // Bracket placement chips — omitted once set (the line itself takes over) and
+  // on spot, where placeOrder doesn't support brackets.
+  if (onPlaceSl) chips.push(bracketChip("sl", "SL", SL_COLOR, y, yTop, H, onPlaceSl));
+  if (onPlaceTp) chips.push(bracketChip("tp", "TP", TP_COLOR, y, yTop, H, onPlaceTp));
 
   // Side chip (solid, like TradingView's Buy/Sell tag).
   const sideLabel = side === "BUY" ? "Buy" : "Sell";
@@ -761,10 +771,13 @@ export function OrderLinesLayer({
     e: React.MouseEvent,
     onDrag: (price: number) => void,
     onCommit?: (price: number) => void,
+    /** Seeds `lastPrice` so a click that never moves still commits (used by the
+     *  TP/SL placement chips, where a plain click means "use the default"). */
+    initialPrice?: number,
   ) {
     e.preventDefault();
     e.stopPropagation();
-    dragRef.current = { onDrag, onCommit, lastPrice: NaN };
+    dragRef.current = { onDrag, onCommit, lastPrice: initialPrice ?? NaN };
   }
 
   if (!chart || !candleSeries) return null;
@@ -806,25 +819,35 @@ export function OrderLinesLayer({
         form.type === "STOP_LIMIT" || form.type === "STOP" ? "Stop"
         : form.type === "STOP_MARKET" ? "Stop mkt"
         : "Limit",
-      tpEnabled: form.tpEnabled,
-      slEnabled: form.slEnabled,
-      // TP/SL brackets are perp-only (see placeOrder), so no toggle on spot.
-      onToggleTp: perp
-        ? () =>
-            updateForm(
-              form.tpEnabled
-                ? { tpEnabled: false }
-                : { tpEnabled: true, ...(tpPrice > 0 ? {} : { tp: bracketPrice(0.02, true) }) },
-            )
-        : undefined,
-      onToggleSl: perp
-        ? () =>
-            updateForm(
-              form.slEnabled
-                ? { slEnabled: false }
-                : { slEnabled: true, ...(slPrice > 0 ? {} : { sl: bracketPrice(0.01, false) }) },
-            )
-        : undefined,
+      // TP/SL brackets are perp-only (see placeOrder). Pressing the chip drops
+      // the level at the default offset and keeps dragging it, so a plain click
+      // places it and a drag positions it precisely.
+      onPlaceTp:
+        perp && !hasPreviewTP
+          ? (e) => {
+              const dflt = bracketPrice(0.02, true);
+              updateForm({ tpEnabled: true, tp: dflt });
+              startDrag(
+                e,
+                (p) => updateForm({ tpEnabled: true, tp: p.toFixed(2) }),
+                undefined,
+                parseFloat(dflt),
+              );
+            }
+          : undefined,
+      onPlaceSl:
+        perp && !hasPreviewSL
+          ? (e) => {
+              const dflt = bracketPrice(0.01, false);
+              updateForm({ slEnabled: true, sl: dflt });
+              startDrag(
+                e,
+                (p) => updateForm({ slEnabled: true, sl: p.toFixed(2) }),
+                undefined,
+                parseFloat(dflt),
+              );
+            }
+          : undefined,
       // Clearing the price drops the staged order (and its brackets) from the
       // chart without touching the panel's other settings.
       onCancel: () => updateForm({ price: "", tpEnabled: false, slEnabled: false }),
@@ -838,6 +861,7 @@ export function OrderLinesLayer({
       qty: qtyNum || 0,
       side: form.side,
       entryPrice: entryPrice || undefined,
+      onRemove: () => updateForm({ tpEnabled: false }),
       onDrag: (p) => updateForm({ tp: p.toFixed(2) }),
     });
   }
@@ -848,6 +872,7 @@ export function OrderLinesLayer({
       qty: qtyNum || 0,
       side: form.side,
       entryPrice: entryPrice || undefined,
+      onRemove: () => updateForm({ slEnabled: false }),
       onDrag: (p) => updateForm({ sl: p.toFixed(2) }),
     });
   }
@@ -906,6 +931,37 @@ export function OrderLinesLayer({
     const posSide: "BUY" | "SELL" = isLong ? "BUY" : "SELL";
     const qty = Math.abs(pos.positionAmt);
 
+    // TP / SL: prefer the values attached to the position (Bybit), otherwise
+    // fall back to matching reduceOnly orders (Binance). A level being dragged
+    // (or awaiting confirmation) overrides the stored one — which is also what
+    // makes a BRAND NEW bracket render before it exists on the exchange.
+    const { tpOrder, slOrder } = findTpSlOrders(pos, orders, cleanedSym);
+    const tpId = `${cleanedSym}-TP`;
+    const slId = `${cleanedSym}-SL`;
+    const effOf = (id: string, base: number | null) =>
+      preview?.id === id ? preview.price : pending?.id === id ? pending.price : base;
+    const tpPrice = pos.takeProfit ?? tpOrder?.stopPrice ?? null;
+    const slPrice = pos.stopLoss ?? slOrder?.stopPrice ?? null;
+    const effTp = effOf(tpId, tpPrice);
+    const effSl = effOf(slId, slPrice);
+
+    // Press-and-drag placement for a bracket the position doesn't have yet.
+    const startPlace = (id: string, pct: number, favourable: boolean) =>
+      (e: React.MouseEvent) => {
+        const dir = isLong === favourable ? 1 : -1;
+        const dflt = pos.entryPrice * (1 + dir * pct);
+        setPreview({ id, price: dflt });
+        startDrag(
+          e,
+          (p) => setPreview({ id, price: p }),
+          (p) => {
+            setPreview(null);
+            setPending({ id, price: p });
+          },
+          dflt,
+        );
+      };
+
     // Entry line (read-only price, but carries live PnL + a close button).
     // The percentage shown is how far PRICE has moved from the entry — not the
     // leveraged ROI (`pos.percentage`), matching TradingView's position line.
@@ -922,6 +978,8 @@ export function OrderLinesLayer({
       livePnl: pos.unrealizedProfit,
       livePct: pricePct,
       onClose: () => void closePosition(symbol, pos),
+      onPlaceTp: effTp && effTp > 0 ? undefined : startPlace(tpId, 0.02, true),
+      onPlaceSl: effSl && effSl > 0 ? undefined : startPlace(slId, 0.01, false),
     });
 
     // Liquidation line (read-only).
@@ -935,50 +993,48 @@ export function OrderLinesLayer({
       });
     }
 
-    // TP / SL: prefer the values attached to the position (Bybit), otherwise
-    // fall back to matching reduceOnly orders (Binance).
-    const { tpOrder, slOrder } = findTpSlOrders(pos, orders, cleanedSym);
-    const tpPrice = pos.takeProfit ?? tpOrder?.stopPrice ?? null;
-    const slPrice = pos.stopLoss ?? slOrder?.stopPrice ?? null;
-
-    if (tpPrice && tpPrice > 0) {
-      const id = `${cleanedSym}-TP`;
+    if (effTp && effTp > 0) {
       lines.push({
         kind: "TP",
-        id,
-        price: tpPrice,
+        id: tpId,
+        price: tpPrice ?? effTp,
         qty,
         side: posSide,
         entryPrice: pos.entryPrice,
         isPosition: true,
-        onDrag: (p) => setPreview({ id, price: p }),
+        onDrag: (p) => setPreview({ id: tpId, price: p }),
         onCommit: (p) => {
           setPreview(null);
-          if (Math.abs(p - tpPrice) > 1e-9) setPending({ id, price: p });
+          if (tpPrice === null || Math.abs(p - tpPrice) > 1e-9) setPending({ id: tpId, price: p });
         },
         confirm: async (p) => { await setPositionTpSl(symbol, pos, { tp: p }); },
+        onRemove: () => {
+          if (pending?.id === tpId) setPending(null);
+          // A never-committed level only lives in local state — nothing to clear
+          // on the exchange.
+          if (tpPrice !== null) void setPositionTpSl(symbol, pos, { tp: null });
+        },
         modifying: modifyingOrderId === tpOrder?.orderId,
       });
     }
-    if (slPrice && slPrice > 0) {
-      const id = `${cleanedSym}-SL`;
+    if (effSl && effSl > 0) {
       lines.push({
         kind: "SL",
-        id,
-        price: slPrice,
+        id: slId,
+        price: slPrice ?? effSl,
         qty,
         side: posSide,
         entryPrice: pos.entryPrice,
         isPosition: true,
-        onDrag: (p) => setPreview({ id, price: p }),
+        onDrag: (p) => setPreview({ id: slId, price: p }),
         onCommit: (p) => {
           setPreview(null);
-          if (Math.abs(p - slPrice) > 1e-9) setPending({ id, price: p });
+          if (slPrice === null || Math.abs(p - slPrice) > 1e-9) setPending({ id: slId, price: p });
         },
         confirm: async (p) => { await setPositionTpSl(symbol, pos, { sl: p }); },
         onRemove: () => {
-          if (pending?.id === id) setPending(null);
-          void setPositionTpSl(symbol, pos, { sl: null });
+          if (pending?.id === slId) setPending(null);
+          if (slPrice !== null) void setPositionTpSl(symbol, pos, { sl: null });
         },
         modifying: modifyingOrderId === slOrder?.orderId,
       });
@@ -986,12 +1042,6 @@ export function OrderLinesLayer({
 
     // Shaded zones for the open position (entry↔TP green, entry↔SL red). While a
     // line is being dragged/pending, the zone tracks its effective price.
-    const tpId = `${cleanedSym}-TP`;
-    const slId = `${cleanedSym}-SL`;
-    const effOf = (id: string, base: number | null) =>
-      preview?.id === id ? preview.price : pending?.id === id ? pending.price : base;
-    const effTp = effOf(tpId, tpPrice);
-    const effSl = effOf(slId, slPrice);
     const yEntryPos = candleSeries.priceToCoordinate(pos.entryPrice);
     if (yEntryPos !== null) {
       if (effTp && effTp > 0) {
@@ -1116,6 +1166,8 @@ export function OrderLinesLayer({
                   pnlPct={line.livePct ?? 0}
                   onClose={line.onClose}
                   pending={pendingCtl}
+                  onPlaceTp={line.onPlaceTp}
+                  onPlaceSl={line.onPlaceSl}
                 />
               );
             }
@@ -1130,10 +1182,8 @@ export function OrderLinesLayer({
                   qty={line.qty}
                   side={line.side}
                   typeLabel={line.typeLabel ?? "Limit"}
-                  tpEnabled={line.tpEnabled ?? false}
-                  slEnabled={line.slEnabled ?? false}
-                  onToggleTp={line.onToggleTp}
-                  onToggleSl={line.onToggleSl}
+                  onPlaceTp={line.onPlaceTp}
+                  onPlaceSl={line.onPlaceSl}
                   onCancel={line.onCancel}
                   onMouseDown={(e) => {
                     if (line.onDrag) startDrag(e, line.onDrag, line.onCommit);
