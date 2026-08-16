@@ -2182,6 +2182,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
     async function load() {
       try {
+        // Capture the current view BEFORE wiping, so a symbol/timeframe change
+        // keeps the same zoom + scroll position instead of snapping to default.
+        const prevRange = chartRef.current?.timeScale().getVisibleLogicalRange();
+        const prevLastIdx = candlesRef.current.length - 1;
+
         // Immediately wipe previous symbol's data so stale candles never linger.
         candlesRef.current = [];
         globalCandlesRef.current = [];
@@ -2227,16 +2232,24 @@ export function PriceChart({ symbol, timeframe }: Props) {
         updateSqueeze();
         updateVumanchu();
         updateOBV();
-        // Show the user's preferred number of recent bars (persisted across
-        // loads). Bypasses lightweight-charts' default "fit all" which zooms
-        // out way too far for 1000 bars.
         if (chartRef.current && klines.length > 0) {
-          const bars = useChartStore.getState().visibleBars;
           const lastIdx = klines.length - 1;
-          chartRef.current.timeScale().setVisibleLogicalRange({
-            from: Math.max(0, lastIdx - bars + 1),
-            to: lastIdx + 4,
-          });
+          if (prevRange && prevLastIdx >= 0) {
+            // Preserve the previous zoom (span) and right-edge offset so the new
+            // symbol shows at the same scale/position the user was looking at.
+            const span = prevRange.to - prevRange.from;
+            const rightOffset = prevRange.to - prevLastIdx;
+            const to = lastIdx + rightOffset;
+            chartRef.current.timeScale().setVisibleLogicalRange({ from: to - span, to });
+          } else {
+            // First load: show the user's preferred number of recent bars.
+            // Bypasses lightweight-charts' default "fit all" which zooms out too far.
+            const bars = useChartStore.getState().visibleBars;
+            chartRef.current.timeScale().setVisibleLogicalRange({
+              from: Math.max(0, lastIdx - bars + 1),
+              to: lastIdx + 4,
+            });
+          }
         }
         // Recompute pane offsets in multiple frames: lightweight-charts needs
         // at least two render cycles after setData() to settle pane heights.

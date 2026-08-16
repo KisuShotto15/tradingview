@@ -14,7 +14,7 @@ const TP_COLOR = "#26a69a";
 const SL_COLOR = "#fbc02d";
 const LIQ_COLOR = "#ff5252";
 /** Gap kept between the labels/toolbar and the price scale on the right. */
-const AXIS_GAP = 72;
+const AXIS_GAP = 48;
 
 interface Props {
   chart: IChartApi | null;
@@ -405,6 +405,11 @@ export function OrderLinesLayer({
 
   if (!chart || !candleSeries) return null;
 
+  // Right-align labels to the plot area's edge (left of the price scale), not the
+  // full container width (which includes the ~60px price scale). Using the plot
+  // width makes AXIS_GAP an actual visible gap from the scale.
+  const plotW = chart.timeScale().width() || width;
+
   const perp = isPerp(symbol);
   const lines: LineSpec[] = [];
   const zones: { y1: number; y2: number; color: string; opacity: number }[] = [];
@@ -694,7 +699,7 @@ export function OrderLinesLayer({
                 <EntryToolbarRow
                   key={line.id ?? `entry-${i}`}
                   y={yPx}
-                  width={width}
+                  width={plotW}
                   qty={line.qty}
                   pnlPct={line.livePct ?? 0}
                   onClose={line.onClose}
@@ -709,7 +714,7 @@ export function OrderLinesLayer({
                 key={line.id ?? `line-${i}-${line.kind}`}
                 line={renderLine}
                 y={yPx}
-                width={width}
+                width={plotW}
                 modifying={line.modifying ?? false}
                 onMouseDown={(e) => {
                   if (line.onDrag) startDrag(e, line.onDrag, line.onCommit);
