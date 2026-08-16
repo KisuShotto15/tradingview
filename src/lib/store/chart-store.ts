@@ -333,6 +333,10 @@ interface ChartState {
    *  favorites bar. Null = not placed yet (defaults to top-centered). */
   favoritesBarPos: { x: number; y: number } | null;
 
+  /** Persisted width (px) of the right sidebar (watchlist/objects/trade tabs),
+   *  resized by dragging its left edge. */
+  rightSidebarWidth: number;
+
   /**
    * Per-drawing-kind defaults (color, lineWidth, lineStyle). Applied to new
    * drawings. Updated when the user edits a drawing's style — so next time
@@ -393,6 +397,7 @@ interface ChartState {
   /** Replace the favorites order (drag-to-reorder in the favorites bar). */
   setFavoriteTools: (tools: DrawingTool[]) => void;
   setFavoritesBarPos: (pos: { x: number; y: number } | null) => void;
+  setRightSidebarWidth: (width: number) => void;
   setToolDefault: (
     kind: string,
     patch: { color?: string; lineWidth?: number; lineStyle?: 0 | 1 | 2; [key: string]: unknown },
@@ -489,6 +494,7 @@ export const useChartStore = create<ChartState>()(
       pinnedTimeframes: ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"] as Timeframe[],
       favoriteTools: [],
       favoritesBarPos: null,
+      rightSidebarWidth: 256,
       toolDefaults: {},
       ...initialWatchlists(),
       chartColors: { ...DEFAULT_CHART_COLORS },
@@ -719,6 +725,8 @@ export const useChartStore = create<ChartState>()(
         })),
       setFavoriteTools: (favoriteTools) => set({ favoriteTools }),
       setFavoritesBarPos: (favoritesBarPos) => set({ favoritesBarPos }),
+      setRightSidebarWidth: (width) =>
+        set({ rightSidebarWidth: Math.min(520, Math.max(200, width)) }),
 
       applySnapshot: (snap) => {
         withoutHistory(() => {
@@ -931,6 +939,7 @@ export const useChartStore = create<ChartState>()(
         pinnedTimeframes: s.pinnedTimeframes,
         favoriteTools: s.favoriteTools,
         favoritesBarPos: s.favoritesBarPos,
+        rightSidebarWidth: s.rightSidebarWidth,
         toolDefaults: s.toolDefaults,
         watchlists: s.watchlists,
         activeWatchlistId: s.activeWatchlistId,

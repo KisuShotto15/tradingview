@@ -1,19 +1,57 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { BarChart2, Layers, List } from "lucide-react";
 import { Watchlist } from "@/components/watchlist/Watchlist";
 import { OrderPanel } from "@/components/trading/OrderPanel/OrderPanel";
 import { ObjectTreePanel } from "@/components/chart/ObjectTreePanel";
+import { useChartStore } from "@/lib/store/chart-store";
 import { cn } from "@/lib/utils";
 
 type Tab = "watchlist" | "objects" | "trade";
 
 export function RightSidebar() {
   const [tab, setTab] = useState<Tab>("watchlist");
+  const width = useChartStore((s) => s.rightSidebarWidth);
+  const setWidth = useChartStore((s) => s.setRightSidebarWidth);
+
+  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const [resizing, setResizing] = useState(false);
+
+  function startResize(e: React.PointerEvent) {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startWidth: width };
+    setResizing(true);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+  function onResizeMove(e: React.PointerEvent) {
+    if (!dragRef.current) return;
+    // The sidebar sits on the right edge, so dragging the left border left
+    // (negative dx) grows it and dragging right shrinks it.
+    const dx = e.clientX - dragRef.current.startX;
+    setWidth(dragRef.current.startWidth - dx);
+  }
+  function endResize(e: React.PointerEvent) {
+    dragRef.current = null;
+    setResizing(false);
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+  }
 
   return (
-    <aside className="flex w-64 flex-col border-l border-tv-border bg-tv-panel">
+    <aside
+      className="relative flex shrink-0 flex-col border-l border-tv-border bg-tv-panel"
+      style={{ width }}
+    >
+      {/* Resize handle — drag the left edge to resize */}
+      <div
+        onPointerDown={startResize}
+        onPointerMove={onResizeMove}
+        onPointerUp={endResize}
+        className={cn(
+          "absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize",
+          resizing && "bg-tv-blue/30",
+        )}
+      />
       {/* Tab bar */}
       <div className="flex border-b border-tv-border">
         <button
