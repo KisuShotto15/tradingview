@@ -1,4 +1,5 @@
 import type { Candle, Timeframe } from "@/lib/binance/types";
+import { stripExchangePrefix } from "@/lib/symbols/prefix";
 
 /**
  * Bybit public market data (no credentials). Used to chart Bybit linear perps
@@ -32,9 +33,9 @@ export function bybitInterval(tf: Timeframe): string {
   return INTERVAL[tf] ?? "60";
 }
 
-/** Strip the ".P" perp suffix to get the raw Bybit symbol (e.g. BTCUSDT). */
+/** Raw Bybit symbol (e.g. BTCUSDT): drop any `BYBIT:` prefix and `.P` suffix. */
 export function bybitSymbol(s: string): string {
-  return s.toUpperCase().replace(/\.P$/, "");
+  return stripExchangePrefix(s).replace(/\.P$/, "");
 }
 
 interface BybitKlineResp {
@@ -115,15 +116,17 @@ interface TickersResp {
  */
 export async function fetchBybitTickers24h(symbols: string[]): Promise<BybitTicker24h[]> {
   if (symbols.length === 0) return [];
-  const want = new Set(symbols.map((s) => bybitSymbol(s)));
+  // Map each bare Bybit symbol back to the caller's exact ticker (which may
+  // carry a BYBIT: prefix), so watchlist rows keyed by that ticker match.
+  const bareToInput = new Map(symbols.map((s) => [bybitSymbol(s), s]));
   const res = await fetch(`${BASE}/v5/market/tickers?category=linear`, { cache: "no-store" });
   if (!res.ok) throw new Error(`bybit tickers ${res.status}`);
   const data = (await res.json()) as TickersResp;
   if (data.retCode !== 0) throw new Error(data.retMsg || "bybit tickers error");
   return (data.result.list ?? [])
-    .filter((t) => want.has(t.symbol))
+    .filter((t) => bareToInput.has(t.symbol))
     .map((t) => ({
-      symbol: `${t.symbol}.P`,
+      symbol: bareToInput.get(t.symbol) as string,
       lastPrice: parseFloat(t.lastPrice),
       priceChangePercent: parseFloat(t.price24hPcnt) * 100,
     }));

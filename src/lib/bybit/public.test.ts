@@ -3,6 +3,7 @@ import { expect } from "@/test-utils/expect";
 import { bybitInterval, bybitSymbol } from "@/lib/bybit/public";
 import { registerDynamicEntries } from "@/lib/symbols/catalog";
 import { resolveSource } from "@/lib/symbols/source";
+import { cleanSym, isPerp } from "@/lib/binance/rest";
 
 test("bybitInterval maps app timeframes to Bybit codes", () => {
   expect(bybitInterval("1m")).toBe("1");
@@ -16,10 +17,11 @@ test("bybitInterval maps app timeframes to Bybit codes", () => {
   expect(bybitInterval("3d")).toBe("D");
 });
 
-test("bybitSymbol strips the .P perp suffix", () => {
+test("bybitSymbol strips the BYBIT: prefix and .P perp suffix", () => {
   expect(bybitSymbol("BTCUSDT.P")).toBe("BTCUSDT");
   expect(bybitSymbol("myrousdt.p")).toBe("MYROUSDT");
   expect(bybitSymbol("ETHUSDT")).toBe("ETHUSDT");
+  expect(bybitSymbol("BYBIT:SOLUSDT.P")).toBe("SOLUSDT");
 });
 
 test("resolveSource routes a registered Bybit-exclusive perp to bybit", () => {
@@ -40,4 +42,17 @@ test("resolveSource routes a registered Bybit-exclusive perp to bybit", () => {
 test("resolveSource still defaults unknown perps to binance", () => {
   const src = resolveSource("BTCUSDT.P");
   expect(src.kind).toBe("binance");
+});
+
+test("resolveSource routes a BYBIT: prefixed shared perp to bybit data", () => {
+  const src = resolveSource("BYBIT:SOLUSDT.P");
+  expect(src.kind).toBe("bybit");
+  if (src.kind === "bybit") expect(src.providerSymbol).toBe("SOLUSDT");
+});
+
+test("trading helpers understand the BYBIT: prefix", () => {
+  // Perp detection unaffected; cleanSym yields the raw exchange symbol.
+  expect(isPerp("BYBIT:SOLUSDT.P")).toBe(true);
+  expect(cleanSym("BYBIT:SOLUSDT.P")).toBe("SOLUSDT");
+  expect(cleanSym("SOLUSDT.P")).toBe("SOLUSDT");
 });

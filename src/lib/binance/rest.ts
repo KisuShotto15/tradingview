@@ -1,4 +1,5 @@
 import type { Candle, SymbolInfo, Ticker24h, Timeframe } from "./types";
+import { stripExchangePrefix } from "@/lib/symbols/prefix";
 
 const SPOT_BASE = "https://api.binance.com/api/v3";
 const FUTURES_BASE = "https://fapi.binance.com/fapi/v1";
@@ -7,9 +8,9 @@ const FUTURES_BASE = "https://fapi.binance.com/fapi/v1";
 export function isPerp(s: string): boolean {
   return s.toUpperCase().endsWith(".P");
 }
-/** Strip the .P suffix to get the raw Binance ticker. */
+/** Bare exchange ticker: drop any `BYBIT:` prefix and the `.P` perp suffix. */
 export function cleanSym(s: string): string {
-  return s.toUpperCase().replace(/\.P$/, "");
+  return stripExchangePrefix(s).replace(/\.P$/, "");
 }
 function restBase(s: string): string {
   return isPerp(s) ? FUTURES_BASE : SPOT_BASE;

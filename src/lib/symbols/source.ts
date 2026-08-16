@@ -1,4 +1,5 @@
 import { lookupCatalog, type SourceKind, type SymbolEntry } from "./catalog";
+import { hasBybitPrefix, stripExchangePrefix } from "./prefix";
 import { isSyntheticExpression } from "@/lib/binance/synthetic";
 
 export type ResolvedSource =
@@ -19,6 +20,21 @@ export type ResolvedSource =
  */
 export function resolveSource(rawSymbol: string): ResolvedSource {
   const s = rawSymbol.trim().toUpperCase();
+
+  // Explicit `BYBIT:` prefix always routes to Bybit data (works even before the
+  // dynamic catalog has loaded, e.g. right after a reload).
+  if (hasBybitPrefix(s)) {
+    const providerSymbol = stripExchangePrefix(s).replace(/\.P$/, "");
+    const entry: SymbolEntry = {
+      ticker: s,
+      providerSymbol,
+      source: "bybit",
+      category: "Crypto",
+      description: `${providerSymbol} Perpetual · Bybit`,
+    };
+    return { kind: "bybit", providerSymbol, entry };
+  }
+
   if (isSyntheticExpression(s)) return { kind: "synthetic", expression: s };
 
   const entry = lookupCatalog(s);

@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import { useTradingStore } from "@/lib/store/trading-store";
 import { useChartStore } from "@/lib/store/chart-store";
-import { isPerp } from "@/lib/binance/rest";
+import { isPerp, cleanSym } from "@/lib/binance/rest";
 import { formatPrice } from "@/lib/format";
 import type { Order } from "@/lib/binance/trading-types";
 
@@ -341,7 +341,7 @@ export function OrderLinesLayer({
   }
 
   /* ── Lines for open positions on the exchange ───────────────────── */
-  const cleanedSym = symbol.replace(/\.P$/, "");
+  const cleanedSym = cleanSym(symbol);
   for (const pos of positions) {
     if (pos.positionAmt === 0 || pos.symbol !== cleanedSym) continue;
     const isLong = pos.positionAmt > 0;

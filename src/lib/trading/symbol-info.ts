@@ -24,7 +24,10 @@ export const DEFAULT_SYMBOL_INFO: SymbolInfo = {
 };
 
 function cleanSymbol(s: string): string {
-  return s.toUpperCase().replace(/\.P$/, "");
+  // Drop any BYBIT: prefix and the .P perp suffix.
+  const up = s.toUpperCase();
+  const bare = up.startsWith("BYBIT:") ? up.slice("BYBIT:".length) : up;
+  return bare.replace(/\.P$/, "");
 }
 
 export async function getSymbolInfo(

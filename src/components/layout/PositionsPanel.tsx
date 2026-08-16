@@ -6,6 +6,7 @@ import { useTradingStore } from "@/lib/store/trading-store";
 import { useChartStore } from "@/lib/store/chart-store";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/format";
+import { cleanSym } from "@/lib/binance/rest";
 import type { Order, Position } from "@/lib/binance/trading-types";
 
 /**
@@ -204,7 +205,7 @@ interface TpSlMatch { tp: number | null; sl: number | null }
 
 function matchTpSl(symbol: string, position: Position, orders: Order[]): TpSlMatch {
   const closeSide = position.positionAmt > 0 ? "SELL" : "BUY";
-  const cleanedSym = symbol.replace(/\.P$/, "");
+  const cleanedSym = cleanSym(symbol);
   const tpOrder = orders.find(
     (o) =>
       o.symbol === cleanedSym &&

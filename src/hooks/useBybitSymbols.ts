@@ -1,18 +1,18 @@
 "use client";
 
 import { useEffect } from "react";
-import { fetchExchangeSymbols } from "@/lib/binance/rest";
 import { fetchBybitPerpSymbols } from "@/lib/bybit/public";
 import { registerDynamicEntries } from "@/lib/symbols/catalog";
+import { BYBIT_PREFIX } from "@/lib/symbols/prefix";
 
 let registered = false;
 
 /**
- * Loads the Bybit linear-perp universe once per session and registers the
- * perps that Binance does NOT list as dynamic catalog entries (source "bybit").
- * Shared tickers stay on Binance (faster WS, identical price); only Bybit
- * exclusives route to Bybit data. Runs eagerly so a persisted Bybit symbol
- * charts correctly right after a reload — before the search dialog is opened.
+ * Loads the Bybit linear-perp universe once per session and registers every
+ * perp as a `BYBIT:<ticker>` catalog entry, so the search list offers an
+ * explicit Bybit variant alongside Binance for shared tickers (e.g. both
+ * `SOLUSDT.P` and `BYBIT:SOLUSDT.P`), and Bybit-only perps become selectable.
+ * Runs eagerly so a persisted `BYBIT:` symbol also shows in search after reload.
  */
 export function useBybitSymbols() {
   useEffect(() => {
@@ -20,15 +20,10 @@ export function useBybitSymbols() {
     registered = true;
     (async () => {
       try {
-        const [binance, bybit] = await Promise.all([
-          fetchExchangeSymbols().catch(() => []),
-          fetchBybitPerpSymbols(),
-        ]);
-        const binanceTickers = new Set(binance.map((s) => s.symbol.toUpperCase()));
-        const exclusives = bybit.filter((b) => !binanceTickers.has(b.ticker.toUpperCase()));
+        const bybit = await fetchBybitPerpSymbols();
         registerDynamicEntries(
-          exclusives.map((b) => ({
-            ticker: b.ticker,
+          bybit.map((b) => ({
+            ticker: `${BYBIT_PREFIX}${b.ticker}`,
             providerSymbol: b.symbol,
             source: "bybit" as const,
             category: "Crypto" as const,

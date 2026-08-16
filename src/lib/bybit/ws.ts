@@ -49,11 +49,12 @@ class BybitWS {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private subs = new Map<string, KlineSubscription>(); // topic -> sub
-  // topic -> { handler, last }. `last` retains price/pct across delta frames
-  // (Bybit ticker deltas only carry changed fields).
+  // topic -> { handler, ticker, last }. `last` retains price/pct across delta
+  // frames (Bybit ticker deltas only carry changed fields); `ticker` echoes the
+  // caller's exact symbol (e.g. `BYBIT:SOLUSDT.P`) so watchlist rows match.
   private tickerSubs = new Map<
     string,
-    { onTick: (t: MiniTick) => void; last: { price: number; pct: number } }
+    { onTick: (t: MiniTick) => void; ticker: string; last: { price: number; pct: number } }
   >();
   private connected = false;
   private closing = false;
@@ -131,7 +132,7 @@ class BybitWS {
     if (msg.data.lastPrice !== undefined) entry.last.price = parseFloat(msg.data.lastPrice);
     if (msg.data.price24hPcnt !== undefined) entry.last.pct = parseFloat(msg.data.price24hPcnt) * 100;
     entry.onTick({
-      symbol: `${msg.data.symbol}.P`,
+      symbol: entry.ticker,
       close: entry.last.price,
       open: 0,
       pct: entry.last.pct,
@@ -149,11 +150,12 @@ class BybitWS {
     };
   }
 
-  /** Subscribe to live 24h ticker updates for a set of ".P" perp symbols. */
+  /** Subscribe to live 24h ticker updates. Symbols may carry `BYBIT:`/`.P`; the
+   *  emitted tick echoes the exact input symbol so callers can key rows by it. */
   subscribeMiniTickers(symbols: string[], onTick: (t: MiniTick) => void): () => void {
     const topics = symbols.map((s) => `tickers.${bybitSymbol(s)}`);
-    topics.forEach((topic) =>
-      this.tickerSubs.set(topic, { onTick, last: { price: 0, pct: 0 } }),
+    topics.forEach((topic, i) =>
+      this.tickerSubs.set(topic, { onTick, ticker: symbols[i], last: { price: 0, pct: 0 } }),
     );
     if (this.connected) this.send({ op: "subscribe", args: topics });
     else if (!this.ws) this.connect();
