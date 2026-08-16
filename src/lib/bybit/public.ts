@@ -95,6 +95,40 @@ interface InstrumentsResp {
   };
 }
 
+export interface BybitTicker24h {
+  /** Ticker with the ".P" perp suffix, matching how watchlists store it. */
+  symbol: string;
+  lastPrice: number;
+  priceChangePercent: number;
+}
+
+interface TickersResp {
+  retCode: number;
+  retMsg: string;
+  result: { list: { symbol: string; lastPrice: string; price24hPcnt: string }[] };
+}
+
+/**
+ * 24h snapshot for a set of Bybit linear perps. Fetches the whole linear ticker
+ * list in one call and filters to the requested symbols (one round-trip covers
+ * any watchlist size). Input/return symbols carry the ".P" suffix.
+ */
+export async function fetchBybitTickers24h(symbols: string[]): Promise<BybitTicker24h[]> {
+  if (symbols.length === 0) return [];
+  const want = new Set(symbols.map((s) => bybitSymbol(s)));
+  const res = await fetch(`${BASE}/v5/market/tickers?category=linear`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`bybit tickers ${res.status}`);
+  const data = (await res.json()) as TickersResp;
+  if (data.retCode !== 0) throw new Error(data.retMsg || "bybit tickers error");
+  return (data.result.list ?? [])
+    .filter((t) => want.has(t.symbol))
+    .map((t) => ({
+      symbol: `${t.symbol}.P`,
+      lastPrice: parseFloat(t.lastPrice),
+      priceChangePercent: parseFloat(t.price24hPcnt) * 100,
+    }));
+}
+
 let cachedPerps: BybitPerpSymbol[] | null = null;
 
 /**

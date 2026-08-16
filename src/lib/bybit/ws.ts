@@ -30,12 +30,31 @@ interface BybitKlineMsg {
   }[];
 }
 
+interface BybitTickerMsg {
+  topic: string;
+  type: "snapshot" | "delta";
+  data: { symbol: string; lastPrice?: string; price24hPcnt?: string };
+}
+
+export interface MiniTick {
+  symbol: string;
+  close: number;
+  open: number;
+  pct: number;
+}
+
 class BybitWS {
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private subs = new Map<string, KlineSubscription>(); // topic -> sub
+  // topic -> { handler, last }. `last` retains price/pct across delta frames
+  // (Bybit ticker deltas only carry changed fields).
+  private tickerSubs = new Map<
+    string,
+    { onTick: (t: MiniTick) => void; last: { price: number; pct: number } }
+  >();
   private connected = false;
   private closing = false;
 
@@ -50,15 +69,17 @@ class BybitWS {
     this.ws.onopen = () => {
       this.connected = true;
       this.reconnectAttempts = 0;
-      const topics = [...this.subs.keys()];
+      const topics = [...this.subs.keys(), ...this.tickerSubs.keys()];
       if (topics.length > 0) this.send({ op: "subscribe", args: topics });
       this.pingTimer = setInterval(() => this.send({ op: "ping" }), 20000);
     };
 
     this.ws.onmessage = (ev) => {
       try {
-        const msg = JSON.parse(ev.data) as BybitKlineMsg | { op?: string };
-        if ("topic" in msg && msg.topic?.startsWith("kline.")) this.dispatch(msg);
+        const msg = JSON.parse(ev.data) as BybitKlineMsg | BybitTickerMsg | { op?: string };
+        if (!("topic" in msg) || !msg.topic) return;
+        if (msg.topic.startsWith("kline.")) this.dispatch(msg as BybitKlineMsg);
+        else if (msg.topic.startsWith("tickers.")) this.dispatchTicker(msg as BybitTickerMsg);
       } catch {
         // ignore
       }
@@ -104,6 +125,19 @@ class BybitWS {
     }
   }
 
+  private dispatchTicker(msg: BybitTickerMsg) {
+    const entry = this.tickerSubs.get(msg.topic);
+    if (!entry) return;
+    if (msg.data.lastPrice !== undefined) entry.last.price = parseFloat(msg.data.lastPrice);
+    if (msg.data.price24hPcnt !== undefined) entry.last.pct = parseFloat(msg.data.price24hPcnt) * 100;
+    entry.onTick({
+      symbol: `${msg.data.symbol}.P`,
+      close: entry.last.price,
+      open: 0,
+      pct: entry.last.pct,
+    });
+  }
+
   subscribeKline(sub: KlineSubscription): () => void {
     const topic = this.topicOf(sub);
     this.subs.set(topic, sub);
@@ -112,6 +146,20 @@ class BybitWS {
     return () => {
       this.subs.delete(topic);
       if (this.connected) this.send({ op: "unsubscribe", args: [topic] });
+    };
+  }
+
+  /** Subscribe to live 24h ticker updates for a set of ".P" perp symbols. */
+  subscribeMiniTickers(symbols: string[], onTick: (t: MiniTick) => void): () => void {
+    const topics = symbols.map((s) => `tickers.${bybitSymbol(s)}`);
+    topics.forEach((topic) =>
+      this.tickerSubs.set(topic, { onTick, last: { price: 0, pct: 0 } }),
+    );
+    if (this.connected) this.send({ op: "subscribe", args: topics });
+    else if (!this.ws) this.connect();
+    return () => {
+      topics.forEach((topic) => this.tickerSubs.delete(topic));
+      if (this.connected) this.send({ op: "unsubscribe", args: topics });
     };
   }
 

@@ -18,8 +18,11 @@ import {
   X,
 } from "lucide-react";
 import { fetchTickers24h } from "@/lib/binance/rest";
+import { fetchBybitTickers24h } from "@/lib/bybit/public";
 import { sortWatchlistItems, cycleSort, type WatchSort } from "@/lib/watchlist/sort";
 import { getBinanceWS } from "@/lib/binance/ws";
+import { getBybitWS } from "@/lib/bybit/ws";
+import { resolveSource } from "@/lib/symbols/source";
 import { useChartStore } from "@/lib/store/chart-store";
 import {
   DropdownMenu,
@@ -95,54 +98,48 @@ export function Watchlist() {
       return;
     }
     let cancelled = false;
-    fetchTickers24h(symbols)
-      .then((tickers) => {
-        if (cancelled) return;
-        const map: Record<string, Row> = {};
-        tickers.forEach((t) => {
-          map[t.symbol] = {
-            symbol: t.symbol,
-            price: t.lastPrice,
-            pct: t.priceChangePercent,
-          };
-        });
-        setRows(map);
-      })
-      .catch(console.error);
 
-    const ws = getBinanceWS();
-    const unsub = ws.subscribeMiniTickers(symbols, (tick) => {
+    // Split by data source: Bybit-exclusive perps stream from Bybit, everything
+    // else (shared perps, spot, stocks) from Binance.
+    const bybitSyms = symbols.filter((s) => resolveSource(s).kind === "bybit");
+    const binanceSyms = symbols.filter((s) => resolveSource(s).kind !== "bybit");
+
+    function seed(tickers: { symbol: string; lastPrice: number; priceChangePercent: number }[]) {
+      if (cancelled) return;
+      setRows((prev) => {
+        const next = { ...prev };
+        tickers.forEach((t) => {
+          next[t.symbol] = { symbol: t.symbol, price: t.lastPrice, pct: t.priceChangePercent };
+        });
+        return next;
+      });
+    }
+    if (binanceSyms.length > 0) fetchTickers24h(binanceSyms).then(seed).catch(console.error);
+    if (bybitSyms.length > 0) fetchBybitTickers24h(bybitSyms).then(seed).catch(console.error);
+
+    function applyTick(tick: { symbol: string; close: number; pct: number }) {
       setRows((prev) => {
         const prevRow = prev[tick.symbol];
         if (prevRow) {
           if (tick.close > prevRow.price) {
             setFlash((f) => ({ ...f, [tick.symbol]: "up" }));
-            setTimeout(
-              () => setFlash((f) => ({ ...f, [tick.symbol]: null })),
-              300,
-            );
+            setTimeout(() => setFlash((f) => ({ ...f, [tick.symbol]: null })), 300);
           } else if (tick.close < prevRow.price) {
             setFlash((f) => ({ ...f, [tick.symbol]: "down" }));
-            setTimeout(
-              () => setFlash((f) => ({ ...f, [tick.symbol]: null })),
-              300,
-            );
+            setTimeout(() => setFlash((f) => ({ ...f, [tick.symbol]: null })), 300);
           }
         }
-        return {
-          ...prev,
-          [tick.symbol]: {
-            symbol: tick.symbol,
-            price: tick.close,
-            pct: tick.pct,
-          },
-        };
+        return { ...prev, [tick.symbol]: { symbol: tick.symbol, price: tick.close, pct: tick.pct } };
       });
-    });
+    }
+
+    const unsubs: (() => void)[] = [];
+    if (binanceSyms.length > 0) unsubs.push(getBinanceWS().subscribeMiniTickers(binanceSyms, applyTick));
+    if (bybitSyms.length > 0) unsubs.push(getBybitWS().subscribeMiniTickers(bybitSyms, applyTick));
 
     return () => {
       cancelled = true;
-      unsub();
+      unsubs.forEach((u) => u());
     };
   }, [symbols.join(",")]);
 

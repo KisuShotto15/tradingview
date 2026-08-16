@@ -5,6 +5,8 @@ import { Plus, Search } from "lucide-react";
 import { useChartStore } from "@/lib/store/chart-store";
 import { useMobileStore } from "@/lib/store/mobile-store";
 import { fetchTickers24h } from "@/lib/binance/rest";
+import { fetchBybitTickers24h } from "@/lib/bybit/public";
+import { resolveSource } from "@/lib/symbols/source";
 import type { Ticker24h } from "@/lib/binance/types";
 import { formatPrice, formatPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -34,15 +36,30 @@ export function WatchlistScreen() {
   useEffect(() => {
     if (symbols.length === 0) return;
     let cancelled = false;
+    const bybitSyms = symbols.filter((s) => resolveSource(s).kind === "bybit");
+    const binanceSyms = symbols.filter((s) => resolveSource(s).kind !== "bybit");
     const load = () => {
-      fetchTickers24h(symbols)
-        .then((arr) => {
-          if (cancelled) return;
-          const m = new Map<string, Ticker24h>();
-          for (const t of arr) m.set(t.symbol, t);
-          setTickers(m);
-        })
-        .catch(() => {});
+      Promise.all([
+        binanceSyms.length ? fetchTickers24h(binanceSyms).catch(() => []) : Promise.resolve([]),
+        bybitSyms.length ? fetchBybitTickers24h(bybitSyms).catch(() => []) : Promise.resolve([]),
+      ]).then(([binance, bybit]) => {
+        if (cancelled) return;
+        const m = new Map<string, Ticker24h>();
+        for (const t of binance) m.set(t.symbol, t);
+        for (const t of bybit) {
+          m.set(t.symbol, {
+            symbol: t.symbol,
+            lastPrice: t.lastPrice,
+            priceChange: 0,
+            priceChangePercent: t.priceChangePercent,
+            highPrice: 0,
+            lowPrice: 0,
+            volume: 0,
+            quoteVolume: 0,
+          });
+        }
+        setTickers(m);
+      });
     };
     load();
     const id = setInterval(load, 3000);
