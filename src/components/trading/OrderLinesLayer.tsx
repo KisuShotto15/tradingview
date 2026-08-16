@@ -48,6 +48,9 @@ interface LineSpec {
   confirm?: (price: number) => Promise<void> | void;
   /** Optional close action — renders a close (×) button on the line (EP line). */
   onClose?: () => void;
+  /** Optional remove action — renders a small × chip that clears this value
+   *  entirely (e.g. clear the SL). */
+  onRemove?: () => void;
   /** When true, render the line in a "modifying…" muted style. */
   modifying?: boolean;
   /** When true, the line represents an OPEN POSITION (uses "EP" label and
@@ -132,14 +135,16 @@ function LineRow({
   const labelW = Math.max(label.length * 6.2 + 14, 90);
   const hasClose = !!line.onClose && !modifying;
   const closeW = hasClose ? 18 : 0;
+  const hasRemove = !!line.onRemove && !modifying;
+  const removeW = hasRemove ? 18 : 0;
   // SL pills are outlined: black fill, yellow border + yellow text. Others use a
   // solid colored fill with light text.
   const outlined = line.kind === "SL";
   const pillFill = outlined ? "#0a0a0a" : color;
   const pillStroke = outlined ? color : "none";
   const textColor = outlined ? color : "#fff";
-  // Right edge of the pill group (leaves room for the close button + axis gap).
-  const pillRight = width - closeW - AXIS_GAP;
+  // Right edge of the pill group (leaves room for the close/remove button + axis gap).
+  const pillRight = width - closeW - removeW - AXIS_GAP;
 
   return (
     <g style={{ opacity: modifying ? 0.55 : 1 }}>
@@ -217,6 +222,33 @@ function LineRow({
           </text>
         </g>
       )}
+      {/* Remove button (clears this value entirely, e.g. SL) */}
+      {hasRemove && (
+        <g
+          style={{ pointerEvents: "all", cursor: "pointer" }}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            line.onRemove?.();
+          }}
+        >
+          <rect x={width - AXIS_GAP - 16} y={y - 9} width={16} height={18} fill={pillFill} stroke={pillStroke} rx={2} />
+          <text
+            x={width - AXIS_GAP - 8}
+            y={y + 4}
+            fill={textColor}
+            fontSize={12}
+            fontWeight="bold"
+            textAnchor="middle"
+          >
+            ×
+          </text>
+        </g>
+      )}
     </g>
   );
 }
@@ -254,19 +286,19 @@ function EntryToolbarRow({
   const yTop = y - 9;
   const chips: { w: number; el: (x: number) => React.ReactNode }[] = [];
 
-  // Close (rightmost).
+  // Close (rightmost) — outlined: black fill, blue border + blue text.
   chips.push({
     w: 18,
     el: (x) => (
       <g key="close" style={{ pointerEvents: "all", cursor: "pointer" }} onMouseDown={stopEvt}
          onClick={(e) => { stopEvt(e); onClose?.(); }}>
-        <rect x={x} y={yTop} width={18} height={H} rx={3} fill={LIMIT_COLOR} />
-        <text x={x + 9} y={y + 4} fill="#fff" fontSize={12} fontWeight="bold" textAnchor="middle">×</text>
+        <rect x={x} y={yTop} width={18} height={H} rx={3} fill="#0a0a0a" stroke={LIMIT_COLOR} />
+        <text x={x + 9} y={y + 4} fill={LIMIT_COLOR} fontSize={12} fontWeight="bold" textAnchor="middle">×</text>
       </g>
     ),
   });
 
-  // P&L percent.
+  // P&L percent — outlined: black fill, blue border (text keeps its green/red sign color).
   const pnlStr = `${pnlPct >= 0 ? "+" : "−"}${Math.abs(pnlPct).toFixed(2)}%`;
   const pnlColor = pnlPct >= 0 ? TP_COLOR : LIQ_COLOR;
   const pnlW = chipWidth(pnlStr);
@@ -274,7 +306,7 @@ function EntryToolbarRow({
     w: pnlW,
     el: (x) => (
       <g key="pnl">
-        <rect x={x} y={yTop} width={pnlW} height={H} rx={3} fill="#1e222d" />
+        <rect x={x} y={yTop} width={pnlW} height={H} rx={3} fill="#0a0a0a" stroke={LIMIT_COLOR} />
         <text x={x + pnlW / 2} y={y + 4} fill={pnlColor} fontSize={10} fontFamily="var(--font-mono), monospace" textAnchor="middle">{pnlStr}</text>
       </g>
     ),
@@ -574,6 +606,10 @@ export function OrderLinesLayer({
           if (Math.abs(p - slPrice) > 1e-9) setPending({ id, price: p });
         },
         confirm: async (p) => { await setPositionTpSl(symbol, pos, { sl: p }); },
+        onRemove: () => {
+          if (pending?.id === id) setPending(null);
+          void setPositionTpSl(symbol, pos, { sl: null });
+        },
         modifying: modifyingOrderId === slOrder?.orderId,
       });
     }
