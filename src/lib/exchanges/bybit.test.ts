@@ -64,6 +64,9 @@ test("mapBybitPosition: long position keeps sign, maps fields + tp/sl", () => {
   expect(p.stopLoss).toBe(58000);
   expect(p.liquidationPrice).toBe(54000);
   expect(p.unrealizedProfit).toBe(500);
+  // ROI% = unrealizedPnl / initialMargin, not a naive price-delta*leverage
+  // estimate: 500 / 3000 * 100.
+  expect(p.percentage).toBeCloseTo(16.6667, 3);
 });
 
 test("mapBybitPosition: short position gets negative amount and cross margin", () => {
@@ -91,6 +94,59 @@ test("mapBybitPosition: short position gets negative amount and cross margin", (
   // Empty ("0") tp/sl collapse to undefined so lines are not drawn.
   expect(p.takeProfit).toBe(undefined);
   expect(p.stopLoss).toBe(undefined);
+  // 200 / 1200 * 100.
+  expect(p.percentage).toBeCloseTo(16.6667, 3);
+});
+
+test("mapBybitPosition: percentage uses unrealizedPnl/initialMargin, not price-delta*leverage", () => {
+  // Regression: extra margin manually added to an isolated position makes the
+  // naive (mark-entry)/entry*leverage estimate diverge — even flip sign —
+  // from the real ROI% the exchange (and TradingView, via a Bybit connection)
+  // shows. Here price barely moved against the position (small loss by the
+  // naive formula) but real ROI is a small profit thanks to the extra margin.
+  const raw: RawBybitPosition = {
+    symbol: "SOLUSDT",
+    side: "Buy",
+    size: "10",
+    avgPrice: "150",
+    positionValue: "1500",
+    leverage: "10",
+    markPrice: "149.5", // -0.33% price move -> naive formula would give -3.3%
+    liqPrice: "100",
+    unrealisedPnl: "1.5", // but real P&L is positive (extra margin added)
+    positionIM: "450",
+    positionMM: "10",
+    takeProfit: "0",
+    stopLoss: "0",
+    tradeMode: 1,
+    positionIdx: 1,
+  };
+  const p = mapBybitPosition(raw);
+  // 1.5 / 450 * 100 = 0.3333...%, matching the exchange's real ROI — not the
+  // naive formula's -3.3%.
+  expect(p.percentage).toBeCloseTo(0.3333, 3);
+});
+
+test("mapBybitPosition: falls back to price-delta*leverage when initialMargin is unavailable", () => {
+  const raw: RawBybitPosition = {
+    symbol: "BTCUSDT",
+    side: "Buy",
+    size: "1",
+    avgPrice: "60000",
+    positionValue: "60000",
+    leverage: "10",
+    markPrice: "61200", // +2% price move
+    liqPrice: "54000",
+    unrealisedPnl: "1200",
+    positionIM: "0",
+    positionMM: "0",
+    takeProfit: "0",
+    stopLoss: "0",
+    tradeMode: 0,
+    positionIdx: 0,
+  };
+  const p = mapBybitPosition(raw);
+  expect(p.percentage).toBeCloseTo(20, 3);
 });
 
 test("mapBybitOrder: limit order normalizes side/type/status", () => {

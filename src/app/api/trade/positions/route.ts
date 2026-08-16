@@ -66,34 +66,43 @@ export async function GET(req: Request) {
     return NextResponse.json(
       (data as RawPosition[])
         .filter((p) => parseFloat(p.positionAmt) !== 0)
-        .map((p) => ({
-          symbol: p.symbol,
-          positionAmt: parseFloat(p.positionAmt),
-          entryPrice: parseFloat(p.entryPrice),
-          markPrice: parseFloat(p.markPrice),
-          unrealizedProfit: parseFloat(p.unRealizedProfit),
-          percentage:
-            ((parseFloat(p.markPrice) - parseFloat(p.entryPrice)) /
-              parseFloat(p.entryPrice)) *
-            100 *
-            parseFloat(p.leverage) *
-            (parseFloat(p.positionAmt) > 0 ? 1 : -1),
-          leverage: parseFloat(p.leverage),
-          side:
-            parseFloat(p.positionAmt) > 0
-              ? "LONG"
-              : parseFloat(p.positionAmt) < 0
-                ? "SHORT"
-                : "BOTH",
-          liquidationPrice: p.liquidationPrice ? parseFloat(p.liquidationPrice) : 0,
-          notional: p.notional
-            ? Math.abs(parseFloat(p.notional))
-            : Math.abs(parseFloat(p.positionAmt) * parseFloat(p.markPrice)),
-          initialMargin: p.positionInitialMargin ? parseFloat(p.positionInitialMargin) : 0,
-          maintMargin: p.maintMargin ? parseFloat(p.maintMargin) : 0,
-          marginType: (p.marginType ?? (p.isolated ? "isolated" : "cross")) as
-            "isolated" | "cross",
-        })),
+        .map((p) => {
+          const positionAmt = parseFloat(p.positionAmt);
+          const entryPrice = parseFloat(p.entryPrice);
+          const markPrice = parseFloat(p.markPrice);
+          const leverage = parseFloat(p.leverage);
+          const unrealizedProfit = parseFloat(p.unRealizedProfit);
+          const initialMargin = p.positionInitialMargin ? parseFloat(p.positionInitialMargin) : 0;
+          // ROE% = unrealized P&L / initial margin, matching Binance's own
+          // displayed percentage. Falls back to a naive price-delta * leverage
+          // estimate only when the API doesn't report an initial margin (some
+          // cross-margin responses), since that naive formula can be off by an
+          // arbitrary factor — or even the wrong sign — once real margin,
+          // fees, or funding diverge from the simple price-delta assumption.
+          const percentage = initialMargin > 0
+            ? (unrealizedProfit / initialMargin) * 100
+            : entryPrice > 0
+              ? ((markPrice - entryPrice) / entryPrice) * 100 * leverage * (positionAmt > 0 ? 1 : -1)
+              : 0;
+          return {
+            symbol: p.symbol,
+            positionAmt,
+            entryPrice,
+            markPrice,
+            unrealizedProfit,
+            percentage,
+            leverage,
+            side: positionAmt > 0 ? "LONG" : positionAmt < 0 ? "SHORT" : "BOTH",
+            liquidationPrice: p.liquidationPrice ? parseFloat(p.liquidationPrice) : 0,
+            notional: p.notional
+              ? Math.abs(parseFloat(p.notional))
+              : Math.abs(positionAmt * markPrice),
+            initialMargin,
+            maintMargin: p.maintMargin ? parseFloat(p.maintMargin) : 0,
+            marginType: (p.marginType ?? (p.isolated ? "isolated" : "cross")) as
+              "isolated" | "cross",
+          };
+        }),
     );
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });

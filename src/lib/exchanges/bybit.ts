@@ -158,8 +158,17 @@ export function mapBybitPosition(p: RawBybitPosition): Position {
   const entryPrice = num(p.avgPrice);
   const markPrice = num(p.markPrice);
   const leverage = num(p.leverage) || 1;
-  const percentage =
-    entryPrice > 0
+  const unrealizedProfit = num(p.unrealisedPnl);
+  const initialMargin = num(p.positionIM);
+  // ROI% = unrealized P&L / initial margin, matching Bybit's own displayed
+  // percentage (and what TradingView shows via a Bybit connection). This
+  // differs from a naive (mark-entry)/entry * leverage estimate whenever extra
+  // margin was added/removed or the position runs on cross margin — both cases
+  // make the naive formula wrong by an arbitrary factor and sometimes even the
+  // wrong sign, unlike the true P&L/margin ratio.
+  const percentage = initialMargin > 0
+    ? (unrealizedProfit / initialMargin) * 100
+    : entryPrice > 0
       ? ((markPrice - entryPrice) / entryPrice) * 100 * leverage * (positionAmt >= 0 ? 1 : -1)
       : 0;
   return {
@@ -167,13 +176,13 @@ export function mapBybitPosition(p: RawBybitPosition): Position {
     positionAmt,
     entryPrice,
     markPrice,
-    unrealizedProfit: num(p.unrealisedPnl),
+    unrealizedProfit,
     percentage,
     leverage,
     side: positionAmt > 0 ? "LONG" : positionAmt < 0 ? "SHORT" : "BOTH",
     liquidationPrice: num(p.liqPrice),
     notional: num(p.positionValue) || Math.abs(positionAmt * markPrice),
-    initialMargin: num(p.positionIM),
+    initialMargin,
     maintMargin: num(p.positionMM),
     marginType: p.tradeMode === 1 ? "isolated" : "cross",
     takeProfit: num(p.takeProfit) || undefined,
