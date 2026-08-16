@@ -39,9 +39,9 @@ function OuterPill({
 }: {
   cx: number; y: number; text: string; color: string; textColor: string; above: boolean;
 }) {
-  const charW = 6.2;
+  const charW = 6.8;
   const padX = 10;
-  const h = 18;
+  const h = 19;
   const w = Math.max(text.length * charW + padX * 2, 60);
   const pillY = above ? y - h - 5 : y + 5;
   return (
@@ -55,7 +55,7 @@ function OuterPill({
       <text
         x={cx} y={pillY + h / 2 + 4}
         textAnchor="middle"
-        fill={textColor} fontSize={10} fontWeight="700"
+        fill={textColor} fontSize={11} fontWeight="700"
         fontFamily="var(--font-mono), monospace"
       >
         {text}
@@ -271,7 +271,7 @@ export function PositionDraw({
           <text
             x={textX} y={profitCenterY + (profitZoneH > 56 ? -6 : 4)}
             textAnchor="middle" fill={profitColor}
-            fontSize={12} fontWeight="700"
+            fontSize={13} fontWeight="700"
             fontFamily="var(--font-mono), monospace"
             opacity={0.85}
           >
@@ -281,7 +281,7 @@ export function PositionDraw({
             <text
               x={textX} y={profitCenterY + 12}
               textAnchor="middle" fill={profitColor}
-              fontSize={9} opacity={0.45}
+              fontSize={10} opacity={0.5}
               fontFamily="var(--font-mono), monospace"
             >
               RR {rr.toFixed(2)}
@@ -294,7 +294,7 @@ export function PositionDraw({
           <text
             x={textX} y={lossCenterY + 4}
             textAnchor="middle" fill={lossColor}
-            fontSize={12} fontWeight="700"
+            fontSize={13} fontWeight="700"
             fontFamily="var(--font-mono), monospace"
             opacity={0.85}
           >

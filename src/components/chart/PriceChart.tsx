@@ -308,7 +308,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         background: { color: initColors.bg },
         textColor: TV_COLORS.text,
         fontFamily: "var(--font-sans), Inter, system-ui, sans-serif",
-        fontSize: 11,
+        fontSize: 12,
         panes: { separatorColor: TV_COLORS.border, separatorHoverColor: TV_COLORS.border },
       },
       grid: {

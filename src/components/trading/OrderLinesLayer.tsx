@@ -133,12 +133,12 @@ function LineRow({
   const dashed = !line.isPosition && line.kind !== "LIMIT";
   const { left, right } = pillText(line);
   const label = modifying ? "Modifying…" : [left, right].filter(Boolean).join(" · ");
-  const labelW = Math.max(label.length * 6.2 + 14, 90);
+  const labelW = Math.max(label.length * 6.8 + 14, 94);
   // Only one action button applies per line in practice (onRemove for SL/TP,
   // onClose reserved for future use) — prefer onRemove.
   const action = !modifying ? (line.onRemove ?? line.onClose) : undefined;
   const hasAction = !!action;
-  const actionW = hasAction ? 18 : 0;
+  const actionW = hasAction ? 20 : 0;
   // SL pills are outlined: black fill, yellow border + yellow text. Others use a
   // solid colored fill with light text.
   const outlined = line.kind === "SL";
@@ -181,9 +181,9 @@ function LineRow({
       {/* Merged box: label + (optional) action button */}
       <rect
         x={boxLeft}
-        y={y - 9}
+        y={y - 10}
         width={boxRight - boxLeft}
-        height={18}
+        height={20}
         fill={pillFill}
         stroke={pillStroke}
         rx={2}
@@ -193,7 +193,7 @@ function LineRow({
         x={boxLeft + (dividerX - boxLeft) / 2}
         y={y + 4}
         fill={textColor}
-        fontSize={10}
+        fontSize={11}
         fontFamily="var(--font-mono), monospace"
         textAnchor="middle"
         style={{ pointerEvents: "none" }}
@@ -206,8 +206,8 @@ function LineRow({
           <line
             x1={dividerX}
             x2={dividerX}
-            y1={y - 9}
-            y2={y + 9}
+            y1={y - 10}
+            y2={y + 10}
             stroke={pillStroke !== "none" ? pillStroke : "#00000055"}
             strokeWidth={1}
             style={{ pointerEvents: "none" }}
@@ -216,7 +216,7 @@ function LineRow({
             x={dividerX + actionW / 2}
             y={y + 4}
             fill={textColor}
-            fontSize={12}
+            fontSize={13}
             fontWeight="bold"
             textAnchor="middle"
             style={{ pointerEvents: "none" }}
@@ -225,9 +225,9 @@ function LineRow({
           </text>
           <rect
             x={dividerX}
-            y={y - 9}
+            y={y - 10}
             width={actionW}
-            height={18}
+            height={20}
             fill="transparent"
             style={{ pointerEvents: "all", cursor: "pointer" }}
             onMouseDown={(e) => {
@@ -251,7 +251,7 @@ function stopEvt(e: React.MouseEvent) {
   e.stopPropagation();
 }
 
-const chipWidth = (s: string) => Math.max(s.length * 6.4 + 12, 22);
+const chipWidth = (s: string) => Math.max(s.length * 7 + 12, 24);
 
 interface PendingCtl {
   kind: "TP" | "SL";
@@ -274,9 +274,9 @@ function EntryToolbarRow({
   onClose?: () => void;
   pending: PendingCtl | null;
 }) {
-  const H = 18;
+  const H = 20;
   const GAP = 4;
-  const yTop = y - 9;
+  const yTop = y - 10;
   const chips: { w: number; el: (x: number) => React.ReactNode }[] = [];
 
   // P&L percent merged with the close (×) button into ONE continuous outlined
@@ -285,16 +285,16 @@ function EntryToolbarRow({
   const pnlStr = `${pnlPct >= 0 ? "+" : "−"}${Math.abs(pnlPct).toFixed(2)}%`;
   const pnlColor = pnlPct >= 0 ? TP_COLOR : LIQ_COLOR;
   const pnlW = chipWidth(pnlStr);
-  const closeW = 18;
+  const closeW = 20;
   const mergedW = pnlW + closeW;
   chips.push({
     w: mergedW,
     el: (x) => (
       <g key="pnl-close">
         <rect x={x} y={yTop} width={mergedW} height={H} rx={3} fill="#0a0a0a" stroke={LIMIT_COLOR} />
-        <text x={x + pnlW / 2} y={y + 4} fill={pnlColor} fontSize={10} fontFamily="var(--font-mono), monospace" textAnchor="middle">{pnlStr}</text>
+        <text x={x + pnlW / 2} y={y + 4} fill={pnlColor} fontSize={11} fontFamily="var(--font-mono), monospace" textAnchor="middle">{pnlStr}</text>
         <line x1={x + pnlW} x2={x + pnlW} y1={yTop} y2={yTop + H} stroke={LIMIT_COLOR} strokeWidth={1} />
-        <text x={x + pnlW + closeW / 2} y={y + 4} fill={LIMIT_COLOR} fontSize={12} fontWeight="bold" textAnchor="middle">×</text>
+        <text x={x + pnlW + closeW / 2} y={y + 4} fill={LIMIT_COLOR} fontSize={13} fontWeight="bold" textAnchor="middle">×</text>
         <rect
           x={x + pnlW}
           y={yTop}
@@ -317,7 +317,7 @@ function EntryToolbarRow({
     el: (x) => (
       <g key="size">
         <rect x={x} y={yTop} width={sizeW} height={H} rx={3} fill={LIMIT_COLOR} />
-        <text x={x + sizeW / 2} y={y + 4} fill="#fff" fontSize={10} fontWeight="bold" fontFamily="var(--font-mono), monospace" textAnchor="middle">{sizeStr}</text>
+        <text x={x + sizeW / 2} y={y + 4} fill="#fff" fontSize={11} fontWeight="bold" fontFamily="var(--font-mono), monospace" textAnchor="middle">{sizeStr}</text>
       </g>
     ),
   });
@@ -330,27 +330,27 @@ function EntryToolbarRow({
       el: (x) => (
         <g key="tag">
           <rect x={x} y={yTop} width={tagW} height={H} rx={3} fill="none" stroke={tagColor} strokeDasharray="3,2" />
-          <text x={x + tagW / 2} y={y + 4} fill={tagColor} fontSize={10} fontWeight="bold" textAnchor="middle">{pending.kind}</text>
+          <text x={x + tagW / 2} y={y + 4} fill={tagColor} fontSize={11} fontWeight="bold" textAnchor="middle">{pending.kind}</text>
         </g>
       ),
     });
     chips.push({
-      w: 58,
+      w: 62,
       el: (x) => (
         <g key="confirm" style={{ pointerEvents: "all", cursor: "pointer" }} onMouseDown={stopEvt}
            onClick={(e) => { stopEvt(e); pending.onConfirm(); }}>
-          <rect x={x} y={yTop} width={58} height={H} rx={3} fill={LIMIT_COLOR} />
-          <text x={x + 29} y={y + 4} fill="#fff" fontSize={10} fontWeight="bold" textAnchor="middle">Confirm</text>
+          <rect x={x} y={yTop} width={62} height={H} rx={3} fill={LIMIT_COLOR} />
+          <text x={x + 31} y={y + 4} fill="#fff" fontSize={11} fontWeight="bold" textAnchor="middle">Confirm</text>
         </g>
       ),
     });
     chips.push({
-      w: 58,
+      w: 62,
       el: (x) => (
         <g key="discard" style={{ pointerEvents: "all", cursor: "pointer" }} onMouseDown={stopEvt}
            onClick={(e) => { stopEvt(e); pending.onDiscard(); }}>
-          <rect x={x} y={yTop} width={58} height={H} rx={3} fill="#2a2e39" stroke="#434651" />
-          <text x={x + 29} y={y + 4} fill="#d1d4dc" fontSize={10} textAnchor="middle">Discard</text>
+          <rect x={x} y={yTop} width={62} height={H} rx={3} fill="#2a2e39" stroke="#434651" />
+          <text x={x + 31} y={y + 4} fill="#d1d4dc" fontSize={11} textAnchor="middle">Discard</text>
         </g>
       ),
     });
