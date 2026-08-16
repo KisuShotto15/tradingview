@@ -39,7 +39,8 @@ interface LineSpec {
   entryPrice?: number;
   /** Live unrealized P&L in USD (open positions only) shown on the EP pill. */
   livePnl?: number;
-  /** Live unrealized P&L in percent (open positions only). */
+  /** How far price has moved from the entry, in percent — NOT the leveraged
+   *  ROI. Matches what TradingView shows on the position line. */
   livePct?: number;
   /** Drag handler. If undefined the line is read-only. */
   onDrag?: (price: number) => void;
@@ -52,6 +53,8 @@ interface LineSpec {
   /** Optional remove action — renders a small × chip that clears this value
    *  entirely (e.g. clear the SL). */
   onRemove?: () => void;
+  /** Text shown in a small popup while hovering this line's pill. */
+  tooltip?: string;
   /** When true, render the line in a "modifying…" muted style. */
   modifying?: boolean;
   /** When true, the line represents an OPEN POSITION (uses "EP" label and
@@ -127,6 +130,7 @@ function LineRow({
   modifying: boolean;
   onMouseDown: (e: React.MouseEvent) => void;
 }) {
+  const [hovered, setHovered] = useState(false);
   const color = colorOf(line.kind);
   // Open-position lines (EP/SL/TP/liq) are solid like TradingView; only pending
   // orders and form previews stay dashed.
@@ -187,7 +191,9 @@ function LineRow({
         fill={pillFill}
         stroke={pillStroke}
         rx={2}
-        style={{ pointerEvents: "none" }}
+        style={{ pointerEvents: line.tooltip ? "all" : "none" }}
+        onMouseEnter={() => line.tooltip && setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
       />
       <text
         x={boxLeft + (dividerX - boxLeft) / 2}
@@ -242,6 +248,34 @@ function LineRow({
           />
         </>
       )}
+      {/* Hover popup (e.g. "Stop Loss -2.50%"), anchored above the pill */}
+      {hovered && line.tooltip && (() => {
+        const tipW = line.tooltip.length * 6.6 + 16;
+        const tipX = Math.max(0, boxRight - tipW);
+        return (
+          <g style={{ pointerEvents: "none" }}>
+            <rect
+              x={tipX}
+              y={y - 34}
+              width={tipW}
+              height={20}
+              rx={3}
+              fill="#1e222d"
+              stroke={color}
+            />
+            <text
+              x={tipX + tipW / 2}
+              y={y - 20}
+              fill="#e6e6e6"
+              fontSize={11}
+              fontFamily="var(--font-mono), monospace"
+              textAnchor="middle"
+            >
+              {line.tooltip}
+            </text>
+          </g>
+        );
+      })()}
     </g>
   );
 }
@@ -387,8 +421,18 @@ interface AxisLevel {
  * continuing past them all the way to that label. Pure so it can drive a
  * useEffect dependency without recomputing coordinates (no chart/series
  * needed here, unlike the SVG-rendering pass below).
+ *
+ * `overrides` maps a level id to a live price, used while a TP/SL is being
+ * dragged (or awaits confirmation) so the native line — and its axis label —
+ * follows the drag instead of staying behind at the stored price, which would
+ * otherwise read as a duplicated line.
  */
-function computeAxisLevels(positions: Position[], orders: Order[], symbol: string): AxisLevel[] {
+function computeAxisLevels(
+  positions: Position[],
+  orders: Order[],
+  symbol: string,
+  overrides?: Map<string, number>,
+): AxisLevel[] {
   const cleanedSym = cleanSym(symbol);
   const out: AxisLevel[] = [];
   for (const pos of positions) {
@@ -411,7 +455,9 @@ function computeAxisLevels(positions: Position[], orders: Order[], symbol: strin
     if (slPrice && slPrice > 0) out.push({ id: `${cleanedSym}-SL`, price: slPrice, color: SL_COLOR });
     if (pos.liquidationPrice > 0) out.push({ id: `${cleanedSym}-LIQ`, price: pos.liquidationPrice, color: LIQ_COLOR });
   }
-  return out;
+  return overrides
+    ? out.map((l) => (overrides.has(l.id) ? { ...l, price: overrides.get(l.id) as number } : l))
+    : out;
 }
 
 export function OrderLinesLayer({
@@ -463,7 +509,13 @@ export function OrderLinesLayer({
   const priceLinesRef = useRef<Map<string, IPriceLine>>(new Map());
   useEffect(() => {
     if (!candleSeries) return;
-    const levels = computeAxisLevels(positions, orders, symbol);
+    // A dragged (or pending) TP/SL overrides its stored price so the native
+    // line moves WITH the SVG one instead of leaving a second line behind, and
+    // its axis label live-tracks the price being set.
+    const overrides = new Map<string, number>();
+    if (preview) overrides.set(preview.id, preview.price);
+    if (pending) overrides.set(pending.id, pending.price);
+    const levels = computeAxisLevels(positions, orders, symbol, overrides);
     const map = priceLinesRef.current;
     const seen = new Set<string>();
     for (const lvl of levels) {
@@ -492,7 +544,7 @@ export function OrderLinesLayer({
         map.delete(id);
       }
     }
-  }, [candleSeries, positions, orders, symbol]);
+  }, [candleSeries, positions, orders, symbol, preview, pending]);
 
   // Drop all price lines when the series itself goes away (symbol/chart teardown).
   useEffect(() => {
@@ -639,6 +691,12 @@ export function OrderLinesLayer({
     const qty = Math.abs(pos.positionAmt);
 
     // Entry line (read-only price, but carries live PnL + a close button).
+    // The percentage shown is how far PRICE has moved from the entry — not the
+    // leveraged ROI (`pos.percentage`), matching TradingView's position line.
+    // The true ROI still drives the positions table.
+    const pricePct = pos.entryPrice > 0
+      ? ((pos.markPrice - pos.entryPrice) / pos.entryPrice) * 100
+      : 0;
     lines.push({
       kind: "LIMIT",
       price: pos.entryPrice,
@@ -646,7 +704,7 @@ export function OrderLinesLayer({
       side: posSide,
       isPosition: true,
       livePnl: pos.unrealizedProfit,
-      livePct: pos.percentage,
+      livePct: pricePct,
       onClose: () => void closePosition(symbol, pos),
     });
 
@@ -853,7 +911,20 @@ export function OrderLinesLayer({
               );
             }
 
-            const renderLine = effPrice === line.price ? line : { ...line, price: effPrice };
+            // Hover popup for the position's TP/SL: how far the level sits from
+            // the entry, in percent. Derived from the EFFECTIVE price so it
+            // tracks the value while the line is being dragged.
+            let tooltip: string | undefined;
+            if (line.isPosition && line.entryPrice && line.entryPrice > 0 &&
+                (line.kind === "SL" || line.kind === "TP")) {
+              const pct = ((effPrice - line.entryPrice) / line.entryPrice) * 100;
+              const label = line.kind === "SL" ? "Stop Loss" : "Take Profit";
+              tooltip = `${label} ${pct >= 0 ? "+" : "−"}${Math.abs(pct).toFixed(2)}%`;
+            }
+            const renderLine =
+              effPrice === line.price && !tooltip
+                ? line
+                : { ...line, price: effPrice, tooltip };
             return (
               <LineRow
                 key={line.id ?? `line-${i}-${line.kind}`}
