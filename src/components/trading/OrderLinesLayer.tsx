@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import { useTradingStore } from "@/lib/store/trading-store";
 import { useChartStore } from "@/lib/store/chart-store";
@@ -25,6 +25,8 @@ interface Props {
 
 interface LineSpec {
   kind: "LIMIT" | "TP" | "SL" | "LIQ";
+  /** Stable identity for two-step (drag → confirm) editable lines. */
+  id?: string;
   price: number;
   /** Quantity in base asset shown on the pill. */
   qty: number;
@@ -34,10 +36,14 @@ interface LineSpec {
   entryPrice?: number;
   /** Live unrealized P&L in USD (open positions only) shown on the EP pill. */
   livePnl?: number;
+  /** Live unrealized P&L in percent (open positions only). */
+  livePct?: number;
   /** Drag handler. If undefined the line is read-only. */
   onDrag?: (price: number) => void;
   /** Optional commit when drag ends — used by drag-to-modify on open orders. */
   onCommit?: (price: number) => void;
+  /** Two-step commit: called when the user confirms a pending dragged change. */
+  confirm?: (price: number) => Promise<void> | void;
   /** Optional close action — renders a close (×) button on the line (EP line). */
   onClose?: () => void;
   /** When true, render the line in a "modifying…" muted style. */
@@ -63,14 +69,18 @@ function pillText(line: LineSpec): { left: string; right: string } {
   }
   if (line.kind === "LIMIT") {
     if (line.isPosition) {
-      // Open position line: side + qty on the left, live PnL + EP on the right.
+      // Open position line: side + qty on the left, live PnL (USD + %) on the right.
       const pnl =
         line.livePnl !== undefined
-          ? `${line.livePnl >= 0 ? "+" : "−"}${Math.abs(line.livePnl).toFixed(2)} `
+          ? `${line.livePnl >= 0 ? "+" : "−"}${Math.abs(line.livePnl).toFixed(2)} USD`
+          : "";
+      const pct =
+        line.livePct !== undefined
+          ? ` (${line.livePct >= 0 ? "+" : ""}${line.livePct.toFixed(2)}%)`
           : "";
       return {
         left: `${line.side === "BUY" ? "Long" : "Short"} ${qtyStr}`.trim(),
-        right: `${pnl}· ${formatPrice(line.price)}`,
+        right: `${pnl}${pct}`,
       };
     }
     return {
@@ -102,13 +112,16 @@ interface DragState {
 }
 
 function LineRow({
-  line, y, width, modifying, onMouseDown,
+  line, y, width, modifying, pending, onMouseDown, onDiscard, onConfirm,
 }: {
   line: LineSpec;
   y: number;
   width: number;
   modifying: boolean;
+  pending: boolean;
   onMouseDown: (e: React.MouseEvent) => void;
+  onDiscard?: () => void;
+  onConfirm?: () => void;
 }) {
   const color = colorOf(line.kind);
   // Open-position lines (EP/SL/TP/liq) are solid like TradingView; only pending
@@ -122,6 +135,13 @@ function LineRow({
   const textColor = line.kind === "SL" ? "#000" : "#fff";
   // Right edge of the pill group (leaves room for the close button after it).
   const pillRight = width - closeW - 2;
+
+  // Discard / Confirm controls sit just left of the pill while a change is pending.
+  const DISCARD_W = 58;
+  const CONFIRM_W = 58;
+  const BTN_GAP = 4;
+  const confirmX = pillRight - labelW - BTN_GAP - CONFIRM_W;
+  const discardX = confirmX - BTN_GAP - DISCARD_W;
 
   return (
     <g style={{ opacity: modifying ? 0.55 : 1 }}>
@@ -142,7 +162,7 @@ function LineRow({
       {/* Visible line */}
       <line
         x1={0}
-        x2={pillRight - labelW - 4}
+        x2={(pending ? discardX : pillRight - labelW) - 4}
         y1={y}
         y2={y}
         stroke={color}
@@ -171,6 +191,31 @@ function LineRow({
           {label}
         </text>
       </g>
+      {/* Discard / Confirm (pending dragged change) */}
+      {pending && (
+        <g style={{ pointerEvents: "all" }}>
+          <g
+            style={{ cursor: "pointer" }}
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDiscard?.(); }}
+          >
+            <rect x={discardX} y={y - 9} width={DISCARD_W} height={18} rx={3} fill="#2a2e39" stroke="#434651" />
+            <text x={discardX + DISCARD_W / 2} y={y + 4} fill="#d1d4dc" fontSize={10} textAnchor="middle">
+              Discard
+            </text>
+          </g>
+          <g
+            style={{ cursor: "pointer" }}
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onConfirm?.(); }}
+          >
+            <rect x={confirmX} y={y - 9} width={CONFIRM_W} height={18} rx={3} fill={LIMIT_COLOR} />
+            <text x={confirmX + CONFIRM_W / 2} y={y + 4} fill="#fff" fontSize={10} fontWeight="bold" textAnchor="middle">
+              Confirm
+            </text>
+          </g>
+        </g>
+      )}
       {/* Close button (open positions) */}
       {hasClose && (
         <g
@@ -226,6 +271,10 @@ export function OrderLinesLayer({
   void renderTick;
 
   const dragRef = useRef<DragState | null>(null);
+  // Two-step edit for position TP/SL: `preview` follows the cursor while held;
+  // on release it becomes `pending` (Discard/Confirm) until the user confirms.
+  const [preview, setPreview] = useState<{ id: string; price: number } | null>(null);
+  const [pending, setPending] = useState<{ id: string; price: number } | null>(null);
 
   useEffect(() => {
     function onMove(e: MouseEvent) {
@@ -359,6 +408,7 @@ export function OrderLinesLayer({
       side: posSide,
       isPosition: true,
       livePnl: pos.unrealizedProfit,
+      livePct: pos.percentage,
       onClose: () => void closePosition(symbol, pos),
     });
 
@@ -387,43 +437,56 @@ export function OrderLinesLayer({
     const slPrice = pos.stopLoss ?? slOrder?.stopPrice ?? null;
 
     if (tpPrice && tpPrice > 0) {
+      const id = `${cleanedSym}-TP`;
       lines.push({
         kind: "TP",
+        id,
         price: tpPrice,
         qty,
         side: posSide,
         entryPrice: pos.entryPrice,
         isPosition: true,
-        onDrag: () => { /* live preview only; commit fires on mouseup */ },
-        onCommit: async (newPrice) => {
-          if (Math.abs(newPrice - tpPrice) < 1e-9) return;
-          await setPositionTpSl(symbol, pos, { tp: newPrice });
+        onDrag: (p) => setPreview({ id, price: p }),
+        onCommit: (p) => {
+          setPreview(null);
+          if (Math.abs(p - tpPrice) > 1e-9) setPending({ id, price: p });
         },
+        confirm: async (p) => { await setPositionTpSl(symbol, pos, { tp: p }); },
         modifying: modifyingOrderId === tpOrder?.orderId,
       });
     }
     if (slPrice && slPrice > 0) {
+      const id = `${cleanedSym}-SL`;
       lines.push({
         kind: "SL",
+        id,
         price: slPrice,
         qty,
         side: posSide,
         entryPrice: pos.entryPrice,
         isPosition: true,
-        onDrag: () => { /* live preview only */ },
-        onCommit: async (newPrice) => {
-          if (Math.abs(newPrice - slPrice) < 1e-9) return;
-          await setPositionTpSl(symbol, pos, { sl: newPrice });
+        onDrag: (p) => setPreview({ id, price: p }),
+        onCommit: (p) => {
+          setPreview(null);
+          if (Math.abs(p - slPrice) > 1e-9) setPending({ id, price: p });
         },
+        confirm: async (p) => { await setPositionTpSl(symbol, pos, { sl: p }); },
         modifying: modifyingOrderId === slOrder?.orderId,
       });
     }
 
-    // Shaded zones for the open position (entry↔TP green, entry↔SL red).
+    // Shaded zones for the open position (entry↔TP green, entry↔SL red). While a
+    // line is being dragged/pending, the zone tracks its effective price.
+    const tpId = `${cleanedSym}-TP`;
+    const slId = `${cleanedSym}-SL`;
+    const effOf = (id: string, base: number | null) =>
+      preview?.id === id ? preview.price : pending?.id === id ? pending.price : base;
+    const effTp = effOf(tpId, tpPrice);
+    const effSl = effOf(slId, slPrice);
     const yEntryPos = candleSeries.priceToCoordinate(pos.entryPrice);
     if (yEntryPos !== null) {
-      if (tpPrice && tpPrice > 0) {
-        const yTp = candleSeries.priceToCoordinate(tpPrice);
+      if (effTp && effTp > 0) {
+        const yTp = candleSeries.priceToCoordinate(effTp);
         if (yTp !== null) {
           zones.push({
             y1: Math.min(yEntryPos as number, yTp as number),
@@ -433,8 +496,8 @@ export function OrderLinesLayer({
           });
         }
       }
-      if (slPrice && slPrice > 0) {
-        const ySl = candleSeries.priceToCoordinate(slPrice);
+      if (effSl && effSl > 0) {
+        const ySl = candleSeries.priceToCoordinate(effSl);
         if (ySl !== null) {
           zones.push({
             y1: Math.min(yEntryPos as number, ySl as number),
@@ -503,19 +566,36 @@ export function OrderLinesLayer({
 
         {/* Lines */}
         {lines.map((line, i) => {
-          const y = candleSeries.priceToCoordinate(line.price);
+          // While dragging (preview) or awaiting confirmation (pending), draw the
+          // line at the dragged price instead of the stored one.
+          const isPending = !!line.id && pending?.id === line.id;
+          const effPrice =
+            line.id && preview?.id === line.id
+              ? preview.price
+              : isPending
+                ? (pending as { price: number }).price
+                : line.price;
+          const renderLine = effPrice === line.price ? line : { ...line, price: effPrice };
+          const y = candleSeries.priceToCoordinate(effPrice);
           if (y === null) return null;
           const yPx = y as number;
           if (yPx < 0 || yPx > mainPaneHeight) return null;
           return (
             <LineRow
-              key={`line-${i}-${line.kind}-${line.price}`}
-              line={line}
+              key={line.id ?? `line-${i}-${line.kind}`}
+              line={renderLine}
               y={yPx}
               width={width}
               modifying={line.modifying ?? false}
+              pending={isPending}
               onMouseDown={(e) => {
                 if (line.onDrag) startDrag(e, line.onDrag, line.onCommit);
+              }}
+              onDiscard={() => setPending(null)}
+              onConfirm={() => {
+                const pr = (pending as { price: number }).price;
+                setPending(null);
+                void line.confirm?.(pr);
               }}
             />
           );
