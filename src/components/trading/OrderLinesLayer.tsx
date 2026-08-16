@@ -55,6 +55,17 @@ interface LineSpec {
   onRemove?: () => void;
   /** Text shown in a small popup while hovering this line's pill. */
   tooltip?: string;
+  /** Marks the not-yet-placed order being staged in the form. Renders its own
+   *  chip toolbar ([Buy] [TP] [SL] [qty] [Limit] [×]) instead of a plain pill. */
+  isPreviewOrder?: boolean;
+  /** Order type shown on the preview toolbar (e.g. "Limit", "Stop"). */
+  typeLabel?: string;
+  tpEnabled?: boolean;
+  slEnabled?: boolean;
+  onToggleTp?: () => void;
+  onToggleSl?: () => void;
+  /** Dismiss the staged order (clears the preview line from the chart). */
+  onCancel?: () => void;
   /** When true, render the line in a "modifying…" muted style. */
   modifying?: boolean;
   /** When true, the line represents an OPEN POSITION (uses "EP" label and
@@ -408,6 +419,144 @@ function EntryToolbarRow({
   );
 }
 
+/**
+ * Toolbar for the order being staged in the form (not yet sent to the
+ * exchange): a dashed line plus [Buy] [TP] [SL] [qty] [Limit] [×] chips. TP/SL
+ * toggle their bracket levels, × dismisses the staged order.
+ */
+function PreviewOrderRow({
+  y, width, qty, side, typeLabel, tpEnabled, slEnabled,
+  onToggleTp, onToggleSl, onCancel, onMouseDown,
+}: {
+  y: number;
+  width: number;
+  qty: number;
+  side: "BUY" | "SELL";
+  typeLabel: string;
+  tpEnabled: boolean;
+  slEnabled: boolean;
+  onToggleTp?: () => void;
+  onToggleSl?: () => void;
+  onCancel?: () => void;
+  onMouseDown: (e: React.MouseEvent) => void;
+}) {
+  const H = 20;
+  const GAP = 4;
+  const yTop = y - 10;
+  const chips: { w: number; el: (x: number) => React.ReactNode }[] = [];
+
+  // Rightmost: [qty | type | ×] merged into one outlined box with dividers.
+  const qtyStr = qty > 0 ? String(qty) : "—";
+  const qtyW = chipWidth(qtyStr);
+  const typeW = chipWidth(typeLabel);
+  const closeW = 20;
+  const mergedW = qtyW + typeW + closeW;
+  chips.push({
+    w: mergedW,
+    el: (x) => (
+      <g key="qty-type-close">
+        <rect x={x} y={yTop} width={mergedW} height={H} rx={3} fill="#0a0a0a" stroke={LIMIT_COLOR} />
+        <text x={x + qtyW / 2} y={y + 4} fill={LIMIT_COLOR} fontSize={11} fontWeight="bold" fontFamily="var(--font-mono), monospace" textAnchor="middle">{qtyStr}</text>
+        <line x1={x + qtyW} x2={x + qtyW} y1={yTop} y2={yTop + H} stroke={LIMIT_COLOR} strokeWidth={1} />
+        <text x={x + qtyW + typeW / 2} y={y + 4} fill={LIMIT_COLOR} fontSize={11} textAnchor="middle">{typeLabel}</text>
+        <line x1={x + qtyW + typeW} x2={x + qtyW + typeW} y1={yTop} y2={yTop + H} stroke={LIMIT_COLOR} strokeWidth={1} />
+        <text x={x + qtyW + typeW + closeW / 2} y={y + 4} fill={LIMIT_COLOR} fontSize={13} fontWeight="bold" textAnchor="middle">×</text>
+        <rect
+          x={x + qtyW + typeW}
+          y={yTop}
+          width={closeW}
+          height={H}
+          fill="transparent"
+          style={{ pointerEvents: "all", cursor: "pointer" }}
+          onMouseDown={stopEvt}
+          onClick={(e) => { stopEvt(e); onCancel?.(); }}
+        />
+      </g>
+    ),
+  });
+
+  // SL then TP — dashed outlines, filled in when the bracket is active.
+  const bracket = (
+    key: string,
+    label: string,
+    color: string,
+    enabled: boolean,
+    onToggle?: () => void,
+  ) => {
+    const w = chipWidth(label);
+    return {
+      w,
+      el: (x: number) => (
+        <g
+          key={key}
+          style={{ pointerEvents: "all", cursor: "pointer" }}
+          onMouseDown={stopEvt}
+          onClick={(e) => { stopEvt(e); onToggle?.(); }}
+        >
+          <rect
+            x={x} y={yTop} width={w} height={H} rx={3}
+            fill={enabled ? color : "#0a0a0a"}
+            stroke={color}
+            strokeDasharray={enabled ? undefined : "3,2"}
+          />
+          <text
+            x={x + w / 2} y={y + 4}
+            fill={enabled ? "#0a0a0a" : color}
+            fontSize={11} fontWeight="bold" textAnchor="middle"
+          >
+            {label}
+          </text>
+        </g>
+      ),
+    };
+  };
+  // Brackets are perp-only; the handlers are omitted elsewhere, so skip the
+  // chips rather than offer a toggle that can't do anything.
+  if (onToggleSl) chips.push(bracket("sl", "SL", SL_COLOR, slEnabled, onToggleSl));
+  if (onToggleTp) chips.push(bracket("tp", "TP", TP_COLOR, tpEnabled, onToggleTp));
+
+  // Side chip (solid, like TradingView's Buy/Sell tag).
+  const sideLabel = side === "BUY" ? "Buy" : "Sell";
+  const sideW = chipWidth(sideLabel);
+  const sideColor = side === "BUY" ? LIMIT_COLOR : LIQ_COLOR;
+  chips.push({
+    w: sideW,
+    el: (x) => (
+      <g key="side">
+        <rect x={x} y={yTop} width={sideW} height={H} rx={3} fill={sideColor} />
+        <text x={x + sideW / 2} y={y + 4} fill="#fff" fontSize={11} fontWeight="bold" textAnchor="middle">{sideLabel}</text>
+      </g>
+    ),
+  });
+
+  let x = width - AXIS_GAP;
+  const placed: React.ReactNode[] = [];
+  for (const c of chips) {
+    x -= c.w;
+    placed.push(c.el(x));
+    x -= GAP;
+  }
+  const lineEnd = Math.max(0, x);
+
+  return (
+    <g>
+      {/* Drag hit area — moves the staged order's price */}
+      <line
+        x1={0} x2={width} y1={y} y2={y}
+        stroke="transparent" strokeWidth={10}
+        style={{ pointerEvents: "stroke", cursor: "ns-resize" }}
+        onMouseDown={onMouseDown}
+      />
+      <line
+        x1={0} x2={lineEnd} y1={y} y2={y}
+        stroke={LIMIT_COLOR} strokeWidth={1.2} strokeDasharray="5,4"
+        style={{ pointerEvents: "none" }}
+      />
+      {placed}
+    </g>
+  );
+}
+
 interface AxisLevel {
   id: string;
   price: number;
@@ -640,11 +789,45 @@ export function OrderLinesLayer({
   const hasPreviewTP = tradingPanelOpen && perp && form.tpEnabled && tpPrice > 0;
 
   if (hasPreviewEntry) {
+    // Default bracket offsets used when TP/SL is switched on from the chart —
+    // a 1% stop and 2% target (RR 2), placed on the correct side of the entry.
+    // They're immediately draggable, so these are just a starting point.
+    const bracketPrice = (pct: number, favourable: boolean) => {
+      const dir = (form.side === "BUY") === favourable ? 1 : -1;
+      return (entryPrice * (1 + dir * pct)).toFixed(2);
+    };
     lines.push({
       kind: "LIMIT",
       price: entryPrice,
       qty: qtyNum || 0,
       side: form.side,
+      isPreviewOrder: true,
+      typeLabel:
+        form.type === "STOP_LIMIT" || form.type === "STOP" ? "Stop"
+        : form.type === "STOP_MARKET" ? "Stop mkt"
+        : "Limit",
+      tpEnabled: form.tpEnabled,
+      slEnabled: form.slEnabled,
+      // TP/SL brackets are perp-only (see placeOrder), so no toggle on spot.
+      onToggleTp: perp
+        ? () =>
+            updateForm(
+              form.tpEnabled
+                ? { tpEnabled: false }
+                : { tpEnabled: true, ...(tpPrice > 0 ? {} : { tp: bracketPrice(0.02, true) }) },
+            )
+        : undefined,
+      onToggleSl: perp
+        ? () =>
+            updateForm(
+              form.slEnabled
+                ? { slEnabled: false }
+                : { slEnabled: true, ...(slPrice > 0 ? {} : { sl: bracketPrice(0.01, false) }) },
+            )
+        : undefined,
+      // Clearing the price drops the staged order (and its brackets) from the
+      // chart without touching the panel's other settings.
+      onCancel: () => updateForm({ price: "", tpEnabled: false, slEnabled: false }),
       onDrag: (p) => updateForm({ price: p.toFixed(2) }),
     });
   }
@@ -933,6 +1116,28 @@ export function OrderLinesLayer({
                   pnlPct={line.livePct ?? 0}
                   onClose={line.onClose}
                   pending={pendingCtl}
+                />
+              );
+            }
+
+            // The staged (not yet placed) order gets its own dashed toolbar.
+            if (line.isPreviewOrder) {
+              return (
+                <PreviewOrderRow
+                  key={`preview-${i}`}
+                  y={yPx}
+                  width={plotW}
+                  qty={line.qty}
+                  side={line.side}
+                  typeLabel={line.typeLabel ?? "Limit"}
+                  tpEnabled={line.tpEnabled ?? false}
+                  slEnabled={line.slEnabled ?? false}
+                  onToggleTp={line.onToggleTp}
+                  onToggleSl={line.onToggleSl}
+                  onCancel={line.onCancel}
+                  onMouseDown={(e) => {
+                    if (line.onDrag) startDrag(e, line.onDrag, line.onCommit);
+                  }}
                 />
               );
             }
