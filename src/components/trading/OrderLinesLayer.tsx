@@ -14,7 +14,7 @@ const TP_COLOR = "#26a69a";
 const SL_COLOR = "#fbc02d";
 const LIQ_COLOR = "#ff5252";
 /** Gap kept between the labels/toolbar and the price scale on the right. */
-const AXIS_GAP = 16;
+const AXIS_GAP = 72;
 
 interface Props {
   chart: IChartApi | null;
