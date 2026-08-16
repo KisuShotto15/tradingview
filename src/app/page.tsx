@@ -38,7 +38,10 @@ export default function HomePage() {
       <Header />
       <div className="flex min-h-0 flex-1">
         <LeftSidebar />
-        <main className="relative flex min-h-0 flex-1 flex-col">
+        {/* min-w-0 lets the chart column actually shrink: a flex item defaults
+            to min-width:auto, which would otherwise pin it to its content width
+            and push the resizable right sidebar off-screen. */}
+        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="min-h-0 flex-1">
             <PriceChart symbol={symbol} timeframe={timeframe} />
           </div>

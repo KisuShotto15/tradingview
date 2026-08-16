@@ -726,7 +726,7 @@ export const useChartStore = create<ChartState>()(
       setFavoriteTools: (favoriteTools) => set({ favoriteTools }),
       setFavoritesBarPos: (favoritesBarPos) => set({ favoritesBarPos }),
       setRightSidebarWidth: (width) =>
-        set({ rightSidebarWidth: Math.min(520, Math.max(200, width)) }),
+        set({ rightSidebarWidth: Math.min(900, Math.max(200, width)) }),
 
       applySnapshot: (snap) => {
         withoutHistory(() => {

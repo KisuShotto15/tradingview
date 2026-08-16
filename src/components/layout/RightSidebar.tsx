@@ -29,7 +29,10 @@ export function RightSidebar() {
     // The sidebar sits on the right edge, so dragging the left border left
     // (negative dx) grows it and dragging right shrinks it.
     const dx = e.clientX - dragRef.current.startX;
-    setWidth(dragRef.current.startWidth - dx);
+    // Leave room for the chart column so it can never be squeezed to nothing;
+    // the store applies the absolute bounds on top of this.
+    const maxWidth = Math.max(200, window.innerWidth - 420);
+    setWidth(Math.min(maxWidth, dragRef.current.startWidth - dx));
   }
   function endResize(e: React.PointerEvent) {
     dragRef.current = null;

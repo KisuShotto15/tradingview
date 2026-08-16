@@ -103,7 +103,7 @@ export function LeftSidebar() {
   }
 
   return (
-    <aside className="flex w-14 flex-col items-center gap-1 border-r border-tv-border bg-tv-panel py-2">
+    <aside className="flex w-14 shrink-0 flex-col items-center gap-1 border-r border-tv-border bg-tv-panel py-2">
       {/* Cursor */}
       {CURSOR_TOOLS.map((t) => (
         <ToolButton
