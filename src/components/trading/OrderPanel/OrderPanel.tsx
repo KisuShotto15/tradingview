@@ -12,11 +12,15 @@ import {
   rrRatio,
   modeRequiresSl,
   ticksBetween,
+  slInputToPrice,
+  slPriceToInput,
   type SizingCtx,
+  type SlCtx,
 } from "@/lib/trading/sizing";
 import { isPerp } from "@/lib/binance/rest";
+import { getBaseAsset } from "@/components/watchlist/CoinIcon";
 import { cn } from "@/lib/utils";
-import type { SizingMode, TimeInForce } from "@/lib/binance/trading-types";
+import type { SizingMode, SlMode, TimeInForce } from "@/lib/binance/trading-types";
 import { ApiKeyDialog } from "../ApiKeyDialog";
 
 const SIZING_LABELS: Record<SizingMode, string> = {
@@ -26,6 +30,32 @@ const SIZING_LABELS: Record<SizingMode, string> = {
   RISK_USD: "Risk, USD",
   RISK_PCT: "Risk, % balance",
 };
+
+const SL_MODE_LABELS: Record<SlMode, string> = {
+  PRICE: "price",
+  PCT_PRICE: "% price",
+  RISK_USD: "risk, USD",
+  RISK_PCT: "risk, % balance",
+};
+
+const SL_MODE_UNITS: Record<SlMode, string> = {
+  PRICE: "",
+  PCT_PRICE: "%",
+  RISK_USD: "USD",
+  RISK_PCT: "%",
+};
+
+const SL_MODE_HINTS: Record<SlMode, string> = {
+  PRICE: "Stop-loss price.",
+  PCT_PRICE: "Distance from the entry as a percentage of price.",
+  RISK_USD: "Cash lost if the stop hits, at the current order size.",
+  RISK_PCT: "Equity percentage lost if the stop hits, at the current order size.",
+};
+
+/** Fixed-decimal string without trailing zeros — keeps derived inputs typable. */
+function trimNum(n: number, decimals: number): string {
+  return String(parseFloat(n.toFixed(decimals)));
+}
 
 const TIF_OPTIONS: TimeInForce[] = ["GTC", "IOC", "FOK", "GTX"];
 
@@ -59,6 +89,7 @@ export function OrderPanel() {
   const symInfo = useSymbolInfo(symbol);
   const { bid, ask } = useBookTicker(symbol);
   const perp = isPerp(symbol);
+  const baseAsset = getBaseAsset(symbol);
 
   // Refresh on mount + symbol change
   useEffect(() => {
@@ -163,6 +194,7 @@ export function OrderPanel() {
           qtyNum={qtyNum}
           derived={derived}
           ctx={ctx}
+          baseAsset={baseAsset}
           onChangeMode={(mode) => {
             // Recompute the visible input from canonical qty so it stays consistent.
             const next = qtyToSizings(qtyNum, ctx);
@@ -196,6 +228,7 @@ export function OrderPanel() {
           qtyNum={qtyNum}
           rr={rr}
           referencePrice={referencePrice ?? 0}
+          balanceUsd={balanceUsd}
           onPatch={updateForm}
         />
 
@@ -390,13 +423,15 @@ function PriceInput({
 }
 
 function SizingControl({
-  mode, input, qtyNum, derived, ctx, onChangeMode, onChangeInput,
+  mode, input, qtyNum, derived, ctx, baseAsset, onChangeMode, onChangeInput,
 }: {
   mode: SizingMode;
   input: string;
   qtyNum: number;
   derived: Record<SizingMode, number>;
   ctx: SizingCtx;
+  /** Base asset of the current symbol, shown as the Amount unit. */
+  baseAsset: string;
   onChangeMode: (m: SizingMode) => void;
   onChangeInput: (v: string) => void;
 }) {
@@ -405,7 +440,7 @@ function SizingControl({
   void ctx;
 
   function suffix(m: SizingMode): string {
-    if (m === "AMOUNT") return "BTC";
+    if (m === "AMOUNT") return baseAsset;
     if (m === "MARGIN_USD") return "USD";
     if (m === "RISK_USD") return "USD";
     return "%";
@@ -418,7 +453,7 @@ function SizingControl({
           onClick={() => setOpen((o) => !o)}
           className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-tv-text-muted hover:text-tv-text"
         >
-          {SIZING_LABELS[mode]}
+          {mode === "AMOUNT" ? `Amount (${baseAsset})` : SIZING_LABELS[mode]}
           {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
         </button>
       </div>
@@ -448,7 +483,7 @@ function SizingControl({
                   : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
               )}
             >
-              <span>{SIZING_LABELS[m]}</span>
+              <span>{m === "AMOUNT" ? `Amount (${baseAsset})` : SIZING_LABELS[m]}</span>
               <span className="font-mono tabular-nums">
                 {derived[m] > 0 ? derived[m].toFixed(m === "AMOUNT" ? 6 : 2) : "—"}
               </span>
@@ -461,7 +496,7 @@ function SizingControl({
 }
 
 function ExitsSection({
-  form, tickSize, pricePrecision, qtyNum, rr, referencePrice, onPatch,
+  form, tickSize, pricePrecision, qtyNum, rr, referencePrice, balanceUsd, onPatch,
 }: {
   form: ReturnType<typeof useTradingStore.getState>["form"];
   tickSize: number;
@@ -469,9 +504,24 @@ function ExitsSection({
   qtyNum: number;
   rr: number;
   referencePrice: number;
+  balanceUsd: number;
   onPatch: (p: Partial<typeof form>) => void;
 }) {
   const [open, setOpen] = useState(true);
+  const [slMenuOpen, setSlMenuOpen] = useState(false);
+  /** Raw text while the SL field is being typed in; null = show the derived
+   *  value, so a stop dragged on the chart flows straight back in here. */
+  const [slDraft, setSlDraft] = useState<string | null>(null);
+
+  const slCtx: SlCtx = {
+    entry: referencePrice,
+    side: form.side,
+    qty: qtyNum,
+    balanceUsd,
+  };
+  const slPrice = form.sl ? parseFloat(form.sl) : NaN;
+  const slDerived = slPriceToInput(form.slMode, slPrice, slCtx);
+  const slValue = slDraft ?? (slDerived > 0 ? trimNum(slDerived, form.slMode === "PRICE" ? pricePrecision : 2) : "");
 
   const tpUsd = form.tpEnabled && form.tp && qtyNum > 0
     ? Math.abs(parseFloat(form.tp) - referencePrice) * qtyNum
@@ -523,23 +573,82 @@ function ExitsSection({
           </div>
 
           <div className="space-y-1">
-            <label className="flex items-center justify-between">
-              <span className="text-[10px] text-tv-text">Stop loss, price</span>
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => setSlMenuOpen((o) => !o)}
+                className="flex items-center gap-1 text-[10px] text-tv-text hover:text-tv-blue"
+              >
+                Stop loss, {SL_MODE_LABELS[form.slMode]}
+                {slMenuOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              </button>
               <Switch checked={form.slEnabled} onChange={(v) => onPatch({ slEnabled: v })} />
-            </label>
+            </div>
+            {slMenuOpen && (
+              <div className="rounded border border-tv-border bg-tv-bg/60">
+                {(Object.keys(SL_MODE_LABELS) as SlMode[]).map((m) => {
+                  // Risk modes need a position size to divide the risk across.
+                  const disabled = (m === "RISK_USD" || m === "RISK_PCT") && qtyNum <= 0;
+                  return (
+                    <button
+                      key={m}
+                      disabled={disabled}
+                      title={disabled ? "Set the order amount first" : SL_MODE_HINTS[m]}
+                      onClick={() => {
+                        setSlDraft(null);
+                        onPatch({ slMode: m, slEnabled: true });
+                        setSlMenuOpen(false);
+                      }}
+                      className={cn(
+                        "flex w-full items-center justify-between px-2 py-1 text-[10px]",
+                        disabled && "cursor-not-allowed opacity-40",
+                        m === form.slMode
+                          ? "bg-tv-blue/15 text-tv-text"
+                          : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
+                      )}
+                    >
+                      <span>{SL_MODE_LABELS[m]}</span>
+                      <span className="font-mono tabular-nums">
+                        {slPriceToInput(m, slPrice, slCtx) > 0
+                          ? trimNum(slPriceToInput(m, slPrice, slCtx), m === "PRICE" ? pricePrecision : 2)
+                          : "—"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {form.slEnabled && (
               <div className="grid grid-cols-[1fr,auto] gap-2">
-                <input
-                  type="number"
-                  step="any"
-                  value={form.sl}
-                  onChange={(e) => onPatch({ sl: e.target.value })}
-                  placeholder={referencePrice > 0 ? referencePrice.toFixed(pricePrecision) : "0.0"}
-                  className="rounded border border-tv-border bg-tv-bg px-2 py-1.5 font-mono text-xs tabular-nums focus:border-tv-blue"
-                />
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="any"
+                    value={slValue}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setSlDraft(raw);
+                      const parsed = parseFloat(raw);
+                      // Always store the canonical PRICE, whatever unit was typed.
+                      const price = slInputToPrice(form.slMode, parsed, slCtx);
+                      onPatch({ sl: isFinite(price) ? price.toFixed(pricePrecision) : "" });
+                    }}
+                    onBlur={() => setSlDraft(null)}
+                    placeholder={referencePrice > 0 ? referencePrice.toFixed(pricePrecision) : "0.0"}
+                    className="w-full rounded border border-tv-border bg-tv-bg px-2 py-1.5 pr-10 font-mono text-xs tabular-nums focus:border-tv-blue"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-tv-text-muted">
+                    {SL_MODE_UNITS[form.slMode]}
+                  </span>
+                </div>
                 <span className="self-center text-[10px] text-tv-text-muted">
                   {slUsd > 0 ? `${slUsd.toFixed(2)} USD` : ""}
                 </span>
+              </div>
+            )}
+            {/* When the field isn't the price itself, still show where the stop lands. */}
+            {form.slEnabled && form.slMode !== "PRICE" && slPrice > 0 && (
+              <div className="text-right text-[10px] text-tv-text-muted">
+                Stop at {slPrice.toFixed(pricePrecision)}
               </div>
             )}
           </div>

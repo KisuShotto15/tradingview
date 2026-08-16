@@ -13,7 +13,10 @@ import {
   rrRatio,
   modeRequiresSl,
   sizingToQty,
+  slInputToPrice,
+  slPriceToInput,
   type SizingCtx,
+  type SlCtx,
 } from "./sizing";
 
 const ctx: SizingCtx = {
@@ -106,5 +109,66 @@ describe("sizingToQty", () => {
   it("returns 0 for non-positive input", () => {
     expect(sizingToQty("AMOUNT", 0, ctx)).toBe(0);
     expect(sizingToQty("AMOUNT", -3, ctx)).toBe(0);
+  });
+});
+
+/* ── Stop-loss input modes ─────────────────────────────────────────────── */
+
+const longCtx: SlCtx = { entry: 100, side: "BUY", qty: 2, balanceUsd: 1000 };
+const shortCtx: SlCtx = { entry: 100, side: "SELL", qty: 2, balanceUsd: 1000 };
+
+describe("slInputToPrice", () => {
+  it("passes a price through unchanged", () => {
+    expect(slInputToPrice("PRICE", 95, longCtx)).toBe(95);
+  });
+
+  it("puts the stop below entry for a long and above for a short", () => {
+    // 5% of a 100 entry = 5 away from it, on the losing side.
+    expect(slInputToPrice("PCT_PRICE", 5, longCtx)).toBeCloseTo(95, 6);
+    expect(slInputToPrice("PCT_PRICE", 5, shortCtx)).toBeCloseTo(105, 6);
+  });
+
+  it("derives the stop from a cash risk over the position size", () => {
+    // 20 USD risk across 2 units = 10 of price distance.
+    expect(slInputToPrice("RISK_USD", 20, longCtx)).toBeCloseTo(90, 6);
+    expect(slInputToPrice("RISK_USD", 20, shortCtx)).toBeCloseTo(110, 6);
+  });
+
+  it("derives the stop from a percentage of balance", () => {
+    // 2% of 1000 = 20 USD risk, same as above.
+    expect(slInputToPrice("RISK_PCT", 2, longCtx)).toBeCloseTo(90, 6);
+  });
+
+  it("returns NaN when the inputs can't produce a stop", () => {
+    expect(Number.isNaN(slInputToPrice("PRICE", 0, longCtx))).toBe(true);
+    // Risk modes need a position size to divide by.
+    expect(Number.isNaN(slInputToPrice("RISK_USD", 20, { ...longCtx, qty: 0 }))).toBe(true);
+    expect(Number.isNaN(slInputToPrice("RISK_PCT", 2, { ...longCtx, balanceUsd: 0 }))).toBe(true);
+    // A stop that would land at or below zero is not a stop.
+    expect(Number.isNaN(slInputToPrice("PCT_PRICE", 100, longCtx))).toBe(true);
+  });
+});
+
+describe("slPriceToInput", () => {
+  it("round-trips every mode", () => {
+    for (const [mode, value] of [
+      ["PRICE", 95],
+      ["PCT_PRICE", 5],
+      ["RISK_USD", 20],
+      ["RISK_PCT", 2],
+    ] as const) {
+      const price = slInputToPrice(mode, value, longCtx);
+      expect(slPriceToInput(mode, price, longCtx)).toBeCloseTo(value, 6);
+    }
+  });
+
+  it("reports the same magnitude regardless of side", () => {
+    expect(slPriceToInput("PCT_PRICE", 95, longCtx)).toBeCloseTo(5, 6);
+    expect(slPriceToInput("PCT_PRICE", 105, shortCtx)).toBeCloseTo(5, 6);
+  });
+
+  it("returns 0 when there is no usable stop", () => {
+    expect(slPriceToInput("RISK_USD", 0, longCtx)).toBe(0);
+    expect(slPriceToInput("RISK_PCT", 90, { ...longCtx, balanceUsd: 0 })).toBe(0);
   });
 });

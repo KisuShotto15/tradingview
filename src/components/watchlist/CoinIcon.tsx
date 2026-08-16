@@ -1,11 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { stripExchangePrefix } from "@/lib/symbols/prefix";
 
 const QUOTE_ASSETS = ["USDT", "USDC", "FDUSD", "BUSD", "TUSD", "USD", "BTC", "ETH", "BNB"];
 
 export function getBaseAsset(symbol: string): string {
-  const s = symbol.replace(/\.P$/, ""); // strip .P perpetual suffix
+  // Drop the exchange prefix and the .P perpetual suffix before matching, so
+  // e.g. "BYBIT:SOLUSDT.P" resolves to "SOL" rather than "BYBIT:SOL".
+  const s = stripExchangePrefix(symbol).replace(/\.P$/, "");
   for (const q of QUOTE_ASSETS) {
     if (s.endsWith(q)) return s.slice(0, -q.length);
   }

@@ -12,6 +12,7 @@ import type {
   TimeInForce,
   PlaceOrderParams,
   SizingMode,
+  SlMode,
   Exchange,
 } from "@/lib/binance/trading-types";
 
@@ -29,7 +30,10 @@ export interface OrderForm {
   /** Raw text of the editable sizing input (parsed lazily). */
   sizingInput: string;
   slEnabled: boolean;
+  /** Canonical stop-loss PRICE. `slMode` only changes how it's entered. */
   sl: string;
+  /** Unit the stop-loss field is typed in (price, % of price, risk USD, risk %). */
+  slMode: SlMode;
   tpEnabled: boolean;
   tp: string;
   timeInForce: TimeInForce;
@@ -124,6 +128,7 @@ function defaultForm(): OrderForm {
     sizingInput: "",
     slEnabled: false,
     sl: "",
+    slMode: "PRICE",
     tpEnabled: false,
     tp: "",
     timeInForce: "GTC",
@@ -167,9 +172,10 @@ export const useTradingStore = create<TradingState>()(
         set((s) => ({
           form: {
             ...defaultForm(),
-            // Preserve user's leverage & sizing preferences across resets.
+            // Preserve user's leverage & input-unit preferences across resets.
             leverage: s.form.leverage,
             sizingMode: s.form.sizingMode,
+            slMode: s.form.slMode,
             price: price ? String(price) : "",
           },
         })),
@@ -612,8 +618,9 @@ export const useTradingStore = create<TradingState>()(
         apiSecret: s.apiSecret,
         testnet: s.testnet,
         tradingPanelOpen: s.tradingPanelOpen,
-        // Persist sizing mode + leverage so they survive reloads.
+        // Persist the input-unit preferences + leverage so they survive reloads.
         sizingMode: s.form.sizingMode,
+        slMode: s.form.slMode,
         leverage: s.form.leverage,
       }),
       // v1 → v2: legacy persisted state had no sizingMode/leverage at the
@@ -622,16 +629,18 @@ export const useTradingStore = create<TradingState>()(
         return (persistedState ?? {}) as ReturnType<typeof Object>;
       }) as never,
       onRehydrateStorage: () => (state) => {
-        // partialize stores sizingMode + leverage at the top level; reattach
-        // them to form on rehydrate.
+        // partialize stores the input-unit modes + leverage at the top level;
+        // reattach them to form on rehydrate.
         if (!state) return;
         const raw = state as unknown as Record<string, unknown>;
         const sm = raw.sizingMode as SizingMode | undefined;
+        const slm = raw.slMode as SlMode | undefined;
         const lev = raw.leverage as number | undefined;
-        if (sm || lev !== undefined) {
+        if (sm || slm || lev !== undefined) {
           state.form = {
             ...state.form,
             ...(sm ? { sizingMode: sm } : {}),
+            ...(slm ? { slMode: slm } : {}),
             ...(lev !== undefined ? { leverage: lev } : {}),
           };
         }
