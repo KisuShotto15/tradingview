@@ -5,6 +5,7 @@ import type { IChartApi, ISeriesApi, IPriceLine } from "lightweight-charts";
 import { useTradingStore } from "@/lib/store/trading-store";
 import { useChartStore } from "@/lib/store/chart-store";
 import { isPerp, cleanSym } from "@/lib/binance/rest";
+import { resolveSource } from "@/lib/symbols/source";
 import { formatPrice } from "@/lib/format";
 import type { Order, Position } from "@/lib/binance/trading-types";
 
@@ -422,15 +423,28 @@ export function OrderLinesLayer({
   renderTick,
 }: Props) {
   const symbol = useChartStore((s) => s.symbol);
+  const tradingExchange = useTradingStore((s) => s.exchange);
   const tradingPanelOpen = useTradingStore((s) => s.tradingPanelOpen);
   const form = useTradingStore((s) => s.form);
-  const orders = useTradingStore((s) => s.orders);
-  const positions = useTradingStore((s) => s.positions);
+  const rawOrders = useTradingStore((s) => s.orders);
+  const rawPositions = useTradingStore((s) => s.positions);
   const updateForm = useTradingStore((s) => s.updateForm);
   const modifyOrder = useTradingStore((s) => s.modifyOrder);
   const setPositionTpSl = useTradingStore((s) => s.setPositionTpSl);
   const closePosition = useTradingStore((s) => s.closePosition);
   const modifyingOrderId = useTradingStore((s) => s.modifyingOrderId);
+
+  // `orders`/`positions` always come from whichever exchange is connected
+  // (tradingExchange), but the chart's current symbol may be showing a
+  // DIFFERENT market's data — e.g. plain "SOLUSDT.P" (Binance) vs
+  // "BYBIT:SOLUSDT.P" (Bybit) share the same bare ticker after cleanSym, yet
+  // are different order books. Only surface this account's orders/positions
+  // when the symbol on screen actually belongs to the connected exchange, so
+  // a Bybit position never leaks its EP/SL lines onto the Binance chart (or
+  // vice versa).
+  const symbolMatchesExchange = resolveSource(symbol).kind === tradingExchange;
+  const orders = symbolMatchesExchange ? rawOrders : [];
+  const positions = symbolMatchesExchange ? rawPositions : [];
 
   // `renderTick` is already a prop from PriceChart — receiving it as a prop
   // re-renders this component on every chart pan/zoom without an extra hook.

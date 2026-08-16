@@ -62,6 +62,7 @@ export function Watchlist() {
   const setSymbol = useChartStore((s) => s.setSymbol);
   const openSymbolDialog = useChartStore((s) => s.setSymbolDialogOpen);
   const allPositions = useTradingStore((s) => s.allPositions);
+  const tradingExchange = useTradingStore((s) => s.exchange);
 
   const active = watchlists.find((w) => w.id === activeWatchlistId) ?? watchlists[0];
   const items = active?.items ?? [];
@@ -402,7 +403,12 @@ export function Watchlist() {
             // Always display the plain ticker (BYBIT:BTCUSDT.P -> BTCUSDT.P),
             // regardless of which exchange it actually resolves to.
             const displaySymbol = stripExchangePrefix(s);
-            const openPosition = positionsBySymbol.get(cleanSym(s));
+            // Only badge this row when it belongs to the connected trading
+            // exchange's market — a bare ticker can match a position by symbol
+            // alone even though it's actually a different exchange's chart
+            // (e.g. plain "SOLUSDT.P" vs "BYBIT:SOLUSDT.P").
+            const rowMatchesExchange = resolveSource(s).kind === tradingExchange;
+            const openPosition = rowMatchesExchange ? positionsBySymbol.get(cleanSym(s)) : undefined;
             const posSide = openPosition?.side === "LONG" || openPosition?.side === "SHORT"
               ? openPosition.side
               : null;

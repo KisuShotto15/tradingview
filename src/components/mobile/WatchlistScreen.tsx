@@ -28,6 +28,7 @@ export function WatchlistScreen() {
   const openSheet = useMobileStore((s) => s.openSheet);
 
   const allPositions = useTradingStore((s) => s.allPositions);
+  const tradingExchange = useTradingStore((s) => s.exchange);
 
   const active = watchlists.find((w) => w.id === activeId) ?? watchlists[0];
   const items = active?.items ?? [];
@@ -139,7 +140,10 @@ export function WatchlistScreen() {
 
               const s = item.value;
               const displaySymbol = stripExchangePrefix(s);
-              const openPosition = positionsBySymbol.get(cleanSym(s));
+              // Only badge when this row's market matches the connected
+              // trading exchange (see Watchlist.tsx for why).
+              const rowMatchesExchange = resolveSource(s).kind === tradingExchange;
+              const openPosition = rowMatchesExchange ? positionsBySymbol.get(cleanSym(s)) : undefined;
               const posSide = openPosition?.side === "LONG" || openPosition?.side === "SHORT"
                 ? openPosition.side
                 : null;
