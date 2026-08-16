@@ -101,19 +101,29 @@ export function PositionDraw({
     if (snapshotRef.current) void commit(drawing.id, snapshotRef.current);
   }
 
+  /**
+   * Left-edge handles: drag the level's price vertically AND the drawing's left
+   * edge horizontally, so the same grip both re-prices a level and resizes the
+   * box (the right handle only moves the other edge).
+   */
   function makeYDrag(field: "entry" | "stop" | "target") {
     return (e: React.MouseEvent) => {
-      if (!candleSeries || !container) return;
+      if (!candleSeries || !container || !chart) return;
       if (drawing.locked) return;
       e.preventDefault();
       e.stopPropagation();
       snap();
+      const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
       function onMove(ev: MouseEvent) {
         const rect = container!.getBoundingClientRect();
-        const y = ev.clientY - rect.top;
-        const p = candleSeries!.coordinateToPrice(y);
-        if (p === null) return;
-        updateLive(drawing.id, { [field]: p } as Partial<Drawing>);
+        const patch: Record<string, number> = {};
+        const p = candleSeries!.coordinateToPrice(ev.clientY - rect.top);
+        if (p !== null) patch[field] = p as number;
+        const t = xToTime(chart!, ev.clientX - rect.left, globalCandlesRef.current, intervalSec);
+        if (t !== null) patch.timeA = t;
+        if (Object.keys(patch).length > 0) {
+          updateLive(drawing.id, patch as Partial<Drawing>);
+        }
       }
       function onUp() {
         document.removeEventListener("mousemove", onMove);
@@ -123,7 +133,7 @@ export function PositionDraw({
       }
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
-      document.body.style.cursor = "ns-resize";
+      document.body.style.cursor = "move";
     };
   }
 
