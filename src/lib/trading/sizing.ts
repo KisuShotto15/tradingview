@@ -135,15 +135,14 @@ export function modeRequiresSl(mode: SizingMode): boolean {
 /* ── Stop-loss input modes ─────────────────────────────────────────────────
  * The canonical stop value is always a PRICE; these convert to/from the unit
  * the user is typing in. A stop sits below the entry for a long and above it
- * for a short, so the side decides the direction of every offset.
+ * for a short, so the side decides the direction of the offset.
+ *
+ * Risk is intentionally not a unit here — see `SlMode`.
  */
 
 export interface SlCtx {
   entry: number;
   side: "BUY" | "SELL";
-  /** Position size in base asset — needed by the risk-based modes. */
-  qty: number;
-  balanceUsd: number;
 }
 
 /** Signed direction from entry to the stop: -1 for a long, +1 for a short. */
@@ -156,21 +155,7 @@ export function slInputToPrice(mode: SlMode, value: number, ctx: SlCtx): number 
   if (!isFinite(value) || value <= 0) return NaN;
   if (mode === "PRICE") return value;
   if (ctx.entry <= 0) return NaN;
-
-  let distance: number;
-  switch (mode) {
-    case "PCT_PRICE":
-      distance = (ctx.entry * value) / 100;
-      break;
-    case "RISK_USD":
-      if (ctx.qty <= 0) return NaN;
-      distance = value / ctx.qty;
-      break;
-    case "RISK_PCT":
-      if (ctx.qty <= 0 || ctx.balanceUsd <= 0) return NaN;
-      distance = (ctx.balanceUsd * value) / 100 / ctx.qty;
-      break;
-  }
+  const distance = (ctx.entry * value) / 100;
   const price = ctx.entry + slDirection(ctx.side) * distance;
   return price > 0 ? price : NaN;
 }
@@ -180,15 +165,5 @@ export function slPriceToInput(mode: SlMode, slPrice: number, ctx: SlCtx): numbe
   if (!isFinite(slPrice) || slPrice <= 0) return 0;
   if (mode === "PRICE") return slPrice;
   if (ctx.entry <= 0) return 0;
-
-  const distance = Math.abs(ctx.entry - slPrice);
-  switch (mode) {
-    case "PCT_PRICE":
-      return (distance / ctx.entry) * 100;
-    case "RISK_USD":
-      return distance * ctx.qty;
-    case "RISK_PCT":
-      if (ctx.balanceUsd <= 0) return 0;
-      return ((distance * ctx.qty) / ctx.balanceUsd) * 100;
-  }
+  return (Math.abs(ctx.entry - slPrice) / ctx.entry) * 100;
 }

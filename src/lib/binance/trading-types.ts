@@ -111,13 +111,13 @@ export type SizingMode =
 
 /**
  * How the stop-loss field is expressed. The canonical value is always the stop
- * PRICE; these are just input/display units for it.
+ * PRICE; these are just input units for *where* the stop sits.
  *
- * Note this is the dual of the risk sizing modes: with `SizingMode.RISK_USD`
- * the stop is fixed and the risk drives the quantity, whereas with
- * `SlMode.RISK_USD` the quantity is fixed and the risk drives the stop price.
+ * Risk deliberately isn't a unit here: risk belongs to the sizing modes
+ * (`SizingMode.RISK_USD` / `RISK_PCT`), where stop + risk determine the
+ * quantity. Offering it on both sides would make the two circular.
  */
-export type SlMode = "PRICE" | "PCT_PRICE" | "RISK_USD" | "RISK_PCT";
+export type SlMode = "PRICE" | "PCT_PRICE";
 
 /** Symbol filters resolved from /fapi/v1/exchangeInfo (cached). */
 export interface SymbolInfo {

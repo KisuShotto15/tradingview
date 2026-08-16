@@ -34,22 +34,16 @@ const SIZING_LABELS: Record<SizingMode, string> = {
 const SL_MODE_LABELS: Record<SlMode, string> = {
   PRICE: "price",
   PCT_PRICE: "% price",
-  RISK_USD: "risk, USD",
-  RISK_PCT: "risk, % balance",
 };
 
 const SL_MODE_UNITS: Record<SlMode, string> = {
   PRICE: "",
   PCT_PRICE: "%",
-  RISK_USD: "USD",
-  RISK_PCT: "%",
 };
 
 const SL_MODE_HINTS: Record<SlMode, string> = {
   PRICE: "Stop-loss price.",
   PCT_PRICE: "Distance from the entry as a percentage of price.",
-  RISK_USD: "Cash lost if the stop hits, at the current order size.",
-  RISK_PCT: "Equity percentage lost if the stop hits, at the current order size.",
 };
 
 /** Fixed-decimal string without trailing zeros — keeps derived inputs typable. */
@@ -218,6 +212,22 @@ export function OrderPanel() {
             } else {
               updateForm({ sizingInput: raw, qty: "" });
             }
+          }}
+        />
+
+        <RiskControl
+          riskUsd={derived.RISK_USD}
+          riskPct={derived.RISK_PCT}
+          hasSl={sl !== null}
+          onChangeRisk={(riskUsd) => {
+            // Risk + stop distance fix the position size. Refresh the sizing
+            // input too so the Amount field above doesn't go stale.
+            const newQty = sizingToQty("RISK_USD", riskUsd, ctx);
+            const next = qtyToSizings(newQty, ctx);
+            updateForm({
+              qty: newQty > 0 ? newQty.toFixed(symInfo.quantityPrecision) : "",
+              sizingInput: formatForMode(next[form.sizingMode], form.sizingMode),
+            });
           }}
         />
 
@@ -495,6 +505,60 @@ function SizingControl({
   );
 }
 
+/**
+ * Risk row: how much this trade loses if the stop hits. Editing it works
+ * backwards — risk over the stop distance fixes the position size — which is
+ * the "I'll risk 10 USD on this idea" workflow. Needs a stop to measure from.
+ */
+function RiskControl({
+  riskUsd, riskPct, hasSl, onChangeRisk,
+}: {
+  riskUsd: number;
+  riskPct: number;
+  hasSl: boolean;
+  onChangeRisk: (riskUsd: number) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const value = draft ?? (riskUsd > 0 ? riskUsd.toFixed(2) : "");
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] uppercase tracking-wider text-tv-text-muted">Risk</span>
+        {hasSl && riskPct > 0 && (
+          <span className="text-[10px] text-tv-text-muted">
+            {riskPct.toFixed(2)}% of balance
+          </span>
+        )}
+      </div>
+      <div className="relative">
+        <input
+          type="number"
+          step="any"
+          disabled={!hasSl}
+          value={value}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            const parsed = parseFloat(e.target.value);
+            onChangeRisk(isFinite(parsed) && parsed > 0 ? parsed : 0);
+          }}
+          onBlur={() => setDraft(null)}
+          placeholder={hasSl ? "0" : "Set a stop loss first"}
+          title={
+            hasSl
+              ? "Max loss if the stop hits — sets the position size"
+              : "Enable a stop loss to size the trade by risk"
+          }
+          className="w-full rounded border border-tv-border bg-tv-bg px-2 py-1.5 pr-10 font-mono text-xs text-tv-text tabular-nums outline-none placeholder:font-sans placeholder:text-[10px] focus:border-tv-blue disabled:cursor-not-allowed disabled:opacity-50"
+        />
+        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-tv-text-muted">
+          USD
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function ExitsSection({
   form, tickSize, pricePrecision, qtyNum, rr, referencePrice, balanceUsd, onPatch,
 }: {
@@ -513,12 +577,7 @@ function ExitsSection({
    *  value, so a stop dragged on the chart flows straight back in here. */
   const [slDraft, setSlDraft] = useState<string | null>(null);
 
-  const slCtx: SlCtx = {
-    entry: referencePrice,
-    side: form.side,
-    qty: qtyNum,
-    balanceUsd,
-  };
+  const slCtx: SlCtx = { entry: referencePrice, side: form.side };
   const slPrice = form.sl ? parseFloat(form.sl) : NaN;
   const slDerived = slPriceToInput(form.slMode, slPrice, slCtx);
   const slValue = slDraft ?? (slDerived > 0 ? trimNum(slDerived, form.slMode === "PRICE" ? pricePrecision : 2) : "");
@@ -585,36 +644,30 @@ function ExitsSection({
             </div>
             {slMenuOpen && (
               <div className="rounded border border-tv-border bg-tv-bg/60">
-                {(Object.keys(SL_MODE_LABELS) as SlMode[]).map((m) => {
-                  // Risk modes need a position size to divide the risk across.
-                  const disabled = (m === "RISK_USD" || m === "RISK_PCT") && qtyNum <= 0;
-                  return (
-                    <button
-                      key={m}
-                      disabled={disabled}
-                      title={disabled ? "Set the order amount first" : SL_MODE_HINTS[m]}
-                      onClick={() => {
-                        setSlDraft(null);
-                        onPatch({ slMode: m, slEnabled: true });
-                        setSlMenuOpen(false);
-                      }}
-                      className={cn(
-                        "flex w-full items-center justify-between px-2 py-1 text-[10px]",
-                        disabled && "cursor-not-allowed opacity-40",
-                        m === form.slMode
-                          ? "bg-tv-blue/15 text-tv-text"
-                          : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
-                      )}
-                    >
-                      <span>{SL_MODE_LABELS[m]}</span>
-                      <span className="font-mono tabular-nums">
-                        {slPriceToInput(m, slPrice, slCtx) > 0
-                          ? trimNum(slPriceToInput(m, slPrice, slCtx), m === "PRICE" ? pricePrecision : 2)
-                          : "—"}
-                      </span>
-                    </button>
-                  );
-                })}
+                {(Object.keys(SL_MODE_LABELS) as SlMode[]).map((m) => (
+                  <button
+                    key={m}
+                    title={SL_MODE_HINTS[m]}
+                    onClick={() => {
+                      setSlDraft(null);
+                      onPatch({ slMode: m, slEnabled: true });
+                      setSlMenuOpen(false);
+                    }}
+                    className={cn(
+                      "flex w-full items-center justify-between px-2 py-1 text-[10px]",
+                      m === form.slMode
+                        ? "bg-tv-blue/15 text-tv-text"
+                        : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
+                    )}
+                  >
+                    <span>{SL_MODE_LABELS[m]}</span>
+                    <span className="font-mono tabular-nums">
+                      {slPriceToInput(m, slPrice, slCtx) > 0
+                        ? trimNum(slPriceToInput(m, slPrice, slCtx), m === "PRICE" ? pricePrecision : 2)
+                        : "—"}
+                    </span>
+                  </button>
+                ))}
               </div>
             )}
             {form.slEnabled && (

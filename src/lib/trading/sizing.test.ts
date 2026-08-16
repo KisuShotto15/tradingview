@@ -114,8 +114,8 @@ describe("sizingToQty", () => {
 
 /* ── Stop-loss input modes ─────────────────────────────────────────────── */
 
-const longCtx: SlCtx = { entry: 100, side: "BUY", qty: 2, balanceUsd: 1000 };
-const shortCtx: SlCtx = { entry: 100, side: "SELL", qty: 2, balanceUsd: 1000 };
+const longCtx: SlCtx = { entry: 100, side: "BUY" };
+const shortCtx: SlCtx = { entry: 100, side: "SELL" };
 
 describe("slInputToPrice", () => {
   it("passes a price through unchanged", () => {
@@ -128,35 +128,17 @@ describe("slInputToPrice", () => {
     expect(slInputToPrice("PCT_PRICE", 5, shortCtx)).toBeCloseTo(105, 6);
   });
 
-  it("derives the stop from a cash risk over the position size", () => {
-    // 20 USD risk across 2 units = 10 of price distance.
-    expect(slInputToPrice("RISK_USD", 20, longCtx)).toBeCloseTo(90, 6);
-    expect(slInputToPrice("RISK_USD", 20, shortCtx)).toBeCloseTo(110, 6);
-  });
-
-  it("derives the stop from a percentage of balance", () => {
-    // 2% of 1000 = 20 USD risk, same as above.
-    expect(slInputToPrice("RISK_PCT", 2, longCtx)).toBeCloseTo(90, 6);
-  });
-
   it("returns NaN when the inputs can't produce a stop", () => {
     expect(Number.isNaN(slInputToPrice("PRICE", 0, longCtx))).toBe(true);
-    // Risk modes need a position size to divide by.
-    expect(Number.isNaN(slInputToPrice("RISK_USD", 20, { ...longCtx, qty: 0 }))).toBe(true);
-    expect(Number.isNaN(slInputToPrice("RISK_PCT", 2, { ...longCtx, balanceUsd: 0 }))).toBe(true);
     // A stop that would land at or below zero is not a stop.
     expect(Number.isNaN(slInputToPrice("PCT_PRICE", 100, longCtx))).toBe(true);
+    expect(Number.isNaN(slInputToPrice("PCT_PRICE", 5, { ...longCtx, entry: 0 }))).toBe(true);
   });
 });
 
 describe("slPriceToInput", () => {
-  it("round-trips every mode", () => {
-    for (const [mode, value] of [
-      ["PRICE", 95],
-      ["PCT_PRICE", 5],
-      ["RISK_USD", 20],
-      ["RISK_PCT", 2],
-    ] as const) {
+  it("round-trips both modes", () => {
+    for (const [mode, value] of [["PRICE", 95], ["PCT_PRICE", 5]] as const) {
       const price = slInputToPrice(mode, value, longCtx);
       expect(slPriceToInput(mode, price, longCtx)).toBeCloseTo(value, 6);
     }
@@ -168,7 +150,6 @@ describe("slPriceToInput", () => {
   });
 
   it("returns 0 when there is no usable stop", () => {
-    expect(slPriceToInput("RISK_USD", 0, longCtx)).toBe(0);
-    expect(slPriceToInput("RISK_PCT", 90, { ...longCtx, balanceUsd: 0 })).toBe(0);
+    expect(slPriceToInput("PCT_PRICE", 0, longCtx)).toBe(0);
   });
 });
