@@ -1040,8 +1040,9 @@ export function OrderLinesLayer({
       });
     }
 
-    // Shaded zones for the open position (entry↔TP green, entry↔SL red). While a
-    // line is being dragged/pending, the zone tracks its effective price.
+    // Shaded target zone for the open position (entry↔TP). The entry↔SL side is
+    // intentionally left unshaded. While a line is being dragged/pending, the
+    // zone tracks its effective price.
     const yEntryPos = candleSeries.priceToCoordinate(pos.entryPrice);
     if (yEntryPos !== null) {
       if (effTp && effTp > 0) {
@@ -1055,45 +1056,21 @@ export function OrderLinesLayer({
           });
         }
       }
-      if (effSl && effSl > 0) {
-        const ySl = candleSeries.priceToCoordinate(effSl);
-        if (ySl !== null) {
-          zones.push({
-            y1: Math.min(yEntryPos as number, ySl as number),
-            y2: Math.max(yEntryPos as number, ySl as number),
-            color: SL_COLOR,
-            opacity: 0.06,
-          });
-        }
-      }
     }
   }
 
-  /* ── Shaded zones for the form preview (entry↔TP and entry↔SL) ── */
+  /* ── Shaded target zone for the form preview (entry↔TP only) ── */
   if (hasPreviewEntry) {
     const yEntry = candleSeries.priceToCoordinate(entryPrice);
-    if (yEntry !== null) {
-      if (hasPreviewTP) {
-        const yTp = candleSeries.priceToCoordinate(tpPrice);
-        if (yTp !== null) {
-          zones.push({
-            y1: Math.min(yEntry as number, yTp as number),
-            y2: Math.max(yEntry as number, yTp as number),
-            color: TP_COLOR,
-            opacity: 0.10,
-          });
-        }
-      }
-      if (hasPreviewSL) {
-        const ySl = candleSeries.priceToCoordinate(slPrice);
-        if (ySl !== null) {
-          zones.push({
-            y1: Math.min(yEntry as number, ySl as number),
-            y2: Math.max(yEntry as number, ySl as number),
-            color: SL_COLOR,
-            opacity: 0.08,
-          });
-        }
+    if (yEntry !== null && hasPreviewTP) {
+      const yTp = candleSeries.priceToCoordinate(tpPrice);
+      if (yTp !== null) {
+        zones.push({
+          y1: Math.min(yEntry as number, yTp as number),
+          y2: Math.max(yEntry as number, yTp as number),
+          color: TP_COLOR,
+          opacity: 0.10,
+        });
       }
     }
   }

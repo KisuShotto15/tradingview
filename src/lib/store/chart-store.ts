@@ -247,6 +247,9 @@ export interface Watchlist {
   items: WatchlistItem[];
 }
 
+/** Tabs available in the right sidebar. */
+export type RightSidebarTab = "watchlist" | "objects" | "trade";
+
 /** Tagged settings target — either a builtin indicator key or an EMA instance id. */
 export type SettingsTarget = IndicatorKey | { kind: "ema"; id: string };
 
@@ -336,6 +339,9 @@ interface ChartState {
   /** Persisted width (px) of the right sidebar (watchlist/objects/trade tabs),
    *  resized by dragging its left edge. */
   rightSidebarWidth: number;
+  /** Active right-sidebar tab. In the store (not local state) so the chart's
+   *  Trade/Buy/Sell overlay can bring the order panel up. */
+  rightSidebarTab: RightSidebarTab;
 
   /**
    * Per-drawing-kind defaults (color, lineWidth, lineStyle). Applied to new
@@ -398,6 +404,7 @@ interface ChartState {
   setFavoriteTools: (tools: DrawingTool[]) => void;
   setFavoritesBarPos: (pos: { x: number; y: number } | null) => void;
   setRightSidebarWidth: (width: number) => void;
+  setRightSidebarTab: (tab: RightSidebarTab) => void;
   setToolDefault: (
     kind: string,
     patch: { color?: string; lineWidth?: number; lineStyle?: 0 | 1 | 2; [key: string]: unknown },
@@ -495,6 +502,7 @@ export const useChartStore = create<ChartState>()(
       favoriteTools: [],
       favoritesBarPos: null,
       rightSidebarWidth: 256,
+      rightSidebarTab: "watchlist",
       toolDefaults: {},
       ...initialWatchlists(),
       chartColors: { ...DEFAULT_CHART_COLORS },
@@ -727,6 +735,7 @@ export const useChartStore = create<ChartState>()(
       setFavoritesBarPos: (favoritesBarPos) => set({ favoritesBarPos }),
       setRightSidebarWidth: (width) =>
         set({ rightSidebarWidth: Math.min(900, Math.max(200, width)) }),
+      setRightSidebarTab: (rightSidebarTab) => set({ rightSidebarTab }),
 
       applySnapshot: (snap) => {
         withoutHistory(() => {
@@ -940,6 +949,7 @@ export const useChartStore = create<ChartState>()(
         favoriteTools: s.favoriteTools,
         favoritesBarPos: s.favoritesBarPos,
         rightSidebarWidth: s.rightSidebarWidth,
+        rightSidebarTab: s.rightSidebarTab,
         toolDefaults: s.toolDefaults,
         watchlists: s.watchlists,
         activeWatchlistId: s.activeWatchlistId,

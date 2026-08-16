@@ -8,10 +8,11 @@ import { ObjectTreePanel } from "@/components/chart/ObjectTreePanel";
 import { useChartStore } from "@/lib/store/chart-store";
 import { cn } from "@/lib/utils";
 
-type Tab = "watchlist" | "objects" | "trade";
-
 export function RightSidebar() {
-  const [tab, setTab] = useState<Tab>("watchlist");
+  // Tab lives in the store so the chart's Trade/Buy/Sell overlay can open the
+  // order panel.
+  const tab = useChartStore((s) => s.rightSidebarTab);
+  const setTab = useChartStore((s) => s.setRightSidebarTab);
   const width = useChartStore((s) => s.rightSidebarWidth);
   const setWidth = useChartStore((s) => s.setRightSidebarWidth);
 
