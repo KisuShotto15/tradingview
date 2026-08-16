@@ -39,6 +39,7 @@ export async function POST(req: Request) {
             stopPrice: rest.stopPrice,
             reduceOnly: rest.reduceOnly,
             timeInForce: rest.timeInForce,
+            positionIdx: rest.positionIdx,
           },
         );
         return NextResponse.json(result);

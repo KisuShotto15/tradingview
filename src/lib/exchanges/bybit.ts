@@ -148,6 +148,7 @@ export interface RawBybitPosition {
   takeProfit: string;
   stopLoss: string;
   tradeMode: number; // 0 cross, 1 isolated
+  positionIdx: number; // 0 one-way, 1 hedge-long, 2 hedge-short
 }
 
 export function mapBybitPosition(p: RawBybitPosition): Position {
@@ -177,6 +178,7 @@ export function mapBybitPosition(p: RawBybitPosition): Position {
     marginType: p.tradeMode === 1 ? "isolated" : "cross",
     takeProfit: num(p.takeProfit) || undefined,
     stopLoss: num(p.stopLoss) || undefined,
+    positionIdx: p.positionIdx ?? 0,
   };
 }
 
@@ -379,6 +381,7 @@ export interface BybitPlaceArgs {
   timeInForce?: TimeInForce;
   takeProfit?: string;
   stopLoss?: string;
+  positionIdx?: number;
 }
 
 export async function bybitPlaceOrder(creds: BybitCreds, a: BybitPlaceArgs) {
@@ -394,6 +397,7 @@ export async function bybitPlaceOrder(creds: BybitCreds, a: BybitPlaceArgs) {
     orderType,
     qty: a.quantity,
   };
+  if (a.positionIdx !== undefined) body.positionIdx = a.positionIdx;
   if (orderType === "Limit" && a.price) body.price = a.price;
   if (a.timeInForce === "GTX") body.timeInForce = "PostOnly";
   else if (a.timeInForce && a.timeInForce !== "GTC") body.timeInForce = a.timeInForce;
@@ -439,17 +443,18 @@ export async function bybitSetLeverage(creds: BybitCreds, symbol: string, levera
   );
 }
 
-/** Set TP and/or SL on an open position. `null` clears the level (sent as "0"). */
+/** Set TP and/or SL on an open position. `null` clears the level (sent as "0").
+ *  `positionIdx` must match the account's position mode (0 one-way, 1/2 hedge). */
 export async function bybitSetTradingStop(
   creds: BybitCreds,
   symbol: string,
-  args: { tp?: number | null; sl?: number | null },
+  args: { tp?: number | null; sl?: number | null; positionIdx?: number },
 ) {
   const body: Record<string, unknown> = {
     category: "linear",
     symbol,
     tpslMode: "Full",
-    positionIdx: 0,
+    positionIdx: args.positionIdx ?? 0,
   };
   if (args.tp !== undefined) body.takeProfit = args.tp === null ? "0" : String(args.tp);
   if (args.sl !== undefined) body.stopLoss = args.sl === null ? "0" : String(args.sl);

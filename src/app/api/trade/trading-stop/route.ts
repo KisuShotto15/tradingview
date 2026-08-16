@@ -15,18 +15,20 @@ interface Body {
   symbol: string;
   tp?: number | null;
   sl?: number | null;
+  positionIdx?: number;
 }
 
 export async function POST(req: Request) {
   try {
-    const { apiKey, apiSecret, testnet, symbol, tp, sl } = (await req.json()) as Body;
+    const { apiKey, apiSecret, testnet, symbol, tp, sl, positionIdx } =
+      (await req.json()) as Body;
     if (!apiKey || !apiSecret || !symbol) {
       return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
     }
     const result = await bybitSetTradingStop(
       { apiKey, apiSecret, testnet: !!testnet },
       symbol,
-      { tp, sl },
+      { tp, sl, positionIdx },
     );
     return NextResponse.json(result);
   } catch (e) {

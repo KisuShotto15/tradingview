@@ -265,6 +265,17 @@ export const useTradingStore = create<TradingState>()(
 
         set({ isLoading: true, lastError: null });
 
+        // Bybit hedge mode: if the account holds a hedge position on this symbol,
+        // orders must carry a positionIdx (1 long / 2 short). The entry side
+        // decides it; its attached reduceOnly SL/TP share the same index.
+        let posIdx: number | undefined;
+        if (exchange === "bybit" && perp) {
+          const hedge = get().positions.some(
+            (p) => p.symbol === sym && (p.positionIdx === 1 || p.positionIdx === 2),
+          );
+          if (hedge) posIdx = f.side === "BUY" ? 1 : 2;
+        }
+
         const body: PlaceOrderParams = {
           apiKey,
           apiSecret,
@@ -275,6 +286,7 @@ export const useTradingStore = create<TradingState>()(
           side: f.side,
           type: f.type,
           quantity: f.qty,
+          ...(posIdx !== undefined ? { positionIdx: posIdx } : {}),
           ...(f.type !== "MARKET" && f.price ? { price: f.price } : {}),
           ...(["STOP", "STOP_LIMIT", "STOP_MARKET"].includes(f.type) && f.stopPrice
             ? { stopPrice: f.stopPrice }
@@ -310,6 +322,7 @@ export const useTradingStore = create<TradingState>()(
                 side: slSide, type: "STOP_MARKET",
                 quantity: f.qty, stopPrice: f.sl,
                 reduceOnly: true, workingType: "MARK_PRICE",
+                ...(posIdx !== undefined ? { positionIdx: posIdx } : {}),
               } satisfies PlaceOrderParams),
             });
           }
@@ -326,6 +339,7 @@ export const useTradingStore = create<TradingState>()(
                 side: tpSide, type: "TAKE_PROFIT_MARKET",
                 quantity: f.qty, stopPrice: f.tp,
                 reduceOnly: true, workingType: "MARK_PRICE",
+                ...(posIdx !== undefined ? { positionIdx: posIdx } : {}),
               } satisfies PlaceOrderParams),
             });
           }
@@ -433,6 +447,7 @@ export const useTradingStore = create<TradingState>()(
               side: closeSide, type: "MARKET",
               quantity: String(qty),
               ...(perp ? { reduceOnly: true } : {}),
+              ...(position.positionIdx !== undefined ? { positionIdx: position.positionIdx } : {}),
             } satisfies PlaceOrderParams),
           });
           const data = (await res.json().catch(() => ({}))) as { msg?: string };
@@ -465,7 +480,10 @@ export const useTradingStore = create<TradingState>()(
             const res = await fetch("/api/trade/trading-stop", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ apiKey, apiSecret, testnet, symbol: sym, tp, sl }),
+              body: JSON.stringify({
+                apiKey, apiSecret, testnet, symbol: sym, tp, sl,
+                positionIdx: position.positionIdx,
+              }),
             });
             const data = (await res.json().catch(() => ({}))) as { msg?: string };
             if (!res.ok) {

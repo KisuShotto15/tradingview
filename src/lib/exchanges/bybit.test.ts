@@ -52,12 +52,14 @@ test("mapBybitPosition: long position keeps sign, maps fields + tp/sl", () => {
     takeProfit: "65000",
     stopLoss: "58000",
     tradeMode: 1,
+    positionIdx: 1,
   };
   const p = mapBybitPosition(raw);
   expect(p.positionAmt).toBe(0.5);
   expect(p.side).toBe("LONG");
   expect(p.entryPrice).toBe(60000);
   expect(p.marginType).toBe("isolated");
+  expect(p.positionIdx).toBe(1);
   expect(p.takeProfit).toBe(65000);
   expect(p.stopLoss).toBe(58000);
   expect(p.liquidationPrice).toBe(54000);
@@ -80,6 +82,7 @@ test("mapBybitPosition: short position gets negative amount and cross margin", (
     takeProfit: "0",
     stopLoss: "0",
     tradeMode: 0,
+    positionIdx: 2,
   };
   const p = mapBybitPosition(raw);
   expect(p.positionAmt).toBe(-2);

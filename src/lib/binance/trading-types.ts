@@ -57,6 +57,9 @@ export interface Position {
   takeProfit?: number;
   /** Stop-loss price attached to the position (see takeProfit). */
   stopLoss?: number;
+  /** Bybit position index: 0 one-way, 1 hedge-long, 2 hedge-short. Needed to
+   *  set TP/SL on hedge-mode accounts. Undefined for Binance. */
+  positionIdx?: number;
 }
 
 /** Which exchange the trading credentials + routes target. */
@@ -84,6 +87,8 @@ export interface PlaceOrderParams {
   closePosition?: boolean;
   workingType?: "MARK_PRICE" | "CONTRACT_PRICE";
   exchange?: Exchange;
+  /** Bybit hedge-mode position index (0 one-way, 1 long, 2 short). */
+  positionIdx?: number;
 }
 
 export interface CancelOrderParams {
