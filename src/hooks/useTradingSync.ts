@@ -10,6 +10,10 @@ import { isPerp } from "@/lib/binance/rest";
  * credentials are set, independent of whether any trading panel is open — so
  * the chart's EP / SL / TP / liquidation lines always reflect the live account.
  *
+ * Also keeps `allPositions` (every open position on the account, not just the
+ * chart's current symbol) fresh, so the watchlist can badge any row with an
+ * open trade — not only the one currently on the chart.
+ *
  * The per-panel effects still run when their panels are visible; this hook just
  * guarantees a baseline refresh so the chart overlay is never stale.
  */
@@ -31,6 +35,7 @@ export function useTradingSync() {
       void s.fetchBalance(symbol);
       void s.fetchOrders(symbol);
       if (perp) void s.fetchPositions(symbol);
+      void s.fetchAllPositions();
     }
 
     refresh();

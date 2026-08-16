@@ -50,6 +50,11 @@ interface TradingState {
   orders: Order[];
   positions: Position[];
   balance: AssetBalance[];
+  /** Every open perp position on the account, regardless of the chart's
+   *  current symbol — unlike `positions`, which `fetchPositions(symbol)` scopes
+   *  to a single symbol. Used by the watchlist to badge any row with an open
+   *  trade. Refreshed by the global useTradingSync poll. */
+  allPositions: Position[];
 
   // UI form
   form: OrderForm;
@@ -74,6 +79,8 @@ interface TradingState {
   fetchBalance: (symbol: string) => Promise<void>;
   fetchOrders: (symbol: string) => Promise<void>;
   fetchPositions: (symbol: string) => Promise<void>;
+  /** Fetch every open perp position on the account into `allPositions`. */
+  fetchAllPositions: () => Promise<void>;
 
   placeOrder: (
     symbol: string,
@@ -135,6 +142,7 @@ export const useTradingStore = create<TradingState>()(
       isConnected: false,
       orders: [],
       positions: [],
+      allPositions: [],
       balance: [],
       form: defaultForm(),
       tradingPanelOpen: false,
@@ -145,7 +153,7 @@ export const useTradingStore = create<TradingState>()(
 
       setExchange: (exchange) => {
         // Switching exchange invalidates the current connection + cached data.
-        set({ exchange, isConnected: false, orders: [], positions: [], balance: [] });
+        set({ exchange, isConnected: false, orders: [], positions: [], allPositions: [], balance: [] });
       },
       setCredentials: (apiKey, apiSecret, testnet) => {
         set({ apiKey, apiSecret, testnet, isConnected: false, lastError: null });
@@ -251,6 +259,27 @@ export const useTradingStore = create<TradingState>()(
           if (pos && pos.leverage) {
             set((s) => ({ form: { ...s.form, leverage: pos.leverage } }));
           }
+        } catch {
+          // silently fail
+        }
+      },
+
+      fetchAllPositions: async () => {
+        const { apiKey, apiSecret, testnet, exchange } = get();
+        if (!apiKey || !apiSecret) return;
+        // Omitting `symbol` makes both exchange routes return every open
+        // position on the account instead of scoping to one.
+        const params = new URLSearchParams({
+          apiKey,
+          apiSecret,
+          testnet: String(testnet),
+          exchange,
+        });
+        try {
+          const res = await fetch(`/api/trade/positions?${params}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          set({ allPositions: data as Position[] });
         } catch {
           // silently fail
         }

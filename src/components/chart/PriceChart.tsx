@@ -3239,7 +3239,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
         );
       })}
 
-      {/* Bar-replay controls (entry button when inactive, full bar when active) */}
+      {/* Bar-replay transport controls (only rendered once active — the entry
+          trigger lives in the Header, next to Alert) */}
       <div className="pointer-events-none absolute bottom-3 left-1/2 z-30 -translate-x-1/2">
         <ReplayToolbar />
       </div>

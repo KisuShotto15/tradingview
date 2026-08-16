@@ -17,13 +17,16 @@ import {
   Type,
   X,
 } from "lucide-react";
-import { fetchTickers24h } from "@/lib/binance/rest";
+import { fetchTickers24h, cleanSym } from "@/lib/binance/rest";
 import { fetchBybitTickers24h } from "@/lib/bybit/public";
 import { sortWatchlistItems, cycleSort, type WatchSort } from "@/lib/watchlist/sort";
 import { getBinanceWS } from "@/lib/binance/ws";
 import { getBybitWS } from "@/lib/bybit/ws";
 import { resolveSource } from "@/lib/symbols/source";
+import { stripExchangePrefix } from "@/lib/symbols/prefix";
 import { useChartStore } from "@/lib/store/chart-store";
+import { useTradingStore } from "@/lib/store/trading-store";
+import type { Position } from "@/lib/binance/trading-types";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,6 +61,7 @@ export function Watchlist() {
   const symbol = useChartStore((s) => s.symbol);
   const setSymbol = useChartStore((s) => s.setSymbol);
   const openSymbolDialog = useChartStore((s) => s.setSymbolDialogOpen);
+  const allPositions = useTradingStore((s) => s.allPositions);
 
   const active = watchlists.find((w) => w.id === activeWatchlistId) ?? watchlists[0];
   const items = active?.items ?? [];
@@ -65,6 +69,16 @@ export function Watchlist() {
     () => items.filter((i) => i.type === "symbol").map((i) => i.value),
     [items],
   );
+
+  // Open positions keyed by bare exchange symbol (e.g. "SOLUSDT"), so a
+  // watchlist row can be matched regardless of its BYBIT:/​.P decoration.
+  const positionsBySymbol = useMemo(() => {
+    const map = new Map<string, Position>();
+    for (const p of allPositions) {
+      if (p.positionAmt !== 0) map.set(p.symbol, p);
+    }
+    return map;
+  }, [allPositions]);
 
   const [rows, setRows] = useState<Record<string, Row>>({});
   const [flash, setFlash] = useState<Record<string, "up" | "down" | null>>({});
@@ -385,6 +399,13 @@ export function Watchlist() {
             }
 
             const s = item.value;
+            // Always display the plain ticker (BYBIT:BTCUSDT.P -> BTCUSDT.P),
+            // regardless of which exchange it actually resolves to.
+            const displaySymbol = stripExchangePrefix(s);
+            const openPosition = positionsBySymbol.get(cleanSym(s));
+            const posSide = openPosition?.side === "LONG" || openPosition?.side === "SHORT"
+              ? openPosition.side
+              : null;
             const row = rows[s];
             const isActive = s === symbol;
             const f = flash[s];
@@ -415,10 +436,11 @@ export function Watchlist() {
                 />
                 <GripVertical className="h-3 w-3 shrink-0 cursor-grab text-tv-text-dim opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing" />
                 <div className="flex min-w-0 items-center gap-1.5">
-                  <CoinIcon symbol={s} size={16} />
+                  <CoinIcon symbol={displaySymbol} size={16} />
                   <span className="truncate font-medium text-tv-text">
-                    {s}
+                    {posSide ? getBaseAsset(displaySymbol) : displaySymbol}
                   </span>
+                  {posSide && <PositionSideBadge side={posSide} />}
                 </div>
                 <span
                   className={cn(
@@ -588,6 +610,21 @@ export function Watchlist() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Hollow circle badge marking an open Long/Short position on a watchlist row. */
+function PositionSideBadge({ side }: { side: "LONG" | "SHORT" }) {
+  const isLong = side === "LONG";
+  const color = isLong ? "#2962ff" : "#ef5350";
+  return (
+    <span
+      className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold"
+      style={{ borderColor: color, color }}
+      title={isLong ? "Open long position" : "Open short position"}
+    >
+      {isLong ? "L" : "S"}
+    </span>
   );
 }
 

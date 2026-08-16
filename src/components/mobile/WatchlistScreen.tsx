@@ -4,10 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, Search } from "lucide-react";
 import { useChartStore } from "@/lib/store/chart-store";
 import { useMobileStore } from "@/lib/store/mobile-store";
-import { fetchTickers24h } from "@/lib/binance/rest";
+import { useTradingStore } from "@/lib/store/trading-store";
+import { fetchTickers24h, cleanSym } from "@/lib/binance/rest";
 import { fetchBybitTickers24h } from "@/lib/bybit/public";
 import { resolveSource } from "@/lib/symbols/source";
+import { stripExchangePrefix } from "@/lib/symbols/prefix";
+import { getBaseAsset } from "@/components/watchlist/CoinIcon";
 import type { Ticker24h } from "@/lib/binance/types";
+import type { Position } from "@/lib/binance/trading-types";
 import { formatPrice, formatPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +27,8 @@ export function WatchlistScreen() {
   const setTab = useMobileStore((s) => s.setTab);
   const openSheet = useMobileStore((s) => s.openSheet);
 
+  const allPositions = useTradingStore((s) => s.allPositions);
+
   const active = watchlists.find((w) => w.id === activeId) ?? watchlists[0];
   const items = active?.items ?? [];
 
@@ -30,6 +36,14 @@ export function WatchlistScreen() {
     () => items.filter((i) => i.type === "symbol").map((i) => i.value),
     [items],
   );
+
+  const positionsBySymbol = useMemo(() => {
+    const map = new Map<string, Position>();
+    for (const p of allPositions) {
+      if (p.positionAmt !== 0) map.set(p.symbol, p);
+    }
+    return map;
+  }, [allPositions]);
 
   const [tickers, setTickers] = useState<Map<string, Ticker24h>>(new Map());
 
@@ -124,6 +138,11 @@ export function WatchlistScreen() {
               }
 
               const s = item.value;
+              const displaySymbol = stripExchangePrefix(s);
+              const openPosition = positionsBySymbol.get(cleanSym(s));
+              const posSide = openPosition?.side === "LONG" || openPosition?.side === "SHORT"
+                ? openPosition.side
+                : null;
               const t = tickers.get(s);
               const pct = t?.priceChangePercent ?? 0;
               const up = pct >= 0;
@@ -134,8 +153,13 @@ export function WatchlistScreen() {
                     className="flex w-full items-center justify-between border-b border-tv-border/60 px-3 py-2.5 text-left active:bg-tv-panel-hover"
                   >
                     <div className="flex flex-col gap-0.5">
-                      <span className="text-sm font-semibold">{s}</span>
-                      <span className="text-[10px] uppercase tracking-wider text-tv-text-muted">Binance</span>
+                      <span className="flex items-center gap-1.5 text-sm font-semibold">
+                        {posSide ? getBaseAsset(displaySymbol) : displaySymbol}
+                        {posSide && <PositionSideBadge side={posSide} />}
+                      </span>
+                      <span className="text-[10px] uppercase tracking-wider text-tv-text-muted">
+                        {resolveSource(s).kind === "bybit" ? "Bybit" : "Binance"}
+                      </span>
                     </div>
                     <div className="flex flex-col items-end gap-0.5">
                       <span className="font-mono text-sm tabular-nums">
@@ -156,5 +180,19 @@ export function WatchlistScreen() {
         )}
       </div>
     </div>
+  );
+}
+
+/** Hollow circle badge marking an open Long/Short position on a watchlist row. */
+function PositionSideBadge({ side }: { side: "LONG" | "SHORT" }) {
+  const isLong = side === "LONG";
+  const color = isLong ? "#2962ff" : "#ef5350";
+  return (
+    <span
+      className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold"
+      style={{ borderColor: color, color }}
+    >
+      {isLong ? "L" : "S"}
+    </span>
   );
 }

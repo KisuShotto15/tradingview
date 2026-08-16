@@ -5,7 +5,6 @@ import {
   ChevronsRight,
   Pause,
   Play,
-  Rewind,
   SkipForward,
   StepBack,
   StepForward,
@@ -17,9 +16,10 @@ import { cn } from "@/lib/utils";
 const SPEEDS = [1, 3, 5, 10] as const;
 
 /**
- * Bar-replay controls. Renders as a small "Replay" entry button when inactive,
- * and a floating control bar (play/step/speed) once replay is running. All state
- * lives in the replay store; PriceChart reacts to it to drive the candle feed.
+ * Bar-replay floating control bar (play/step/speed), shown over the chart once
+ * replay is active. The entry "Replay" trigger itself lives in the Header, next
+ * to Alert. All state lives in the replay store; PriceChart reacts to it to
+ * drive the candle feed.
  */
 export function ReplayToolbar() {
   const active = useReplayStore((s) => s.active);
@@ -30,7 +30,6 @@ export function ReplayToolbar() {
   const total = useReplayStore((s) => s.total);
 
   const {
-    enterPicking,
     exit,
     togglePlay,
     stepForward,
@@ -40,18 +39,7 @@ export function ReplayToolbar() {
     setSpeed,
   } = useReplayStore.getState();
 
-  if (!active) {
-    return (
-      <button
-        onClick={enterPicking}
-        title="Bar replay — step through history"
-        className="pointer-events-auto flex items-center gap-1.5 rounded border border-tv-border bg-tv-panel/95 px-2 py-1 text-[11px] font-medium text-tv-text-muted shadow-sm backdrop-blur hover:text-tv-text"
-      >
-        <Rewind className="h-3.5 w-3.5" />
-        Replay
-      </button>
-    );
-  }
+  if (!active) return null;
 
   const atStart = cursorIndex <= 0;
   const atEnd = total > 0 && cursorIndex >= total - 1;
