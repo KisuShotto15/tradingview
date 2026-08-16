@@ -19,26 +19,62 @@ import {
 import { useChartStore } from "@/lib/store/chart-store";
 import { cn } from "@/lib/utils";
 import type { SymbolInfo } from "@/lib/binance/types";
-import { CATALOG, getDynamicEntries, type SymbolEntry } from "@/lib/symbols/catalog";
+import {
+  CATALOG,
+  getDynamicEntries,
+  type SourceKind,
+  type SymbolEntry,
+} from "@/lib/symbols/catalog";
 
-type CatalogSymbol = SymbolInfo & { category: string; description: string };
+/** A row in the search list, tagged with the venue its data comes from. */
+interface SearchRow {
+  /** Ticker the chart is set to when picked. */
+  symbol: string;
+  baseAsset: string;
+  quoteAsset: string;
+  /** Display label + filter key for the exchange/data source. */
+  exchange: string;
+  description?: string;
+}
 
-function entryToSymbol(e: SymbolEntry): CatalogSymbol {
+/** Display label for each data source. Doubles as the filter chip label. */
+const SOURCE_LABEL: Record<SourceKind, string> = {
+  binance: "Binance",
+  bybit: "Bybit",
+  yahoo: "Yahoo",
+  fred: "FRED",
+  coingecko: "CoinGecko",
+};
+
+/** Chip order — venues the app actually trades on come first. */
+const EXCHANGE_ORDER = ["Binance", "Bybit", "Yahoo", "FRED", "CoinGecko"];
+
+function entryToRow(e: SymbolEntry): SearchRow {
   // Bybit perps carry the ".P" ticker + coin base so search-by-coin works;
   // other catalog entries key on their ticker.
   const isBybit = e.source === "bybit";
   return {
     symbol: e.ticker,
     baseAsset: isBybit ? e.providerSymbol.replace(/USDT$/, "") : e.ticker,
-    quoteAsset: isBybit ? "USDT (Bybit Perp)" : e.category,
-    status: "TRADING",
-    category: e.category,
+    // The exchange badge already says "Bybit", so the quote stays generic.
+    quoteAsset: isBybit ? "USDT (Perp)" : e.category,
+    exchange: SOURCE_LABEL[e.source],
     description: e.description,
   };
 }
 
-/** Static catalog entries presented as SymbolInfo so they slot into the list UI. */
-const CATALOG_AS_SYMBOLS: CatalogSymbol[] = CATALOG.map(entryToSymbol);
+/** Binance's own exchangeInfo feed has no source tag — everything is Binance. */
+function binanceToRow(s: SymbolInfo): SearchRow {
+  return {
+    symbol: s.symbol,
+    baseAsset: s.baseAsset,
+    quoteAsset: s.quoteAsset,
+    exchange: "Binance",
+  };
+}
+
+/** Static catalog entries presented as rows so they slot into the list UI. */
+const CATALOG_AS_ROWS: SearchRow[] = CATALOG.map(entryToRow);
 
 export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = {}) {
   const symbol = useChartStore((s) => s.symbol);
@@ -60,7 +96,9 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
   }, [watchlists, activeWatchlistId]);
 
   const [query, setQuery] = useState("");
-  const [allSymbols, setAllSymbols] = useState<SymbolInfo[]>([]);
+  const [allSymbols, setAllSymbols] = useState<SearchRow[]>([]);
+  /** Active exchange filter chip; null = All. */
+  const [exchangeFilter, setExchangeFilter] = useState<string | null>(null);
 
   useEffect(() => {
     if (open && symbolDialogInitialQuery) {
@@ -71,17 +109,25 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
 
   useEffect(() => {
     if (open && allSymbols.length === 0) {
-      // Bybit-exclusive perps registered at app load (useBybitSymbols).
-      const bybit = getDynamicEntries().map(entryToSymbol);
+      // Bybit perps registered at app load (useBybitSymbols).
+      const bybit = getDynamicEntries().map(entryToRow);
       fetchExchangeSymbols()
-        .then((binance) => setAllSymbols([...CATALOG_AS_SYMBOLS, ...binance, ...bybit]))
+        .then((binance) =>
+          setAllSymbols([...CATALOG_AS_ROWS, ...binance.map(binanceToRow), ...bybit]),
+        )
         .catch((err) => {
           console.error(err);
           // Even if Binance fails, the catalog + Bybit symbols stay selectable.
-          setAllSymbols([...CATALOG_AS_SYMBOLS, ...bybit]);
+          setAllSymbols([...CATALOG_AS_ROWS, ...bybit]);
         });
     }
   }, [open, allSymbols.length]);
+
+  /** Exchanges actually present in the loaded list, in a stable display order. */
+  const exchanges = useMemo(() => {
+    const present = new Set(allSymbols.map((s) => s.exchange));
+    return EXCHANGE_ORDER.filter((e) => present.has(e));
+  }, [allSymbols]);
 
   const trimmed = query.trim().toUpperCase();
   const isExpression = isSyntheticExpression(trimmed);
@@ -94,9 +140,12 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
   }, [isExpression, trimmed, allSymbols]);
 
   const filtered = useMemo(() => {
-    if (!trimmed) return allSymbols.slice(0, 100);
     if (isExpression) return [];
-    return allSymbols
+    const byExchange = exchangeFilter
+      ? allSymbols.filter((s) => s.exchange === exchangeFilter)
+      : allSymbols;
+    if (!trimmed) return byExchange.slice(0, 100);
+    return byExchange
       .filter(
         (s) =>
           s.symbol.includes(trimmed) ||
@@ -104,7 +153,7 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
           s.quoteAsset.includes(trimmed),
       )
       .slice(0, 100);
-  }, [trimmed, allSymbols, isExpression]);
+  }, [trimmed, allSymbols, isExpression, exchangeFilter]);
 
   function selectExpression() {
     if (!isExpression) return;
@@ -144,7 +193,7 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
           <ChevronDown className="h-3.5 w-3.5 text-tv-text-muted" />
         </DialogTrigger>
       )}
-      <DialogContent className="max-w-md gap-0 bg-tv-panel p-0">
+      <DialogContent className="max-w-lg gap-0 bg-tv-panel p-0">
         <DialogHeader className="border-b border-tv-border px-4 py-3">
           <DialogTitle className="text-sm font-medium">Search symbol</DialogTitle>
         </DialogHeader>
@@ -168,6 +217,24 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
             <code className="rounded bg-tv-bg px-1">( )</code>. Example:{" "}
             <code className="rounded bg-tv-bg px-1">BTCUSDT+ETHUSDT</code>.
           </p>
+          {/* Exchange filter chips */}
+          {exchanges.length > 0 && (
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              <ExchangeChip
+                label="All"
+                active={exchangeFilter === null}
+                onClick={() => setExchangeFilter(null)}
+              />
+              {exchanges.map((ex) => (
+                <ExchangeChip
+                  key={ex}
+                  label={ex}
+                  active={exchangeFilter === ex}
+                  onClick={() => setExchangeFilter(exchangeFilter === ex ? null : ex)}
+                />
+              ))}
+            </div>
+          )}
         </div>
         <ScrollArea className="h-[400px]">
           <div className="flex flex-col">
@@ -214,15 +281,17 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
                       setOpen(false);
                       setQuery("");
                     }}
-                    className="flex flex-1 items-center justify-between text-left"
+                    className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                       <span className="font-semibold text-tv-text">
                         {s.baseAsset}
                       </span>
-                      <span className="text-tv-text-muted">/ {s.quoteAsset}</span>
+                      <span className="truncate text-tv-text-muted">/ {s.quoteAsset}</span>
                     </div>
-                    <span className="text-tv-text-muted">{s.symbol}</span>
+                    <span className="shrink-0 rounded bg-tv-bg px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-tv-text-dim">
+                      {s.exchange}
+                    </span>
                   </button>
                   <button
                     onClick={(e) => {
@@ -254,5 +323,30 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
         </ScrollArea>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Pill toggle used by the exchange filter row. */
+function ExchangeChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+        active
+          ? "bg-tv-text text-tv-bg"
+          : "bg-tv-bg text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
+      )}
+    >
+      {label}
+    </button>
   );
 }
