@@ -111,7 +111,9 @@ function LineRow({
   onMouseDown: (e: React.MouseEvent) => void;
 }) {
   const color = colorOf(line.kind);
-  const dashed = line.kind !== "LIMIT";
+  // Open-position lines (EP/SL/TP/liq) are solid like TradingView; only pending
+  // orders and form previews stay dashed.
+  const dashed = !line.isPosition && line.kind !== "LIMIT";
   const { left, right } = pillText(line);
   const label = modifying ? "Modifying…" : `${left} · ${right}`;
   const labelW = Math.max(label.length * 6.2 + 14, 90);
