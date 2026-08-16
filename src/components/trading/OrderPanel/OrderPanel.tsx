@@ -132,6 +132,29 @@ export function OrderPanel() {
     [referencePrice, sl, tp],
   );
 
+  // While a risk budget is held, it — not the size — is the fixed quantity, so
+  // moving the stop (or the entry) re-sizes the position and leaves the amount
+  // at stake untouched. `ctx` carries the stop, so this reacts to chart drags
+  // too. Writing only on a real change keeps it from looping.
+  const riskTarget = parseFloat(form.riskUsd);
+  useEffect(() => {
+    if (!isFinite(riskTarget) || riskTarget <= 0) return;
+    // Without a stop there's no distance to spread the risk over. Release the
+    // lock rather than zeroing out the size the user already had.
+    if (sl === null) {
+      updateForm({ riskUsd: "" });
+      return;
+    }
+    const newQty = sizingToQty("RISK_USD", riskTarget, ctx);
+    const formatted = newQty > 0 ? newQty.toFixed(symInfo.quantityPrecision) : "";
+    if (formatted === form.qty) return;
+    const next = qtyToSizings(newQty, ctx);
+    updateForm({
+      qty: formatted,
+      sizingInput: formatForMode(next[form.sizingMode], form.sizingMode),
+    });
+  }, [riskTarget, sl, ctx, form.qty, form.sizingMode, symInfo.quantityPrecision, updateForm]);
+
   if (!apiKey || !apiSecret) {
     return (
       <>
@@ -202,29 +225,39 @@ export function OrderPanel() {
             }
           }}
           onChangeInput={(raw) => {
+            // Sizing directly releases any held risk budget — the size is now
+            // the fixed side and the risk goes back to being derived.
             const value = parseFloat(raw);
             if (isFinite(value) && value > 0) {
               const newQty = sizingToQty(form.sizingMode, value, ctx);
               updateForm({
                 sizingInput: raw,
+                riskUsd: "",
                 qty: newQty > 0 ? newQty.toFixed(symInfo.quantityPrecision) : "",
               });
             } else {
-              updateForm({ sizingInput: raw, qty: "" });
+              updateForm({ sizingInput: raw, riskUsd: "", qty: "" });
             }
           }}
         />
 
         <RiskControl
-          riskUsd={derived.RISK_USD}
+          value={form.riskUsd}
+          derivedUsd={derived.RISK_USD}
           riskPct={derived.RISK_PCT}
           hasSl={sl !== null}
-          onChangeRisk={(riskUsd) => {
-            // Risk + stop distance fix the position size. Refresh the sizing
-            // input too so the Amount field above doesn't go stale.
-            const newQty = sizingToQty("RISK_USD", riskUsd, ctx);
+          onChangeRisk={(raw) => {
+            // Holding the risk makes it the fixed side; the effect above keeps
+            // qty in step from here on (including when the stop moves).
+            const parsed = parseFloat(raw);
+            if (!isFinite(parsed) || parsed <= 0) {
+              updateForm({ riskUsd: raw });
+              return;
+            }
+            const newQty = sizingToQty("RISK_USD", parsed, ctx);
             const next = qtyToSizings(newQty, ctx);
             updateForm({
+              riskUsd: raw,
               qty: newQty > 0 ? newQty.toFixed(symInfo.quantityPrecision) : "",
               sizingInput: formatForMode(next[form.sizingMode], form.sizingMode),
             });
@@ -511,20 +544,24 @@ function SizingControl({
  * the "I'll risk 10 USD on this idea" workflow. Needs a stop to measure from.
  */
 function RiskControl({
-  riskUsd, riskPct, hasSl, onChangeRisk,
+  value, derivedUsd, riskPct, hasSl, onChangeRisk,
 }: {
-  riskUsd: number;
+  /** Held risk budget ("" = risk is merely derived from the current size). */
+  value: string;
+  derivedUsd: number;
   riskPct: number;
   hasSl: boolean;
-  onChangeRisk: (riskUsd: number) => void;
+  onChangeRisk: (raw: string) => void;
 }) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const value = draft ?? (riskUsd > 0 ? riskUsd.toFixed(2) : "");
+  const held = value !== "";
+  const shown = held ? value : derivedUsd > 0 ? derivedUsd.toFixed(2) : "";
 
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wider text-tv-text-muted">Risk</span>
+        <span className="text-[10px] uppercase tracking-wider text-tv-text-muted">
+          Risk{held && <span className="ml-1 text-tv-blue">· locked</span>}
+        </span>
         {hasSl && riskPct > 0 && (
           <span className="text-[10px] text-tv-text-muted">
             {riskPct.toFixed(2)}% of balance
@@ -536,20 +573,18 @@ function RiskControl({
           type="number"
           step="any"
           disabled={!hasSl}
-          value={value}
-          onChange={(e) => {
-            setDraft(e.target.value);
-            const parsed = parseFloat(e.target.value);
-            onChangeRisk(isFinite(parsed) && parsed > 0 ? parsed : 0);
-          }}
-          onBlur={() => setDraft(null)}
+          value={shown}
+          onChange={(e) => onChangeRisk(e.target.value)}
           placeholder={hasSl ? "0" : "Set a stop loss first"}
           title={
             hasSl
-              ? "Max loss if the stop hits — sets the position size"
+              ? "Max loss if the stop hits. Once set it stays fixed — moving the stop resizes the position instead."
               : "Enable a stop loss to size the trade by risk"
           }
-          className="w-full rounded border border-tv-border bg-tv-bg px-2 py-1.5 pr-10 font-mono text-xs text-tv-text tabular-nums outline-none placeholder:font-sans placeholder:text-[10px] focus:border-tv-blue disabled:cursor-not-allowed disabled:opacity-50"
+          className={cn(
+            "w-full rounded border bg-tv-bg px-2 py-1.5 pr-10 font-mono text-xs text-tv-text tabular-nums outline-none placeholder:font-sans placeholder:text-[10px] focus:border-tv-blue disabled:cursor-not-allowed disabled:opacity-50",
+            held ? "border-tv-blue/60" : "border-tv-border",
+          )}
         />
         <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-tv-text-muted">
           USD
