@@ -10,6 +10,14 @@
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
 
+  /* App-wide: nudge the small-text scale up slightly for readability (default
+     text-xs/text-sm are 12px/14px; the app leans on text-xs heavily in dense
+     panels/toolbars). */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: calc(1.125 / 0.8125);
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: calc(1.3125 / 0.9375);
+
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
@@ -90,6 +98,17 @@
   --input: #1a1a1a;
   --ring: #2962ff;
 }
+
+/* Slightly enlarge the small arbitrary-size text utilities (text-[Npx]) used
+   throughout dense panels/toolbars/tables for readability. Declared unlayered
+   (outside @layer) so it reliably overrides Tailwind's own generated utility
+   rules regardless of source order. */
+.text-\[7px\] { font-size: 8px; }
+.text-\[8px\] { font-size: 9px; }
+.text-\[9px\] { font-size: 10px; }
+.text-\[10px\] { font-size: 11px; }
+.text-\[11px\] { font-size: 12px; }
+.text-\[12px\] { font-size: 13px; }
 
 @layer base {
   * {
