@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   createChart,
   CandlestickSeries,
@@ -857,8 +858,15 @@ export function PriceChart({ symbol, timeframe }: Props) {
       }
     });
 
-    // Re-render measure overlay on pan / zoom so pixel coords stay in sync
-    const tsRangeHandler = () => setRenderTick((t) => t + 1);
+    // Re-render the SVG overlays (drawings, order lines, measure) on pan / zoom
+    // so their pixel coords stay in sync with the chart's own canvas. A plain
+    // setState here lags visibly behind the chart during a drag: the canvas
+    // repaints synchronously/immediately as lightweight-charts handles the
+    // pointer event, while a normal React state update is flushed on a later
+    // tick. flushSync forces the overlay's re-render (and DOM commit) to
+    // happen in the same tick as the chart's own update, eliminating the lag.
+    const bumpRenderTick = () => flushSync(() => setRenderTick((t) => t + 1));
+    const tsRangeHandler = () => bumpRenderTick();
     chart.timeScale().subscribeVisibleTimeRangeChange(tsRangeHandler);
     // Register viewport applier so undo/redo can restore pan/zoom
     registerViewportApplier((range) => {
@@ -868,7 +876,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     let zoomSaveTimer: ReturnType<typeof setTimeout> | null = null;
     let lastViewport: { from: number; to: number } | null = null;
     const logicalRangeHandler = () => {
-      setRenderTick((t) => t + 1);
+      bumpRenderTick();
       // Keep the view shape fresh (span + right offset) while there is real data,
       // so a later symbol change can reproduce the same zoom + scroll position.
       const liveRange = chart.timeScale().getVisibleLogicalRange();

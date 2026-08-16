@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { IChartApi, ISeriesApi } from "lightweight-charts";
+import type { IChartApi, ISeriesApi, IPriceLine } from "lightweight-charts";
 import { useTradingStore } from "@/lib/store/trading-store";
 import { useChartStore } from "@/lib/store/chart-store";
 import { isPerp, cleanSym } from "@/lib/binance/rest";
 import { formatPrice } from "@/lib/format";
-import type { Order } from "@/lib/binance/trading-types";
+import type { Order, Position } from "@/lib/binance/trading-types";
 
 /** Bybit-style colors. Limit is always blue regardless of side. */
 const LIMIT_COLOR = "#2962ff";
@@ -373,6 +373,46 @@ function EntryToolbarRow({
   );
 }
 
+interface AxisLevel {
+  id: string;
+  price: number;
+  color: string;
+}
+
+/**
+ * Levels for the open position (EP/TP/SL/liquidation) to mirror as native
+ * price lines, so the price scale shows a color-matched axis label — and the
+ * line itself spans the full pane width (uncut by our custom SVG boxes),
+ * continuing past them all the way to that label. Pure so it can drive a
+ * useEffect dependency without recomputing coordinates (no chart/series
+ * needed here, unlike the SVG-rendering pass below).
+ */
+function computeAxisLevels(positions: Position[], orders: Order[], symbol: string): AxisLevel[] {
+  const cleanedSym = cleanSym(symbol);
+  const out: AxisLevel[] = [];
+  for (const pos of positions) {
+    if (pos.positionAmt === 0 || pos.symbol !== cleanedSym) continue;
+    const closeSide: "BUY" | "SELL" = pos.positionAmt > 0 ? "SELL" : "BUY";
+    out.push({ id: `${cleanedSym}-EP`, price: pos.entryPrice, color: LIMIT_COLOR });
+
+    const tpOrder = orders.find(
+      (o) => o.symbol === cleanedSym && o.side === closeSide && o.reduceOnly &&
+        (o.type === "TAKE_PROFIT_MARKET" || o.type === "TAKE_PROFIT"),
+    );
+    const slOrder = orders.find(
+      (o) => o.symbol === cleanedSym && o.side === closeSide && o.reduceOnly &&
+        (o.type === "STOP_MARKET" || o.type === "STOP" || o.type === "STOP_LIMIT"),
+    );
+    const tpPrice = pos.takeProfit ?? tpOrder?.stopPrice ?? null;
+    const slPrice = pos.stopLoss ?? slOrder?.stopPrice ?? null;
+
+    if (tpPrice && tpPrice > 0) out.push({ id: `${cleanedSym}-TP`, price: tpPrice, color: TP_COLOR });
+    if (slPrice && slPrice > 0) out.push({ id: `${cleanedSym}-SL`, price: slPrice, color: SL_COLOR });
+    if (pos.liquidationPrice > 0) out.push({ id: `${cleanedSym}-LIQ`, price: pos.liquidationPrice, color: LIQ_COLOR });
+  }
+  return out;
+}
+
 export function OrderLinesLayer({
   chart,
   candleSeries,
@@ -401,6 +441,59 @@ export function OrderLinesLayer({
   // on release it becomes `pending` (Discard/Confirm) until the user confirms.
   const [preview, setPreview] = useState<{ id: string; price: number } | null>(null);
   const [pending, setPending] = useState<{ id: string; price: number } | null>(null);
+
+  // Native price lines for EP/TP/SL/liquidation: these are drawn on the chart's
+  // own canvas (always in sync, no React-render lag) and span the FULL pane
+  // width, so they visibly continue past our custom SVG box all the way to a
+  // color-matched label on the price scale — instead of a plain last-price tag.
+  const priceLinesRef = useRef<Map<string, IPriceLine>>(new Map());
+  useEffect(() => {
+    if (!candleSeries) return;
+    const levels = computeAxisLevels(positions, orders, symbol);
+    const map = priceLinesRef.current;
+    const seen = new Set<string>();
+    for (const lvl of levels) {
+      seen.add(lvl.id);
+      const existing = map.get(lvl.id);
+      if (existing) {
+        existing.applyOptions({ price: lvl.price, color: lvl.color });
+      } else {
+        map.set(
+          lvl.id,
+          candleSeries.createPriceLine({
+            price: lvl.price,
+            color: lvl.color,
+            lineWidth: 1,
+            lineStyle: 0, // Solid
+            axisLabelVisible: true,
+            lineVisible: true,
+            title: "",
+          }),
+        );
+      }
+    }
+    for (const [id, line] of map) {
+      if (!seen.has(id)) {
+        candleSeries.removePriceLine(line);
+        map.delete(id);
+      }
+    }
+  }, [candleSeries, positions, orders, symbol]);
+
+  // Drop all price lines when the series itself goes away (symbol/chart teardown).
+  useEffect(() => {
+    return () => {
+      if (!candleSeries) return;
+      for (const line of priceLinesRef.current.values()) {
+        try {
+          candleSeries.removePriceLine(line);
+        } catch {
+          // series may already be disposed
+        }
+      }
+      priceLinesRef.current.clear();
+    };
+  }, [candleSeries]);
 
   useEffect(() => {
     function onMove(e: MouseEvent) {
