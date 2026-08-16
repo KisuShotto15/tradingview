@@ -133,18 +133,22 @@ function LineRow({
   const { left, right } = pillText(line);
   const label = modifying ? "Modifying…" : [left, right].filter(Boolean).join(" · ");
   const labelW = Math.max(label.length * 6.2 + 14, 90);
-  const hasClose = !!line.onClose && !modifying;
-  const closeW = hasClose ? 18 : 0;
-  const hasRemove = !!line.onRemove && !modifying;
-  const removeW = hasRemove ? 18 : 0;
+  // Only one action button applies per line in practice (onRemove for SL/TP,
+  // onClose reserved for future use) — prefer onRemove.
+  const action = !modifying ? (line.onRemove ?? line.onClose) : undefined;
+  const hasAction = !!action;
+  const actionW = hasAction ? 18 : 0;
   // SL pills are outlined: black fill, yellow border + yellow text. Others use a
   // solid colored fill with light text.
   const outlined = line.kind === "SL";
   const pillFill = outlined ? "#0a0a0a" : color;
   const pillStroke = outlined ? color : "none";
   const textColor = outlined ? color : "#fff";
-  // Right edge of the pill group (leaves room for the close/remove button + axis gap).
-  const pillRight = width - closeW - removeW - AXIS_GAP;
+  // The label + action button are drawn as ONE continuous box (rounded rect),
+  // separated by a thin divider line, instead of two separate boxes with a gap.
+  const boxRight = width - AXIS_GAP;
+  const boxLeft = boxRight - labelW - actionW;
+  const dividerX = boxRight - actionW;
 
   return (
     <g style={{ opacity: modifying ? 0.55 : 1 }}>
@@ -165,7 +169,7 @@ function LineRow({
       {/* Visible line */}
       <line
         x1={0}
-        x2={pillRight - labelW - 4}
+        x2={boxLeft - 4}
         y1={y}
         y2={y}
         stroke={color}
@@ -173,81 +177,69 @@ function LineRow({
         strokeDasharray={dashed ? "5,4" : undefined}
         style={{ pointerEvents: "none" }}
       />
-      {/* Label pill */}
-      <g style={{ pointerEvents: "none" }}>
-        <rect
-          x={pillRight - labelW}
-          y={y - 9}
-          width={labelW}
-          height={18}
-          fill={pillFill}
-          stroke={pillStroke}
-          rx={2}
-        />
-        <text
-          x={pillRight - labelW / 2}
-          y={y + 4}
-          fill={textColor}
-          fontSize={10}
-          fontFamily="var(--font-mono), monospace"
-          textAnchor="middle"
-        >
-          {label}
-        </text>
-      </g>
-      {/* Close button (open positions) */}
-      {hasClose && (
-        <g
-          style={{ pointerEvents: "all", cursor: "pointer" }}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            line.onClose?.();
-          }}
-        >
-          <rect x={width - AXIS_GAP - 16} y={y - 9} width={16} height={18} fill={pillFill} stroke={pillStroke} rx={2} />
+      {/* Merged box: label + (optional) action button */}
+      <rect
+        x={boxLeft}
+        y={y - 9}
+        width={boxRight - boxLeft}
+        height={18}
+        fill={pillFill}
+        stroke={pillStroke}
+        rx={2}
+        style={{ pointerEvents: "none" }}
+      />
+      <text
+        x={boxLeft + (dividerX - boxLeft) / 2}
+        y={y + 4}
+        fill={textColor}
+        fontSize={10}
+        fontFamily="var(--font-mono), monospace"
+        textAnchor="middle"
+        style={{ pointerEvents: "none" }}
+      >
+        {label}
+      </text>
+      {hasAction && (
+        <>
+          {/* Thin divider between the label and the action button */}
+          <line
+            x1={dividerX}
+            x2={dividerX}
+            y1={y - 9}
+            y2={y + 9}
+            stroke={pillStroke !== "none" ? pillStroke : "#00000055"}
+            strokeWidth={1}
+            style={{ pointerEvents: "none" }}
+          />
           <text
-            x={width - AXIS_GAP - 8}
+            x={dividerX + actionW / 2}
             y={y + 4}
             fill={textColor}
             fontSize={12}
             fontWeight="bold"
             textAnchor="middle"
+            style={{ pointerEvents: "none" }}
           >
             ×
           </text>
-        </g>
-      )}
-      {/* Remove button (clears this value entirely, e.g. SL) */}
-      {hasRemove && (
-        <g
-          style={{ pointerEvents: "all", cursor: "pointer" }}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            line.onRemove?.();
-          }}
-        >
-          <rect x={width - AXIS_GAP - 16} y={y - 9} width={16} height={18} fill={pillFill} stroke={pillStroke} rx={2} />
-          <text
-            x={width - AXIS_GAP - 8}
-            y={y + 4}
-            fill={textColor}
-            fontSize={12}
-            fontWeight="bold"
-            textAnchor="middle"
-          >
-            ×
-          </text>
-        </g>
+          <rect
+            x={dividerX}
+            y={y - 9}
+            width={actionW}
+            height={18}
+            fill="transparent"
+            style={{ pointerEvents: "all", cursor: "pointer" }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              action?.();
+            }}
+          />
+        </>
       )}
     </g>
   );
@@ -286,28 +278,32 @@ function EntryToolbarRow({
   const yTop = y - 9;
   const chips: { w: number; el: (x: number) => React.ReactNode }[] = [];
 
-  // Close (rightmost) — outlined: black fill, blue border + blue text.
-  chips.push({
-    w: 18,
-    el: (x) => (
-      <g key="close" style={{ pointerEvents: "all", cursor: "pointer" }} onMouseDown={stopEvt}
-         onClick={(e) => { stopEvt(e); onClose?.(); }}>
-        <rect x={x} y={yTop} width={18} height={H} rx={3} fill="#0a0a0a" stroke={LIMIT_COLOR} />
-        <text x={x + 9} y={y + 4} fill={LIMIT_COLOR} fontSize={12} fontWeight="bold" textAnchor="middle">×</text>
-      </g>
-    ),
-  });
-
-  // P&L percent — outlined: black fill, blue border (text keeps its green/red sign color).
+  // P&L percent merged with the close (×) button into ONE continuous outlined
+  // box (black fill, blue border), separated by a thin divider — not two
+  // separate boxes with a gap.
   const pnlStr = `${pnlPct >= 0 ? "+" : "−"}${Math.abs(pnlPct).toFixed(2)}%`;
   const pnlColor = pnlPct >= 0 ? TP_COLOR : LIQ_COLOR;
   const pnlW = chipWidth(pnlStr);
+  const closeW = 18;
+  const mergedW = pnlW + closeW;
   chips.push({
-    w: pnlW,
+    w: mergedW,
     el: (x) => (
-      <g key="pnl">
-        <rect x={x} y={yTop} width={pnlW} height={H} rx={3} fill="#0a0a0a" stroke={LIMIT_COLOR} />
+      <g key="pnl-close">
+        <rect x={x} y={yTop} width={mergedW} height={H} rx={3} fill="#0a0a0a" stroke={LIMIT_COLOR} />
         <text x={x + pnlW / 2} y={y + 4} fill={pnlColor} fontSize={10} fontFamily="var(--font-mono), monospace" textAnchor="middle">{pnlStr}</text>
+        <line x1={x + pnlW} x2={x + pnlW} y1={yTop} y2={yTop + H} stroke={LIMIT_COLOR} strokeWidth={1} />
+        <text x={x + pnlW + closeW / 2} y={y + 4} fill={LIMIT_COLOR} fontSize={12} fontWeight="bold" textAnchor="middle">×</text>
+        <rect
+          x={x + pnlW}
+          y={yTop}
+          width={closeW}
+          height={H}
+          fill="transparent"
+          style={{ pointerEvents: "all", cursor: "pointer" }}
+          onMouseDown={stopEvt}
+          onClick={(e) => { stopEvt(e); onClose?.(); }}
+        />
       </g>
     ),
   });
