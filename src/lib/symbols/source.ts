@@ -3,6 +3,7 @@ import { isSyntheticExpression } from "@/lib/binance/synthetic";
 
 export type ResolvedSource =
   | { kind: "binance"; symbol: string }
+  | { kind: "bybit"; providerSymbol: string; entry: SymbolEntry }
   | { kind: "synthetic"; expression: string }
   | { kind: "yahoo"; providerSymbol: string; entry: SymbolEntry }
   | { kind: "fred"; providerSymbol: string; entry: SymbolEntry }
@@ -29,6 +30,8 @@ export function resolveSource(rawSymbol: string): ResolvedSource {
         return { kind: "fred", providerSymbol: entry.providerSymbol, entry };
       case "coingecko":
         return { kind: "coingecko", providerSymbol: entry.providerSymbol, entry };
+      case "bybit":
+        return { kind: "bybit", providerSymbol: entry.providerSymbol, entry };
       case "binance":
         return { kind: "binance", symbol: entry.providerSymbol };
     }

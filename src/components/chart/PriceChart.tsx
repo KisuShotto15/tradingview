@@ -19,6 +19,7 @@ import {
   type MouseEventParams,
 } from "lightweight-charts";
 import { getBinanceWS } from "@/lib/binance/ws";
+import { getBybitWS } from "@/lib/bybit/ws";
 import {
   extractSymbols,
   evaluateCandleAt,
@@ -2313,7 +2314,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           return;
         }
 
-        const ws = getBinanceWS();
+        const ws = source.kind === "bybit" ? getBybitWS() : getBinanceWS();
         if (synthetic) {
           // Subscribe to each component, recompute synthetic candle on update
           const symbols = extractSymbols(symbol);
@@ -2986,6 +2987,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
               if (k === "coingecko") return "CoinGecko";
               if (k === "yahoo") return "Yahoo";
               if (k === "synthetic") return "Synthetic";
+              if (k === "bybit") return "Bybit";
               return "Binance";
             })()}
           </span>

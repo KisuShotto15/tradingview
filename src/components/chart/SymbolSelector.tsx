@@ -19,18 +19,26 @@ import {
 import { useChartStore } from "@/lib/store/chart-store";
 import { cn } from "@/lib/utils";
 import type { SymbolInfo } from "@/lib/binance/types";
-import { CATALOG } from "@/lib/symbols/catalog";
+import { CATALOG, getDynamicEntries, type SymbolEntry } from "@/lib/symbols/catalog";
 
-/** Catalog entries presented as SymbolInfo so they slot into the existing list UI. */
-const CATALOG_AS_SYMBOLS: (SymbolInfo & { category: string; description: string })[] =
-  CATALOG.map((e) => ({
+type CatalogSymbol = SymbolInfo & { category: string; description: string };
+
+function entryToSymbol(e: SymbolEntry): CatalogSymbol {
+  // Bybit perps carry the ".P" ticker + coin base so search-by-coin works;
+  // other catalog entries key on their ticker.
+  const isBybit = e.source === "bybit";
+  return {
     symbol: e.ticker,
-    baseAsset: e.ticker,
-    quoteAsset: e.category,
+    baseAsset: isBybit ? e.providerSymbol.replace(/USDT$/, "") : e.ticker,
+    quoteAsset: isBybit ? "USDT (Bybit Perp)" : e.category,
     status: "TRADING",
     category: e.category,
     description: e.description,
-  }));
+  };
+}
+
+/** Static catalog entries presented as SymbolInfo so they slot into the list UI. */
+const CATALOG_AS_SYMBOLS: CatalogSymbol[] = CATALOG.map(entryToSymbol);
 
 export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = {}) {
   const symbol = useChartStore((s) => s.symbol);
@@ -63,12 +71,14 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
 
   useEffect(() => {
     if (open && allSymbols.length === 0) {
+      // Bybit-exclusive perps registered at app load (useBybitSymbols).
+      const bybit = getDynamicEntries().map(entryToSymbol);
       fetchExchangeSymbols()
-        .then((binance) => setAllSymbols([...CATALOG_AS_SYMBOLS, ...binance]))
+        .then((binance) => setAllSymbols([...CATALOG_AS_SYMBOLS, ...binance, ...bybit]))
         .catch((err) => {
           console.error(err);
-          // Even if Binance fails, the catalog symbols should still be selectable.
-          setAllSymbols([...CATALOG_AS_SYMBOLS]);
+          // Even if Binance fails, the catalog + Bybit symbols stay selectable.
+          setAllSymbols([...CATALOG_AS_SYMBOLS, ...bybit]);
         });
     }
   }, [open, allSymbols.length]);

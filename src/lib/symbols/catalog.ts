@@ -11,7 +11,7 @@
  *  - "binance"   → Default fallback for anything else (handled outside this catalog)
  */
 
-export type SourceKind = "binance" | "yahoo" | "fred" | "coingecko";
+export type SourceKind = "binance" | "bybit" | "yahoo" | "fred" | "coingecko";
 
 export type Category = "Crypto" | "Stock" | "Index" | "Futures" | "Macro" | "Dominance";
 
@@ -142,7 +142,29 @@ const BY_TICKER = new Map<string, SymbolEntry>(
   CATALOG.map((e) => [e.ticker.toUpperCase(), e]),
 );
 
+/**
+ * Dynamic registry for entries discovered at runtime (e.g. the Bybit perp
+ * universe, fetched from Bybit's public instruments endpoint). Kept separate
+ * from the static CATALOG so it can be populated after the module loads and
+ * consulted synchronously by resolveSource/lookupCatalog thereafter.
+ */
+const DYNAMIC_BY_TICKER = new Map<string, SymbolEntry>();
+
+/** Register runtime-discovered entries (idempotent per ticker). */
+export function registerDynamicEntries(entries: SymbolEntry[]): void {
+  for (const e of entries) {
+    DYNAMIC_BY_TICKER.set(e.ticker.toUpperCase(), e);
+  }
+}
+
+/** All runtime-registered entries (for the symbol search list). */
+export function getDynamicEntries(): SymbolEntry[] {
+  return [...DYNAMIC_BY_TICKER.values()];
+}
+
 /** Look up a non-Binance catalog entry by user-facing ticker. */
 export function lookupCatalog(ticker: string): SymbolEntry | null {
-  return BY_TICKER.get(ticker.toUpperCase()) ?? null;
+  const key = ticker.toUpperCase();
+  // Static catalog wins over dynamic so a curated entry is never shadowed.
+  return BY_TICKER.get(key) ?? DYNAMIC_BY_TICKER.get(key) ?? null;
 }

@@ -4,6 +4,7 @@ import { fetchSyntheticKlines } from "@/lib/binance/synthetic";
 import { fetchYahooCandles } from "@/lib/providers/yahoo";
 import { fetchFredCandles } from "@/lib/providers/fred";
 import { fetchCoinGeckoCandles } from "@/lib/providers/coingecko";
+import { fetchBybitKlines } from "@/lib/bybit/public";
 import { resolveSource } from "@/lib/symbols/source";
 
 /**
@@ -28,6 +29,8 @@ export async function fetchCandles(
       return fetchFredCandles(src.providerSymbol);
     case "coingecko":
       return fetchCoinGeckoCandles(src.providerSymbol, interval);
+    case "bybit":
+      return fetchBybitKlines(src.providerSymbol, interval, limit);
     case "binance":
       return fetchKlines(src.symbol, interval, limit);
   }
@@ -47,8 +50,14 @@ export async function fetchOlderCandles(
   limit = 1000,
 ): Promise<Candle[]> {
   const src = resolveSource(symbol);
-  if (src.kind !== "binance") return [];
   // endTime is exclusive-ish; step back 1ms so we don't refetch the boundary bar.
-  const candles = await fetchKlines(src.symbol, interval, limit, beforeTimeSec * 1000 - 1);
-  return candles.filter((c) => c.time < beforeTimeSec);
+  if (src.kind === "binance") {
+    const candles = await fetchKlines(src.symbol, interval, limit, beforeTimeSec * 1000 - 1);
+    return candles.filter((c) => c.time < beforeTimeSec);
+  }
+  if (src.kind === "bybit") {
+    const candles = await fetchBybitKlines(src.providerSymbol, interval, limit, beforeTimeSec * 1000 - 1);
+    return candles.filter((c) => c.time < beforeTimeSec);
+  }
+  return [];
 }
