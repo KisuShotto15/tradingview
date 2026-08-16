@@ -132,7 +132,12 @@ function LineRow({
   const labelW = Math.max(label.length * 6.2 + 14, 90);
   const hasClose = !!line.onClose && !modifying;
   const closeW = hasClose ? 18 : 0;
-  const textColor = line.kind === "SL" ? "#000" : "#fff";
+  // SL pills are outlined: black fill, yellow border + yellow text. Others use a
+  // solid colored fill with light text.
+  const outlined = line.kind === "SL";
+  const pillFill = outlined ? "#0a0a0a" : color;
+  const pillStroke = outlined ? color : "none";
+  const textColor = outlined ? color : "#fff";
   // Right edge of the pill group (leaves room for the close button + axis gap).
   const pillRight = width - closeW - AXIS_GAP;
 
@@ -170,7 +175,8 @@ function LineRow({
           y={y - 9}
           width={labelW}
           height={18}
-          fill={color}
+          fill={pillFill}
+          stroke={pillStroke}
           rx={2}
         />
         <text
@@ -198,7 +204,7 @@ function LineRow({
             line.onClose?.();
           }}
         >
-          <rect x={width - AXIS_GAP - 16} y={y - 9} width={16} height={18} fill={color} rx={2} />
+          <rect x={width - AXIS_GAP - 16} y={y - 9} width={16} height={18} fill={pillFill} stroke={pillStroke} rx={2} />
           <text
             x={width - AXIS_GAP - 8}
             y={y + 4}

@@ -184,6 +184,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
   // OBV pane
   const obvRef = useRef<ISeriesApi<"Line"> | null>(null);
   const candlesRef = useRef<Candle[]>([]);
+  // Shape of the current view (bar span + offset from the last bar), kept fresh
+  // as the user pans/zooms so it survives a symbol change and can be reapplied
+  // to keep the same zoom + scroll position on the next symbol.
+  const viewShapeRef = useRef<{ span: number; rightOffset: number } | null>(null);
   // Full candle array snapshot captured when bar replay starts (candlesRef holds
   // the truncated slice while replay is active).
   const replayFullRef = useRef<Candle[]>([]);
@@ -865,6 +869,15 @@ export function PriceChart({ symbol, timeframe }: Props) {
     let lastViewport: { from: number; to: number } | null = null;
     const logicalRangeHandler = () => {
       setRenderTick((t) => t + 1);
+      // Keep the view shape fresh (span + right offset) while there is real data,
+      // so a later symbol change can reproduce the same zoom + scroll position.
+      const liveRange = chart.timeScale().getVisibleLogicalRange();
+      if (liveRange && liveRange.to > liveRange.from && candlesRef.current.length > 0) {
+        viewShapeRef.current = {
+          span: liveRange.to - liveRange.from,
+          rightOffset: liveRange.to - (candlesRef.current.length - 1),
+        };
+      }
       if (zoomSaveTimer) clearTimeout(zoomSaveTimer);
       zoomSaveTimer = setTimeout(() => {
         const range = chart.timeScale().getVisibleLogicalRange();
@@ -2182,10 +2195,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
     async function load() {
       try {
-        // Capture the current view BEFORE wiping, so a symbol/timeframe change
-        // keeps the same zoom + scroll position instead of snapping to default.
-        const prevRange = chartRef.current?.timeScale().getVisibleLogicalRange();
-        const prevLastIdx = candlesRef.current.length - 1;
+        // The current view shape (span + right offset) is tracked continuously in
+        // viewShapeRef, so it survives the data wipe below and lets us keep the
+        // same zoom + scroll position on the new symbol.
+        const shape = viewShapeRef.current;
 
         // Immediately wipe previous symbol's data so stale candles never linger.
         candlesRef.current = [];
@@ -2234,13 +2247,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
         updateOBV();
         if (chartRef.current && klines.length > 0) {
           const lastIdx = klines.length - 1;
-          if (prevRange && prevLastIdx >= 0) {
+          if (shape) {
             // Preserve the previous zoom (span) and right-edge offset so the new
             // symbol shows at the same scale/position the user was looking at.
-            const span = prevRange.to - prevRange.from;
-            const rightOffset = prevRange.to - prevLastIdx;
-            const to = lastIdx + rightOffset;
-            chartRef.current.timeScale().setVisibleLogicalRange({ from: to - span, to });
+            const to = lastIdx + shape.rightOffset;
+            chartRef.current.timeScale().setVisibleLogicalRange({ from: to - shape.span, to });
           } else {
             // First load: show the user's preferred number of recent bars.
             // Bypasses lightweight-charts' default "fit all" which zooms out too far.
