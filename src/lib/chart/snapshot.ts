@@ -87,17 +87,20 @@ export async function composeChartPng(
 
   // takeScreenshot() renders at device-pixel resolution while the overlays are
   // laid out in CSS pixels — scale so they line up instead of landing small.
-  const cssWidth = root.clientWidth;
-  const cssHeight = root.clientHeight;
-  if (cssWidth > 0 && cssHeight > 0) {
-    const scale = base.width / cssWidth;
+  const rootRect = root.getBoundingClientRect();
+  if (rootRect.width > 0 && rootRect.height > 0) {
+    const scale = base.width / rootRect.width;
     for (const svg of Array.from(root.querySelectorAll("svg"))) {
-      // Skip overlays that are hidden or have no box to paint.
+      // Not every overlay spans the full chart — e.g. SqueezeOverlay is
+      // pinned to just its indicator pane — so paint each at its own
+      // position/size instead of assuming (0, 0) and the full canvas.
       const rect = svg.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) continue;
       try {
-        const img = await svgToImage(svg, cssWidth, cssHeight);
-        ctx.drawImage(img, 0, 0, cssWidth * scale, cssHeight * scale);
+        const img = await svgToImage(svg, rect.width, rect.height);
+        const x = (rect.left - rootRect.left) * scale;
+        const y = (rect.top - rootRect.top) * scale;
+        ctx.drawImage(img, x, y, rect.width * scale, rect.height * scale);
       } catch {
         // One unrenderable overlay shouldn't lose the whole snapshot.
       }

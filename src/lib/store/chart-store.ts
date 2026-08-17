@@ -865,10 +865,28 @@ export const useChartStore = create<ChartState>()(
             const from = w.items.findIndex((i) => i.id === fromId);
             const to = w.items.findIndex((i) => i.id === toId);
             if (from === -1 || to === -1 || from === to) return w;
-            const next = [...w.items];
-            const [moved] = next.splice(from, 1);
-            next.splice(from < to ? to : to, 0, moved);
-            return { ...w, items: next };
+
+            // A label is the parent of every symbol below it (up to the next
+            // label), so dragging the label carries that whole block along
+            // instead of leaving its symbols orphaned under the old section.
+            const dragged = w.items[from];
+            let blockLen = 1;
+            if (dragged.type === "label") {
+              while (
+                from + blockLen < w.items.length &&
+                w.items[from + blockLen].type !== "label"
+              ) {
+                blockLen++;
+              }
+            }
+            if (to >= from && to < from + blockLen) return w; // dropped inside own block
+
+            const block = w.items.slice(from, from + blockLen);
+            const rest = [...w.items.slice(0, from), ...w.items.slice(from + blockLen)];
+            const insertAt = rest.findIndex((i) => i.id === toId);
+            const at = from < to ? insertAt + 1 : insertAt;
+            rest.splice(at, 0, ...block);
+            return { ...w, items: rest };
           }),
         })),
       renameWatchlistItem: (watchlistId, itemId, value) =>
