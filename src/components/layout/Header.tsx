@@ -5,6 +5,7 @@ import { SymbolSelector } from "@/components/chart/SymbolSelector";
 import { TimeframeSelector } from "@/components/chart/TimeframeSelector";
 import { ChartTypeSelector } from "@/components/chart/ChartTypeSelector";
 import { IndicatorMenu } from "@/components/chart/IndicatorMenu";
+import { SnapshotButton } from "@/components/chart/SnapshotButton";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -100,6 +101,7 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-2">
+        <SnapshotButton />
         <Tooltip>
           <TooltipTrigger
             onClick={() => setChartSettingsOpen(true)}

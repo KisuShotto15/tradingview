@@ -128,6 +128,23 @@ Order sizing/risk math is pure and tested in [src/lib/trading/sizing.ts](src/lib
 
 Chart-side trading UI is in `src/components/trading/`. `OrderLinesLayer.tsx` draws entry/TP/SL/liquidation as an SVG overlay **plus** native lightweight-charts price lines — the native ones give the colored price-scale label and span the full pane (so a line continues past the SVG chip toolbar), and they're kept in sync with any in-progress drag so a dragged level doesn't leave a duplicate behind. Position TP/SL edits are two-step: drag → `pending` → explicit Confirm/Discard on the entry line before anything is sent.
 
+### Chart snapshots
+
+`chart.takeScreenshot()` only paints lightweight-charts' own canvas, so it would
+drop every annotation — drawings and order lines are SVG overlays stacked on
+top. `composeChartPng()` ([src/lib/chart/snapshot.ts](src/lib/chart/snapshot.ts))
+composites the two, scaling the CSS-pixel overlays up to the canvas's
+device-pixel size and inlining `var(--token)` colours (serialized SVG leaves the
+document, so those would otherwise resolve to black). PriceChart registers the
+capture through the same registry pattern as the viewport applier.
+
+Snapshots upload to the **public** `snapshots` Storage bucket
+(`supabase/migrations/04_snapshots.sql`) under a `<uid>/` prefix: writes are
+owner-only via that prefix, reads are public because the point is a URL that
+renders in an external journal. Clipboard image copy hands `ClipboardItem` the
+*promise* rather than an awaited blob — Safari drops the user-gesture permission
+across an `await`.
+
 ### Auth & cloud sync
 
 `src/middleware.ts` (Supabase SSR) gates the whole app: unauthenticated users are redirected to `/login` (except `/login` and `/auth/*`). On sign-in, `useCloudSync` + `useDrawingsSync` load the user's chart settings, watchlist, and drawings from Supabase, then debounce-save changes back. Supabase clients: `client.ts` (browser), `server.ts` (route handlers / middleware). Schema + RLS policies in `supabase/schema.sql` and `supabase/migrations/`.

@@ -61,6 +61,7 @@ import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { unifiedHistory, registerViewportApplier, isApplyingHistory } from "@/lib/history";
 import { registerPricePerPixel } from "@/lib/chart/nudge";
+import { registerChartCapture, composeChartPng } from "@/lib/chart/snapshot";
 import { generateId, FIB_LEVELS_DEFAULT } from "@/lib/drawings/types";
 import { FIB_EXT_RATIOS_DEFAULT } from "@/lib/drawings/fib";
 import { useAlertMonitor } from "@/hooks/useAlertMonitor";
@@ -872,6 +873,14 @@ export function PriceChart({ symbol, timeframe }: Props) {
     // Register viewport applier so undo/redo can restore pan/zoom
     registerViewportApplier((range) => {
       chart.timeScale().setVisibleLogicalRange({ from: range.from, to: range.to });
+    });
+
+    // Expose a snapshot capture that composites the chart canvas with the SVG
+    // overlays, so UI elsewhere (the header button) can grab the annotated view.
+    registerChartCapture(async () => {
+      const root = outerRef.current;
+      if (!root) return null;
+      return composeChartPng(chart, root);
     });
 
     // Expose the vertical scale so keyboard nudging can move a drawing by whole
