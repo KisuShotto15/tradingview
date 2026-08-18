@@ -210,6 +210,21 @@ export function PositionDraw({
   const pctProfit = drawing.entry === 0 ? 0 : (reward / Math.abs(drawing.entry)) * 100;
   const pctLoss = drawing.entry === 0 ? 0 : (risk / Math.abs(drawing.entry)) * 100;
 
+  // 1R/2R/3R… guide lines inside the profit zone — R is the risk distance
+  // (entry to stop), so these mark whole risk-multiples of reward, letting
+  // you see at a glance when price reaches 1R to consider taking partials.
+  // Stops strictly before the target's own multiple so it doesn't double up
+  // with the target line when the target sits exactly on a whole R.
+  const rLevels: { n: number; y: number }[] = [];
+  if (candleSeries && risk > 0) {
+    const maxN = Math.min(Math.floor(rr - 1e-9), 10);
+    for (let n = 1; n <= maxN; n++) {
+      const price = drawing.entry + (isLong ? 1 : -1) * risk * n;
+      const y = candleSeries.priceToCoordinate(price);
+      if (y !== null) rLevels.push({ n, y: y as number });
+    }
+  }
+
   // Pill labels
   const targetPillText = `${formatPrice(drawing.target)}  ${isLong ? "+" : "-"}${pctProfit.toFixed(2)}%`;
   const stopPillText = `${formatPrice(drawing.stop)}  ${isLong ? "-" : "+"}${pctLoss.toFixed(2)}%`;
@@ -262,6 +277,23 @@ export function PositionDraw({
       {/* Colored zones */}
       <rect x={left} y={profitY1} width={zoneWidth} height={profitZoneH} fill={profitFill} style={{ pointerEvents: "none" }} />
       <rect x={left} y={lossY1} width={zoneWidth} height={lossZoneH} fill={lossFill} style={{ pointerEvents: "none" }} />
+
+      {/* 1R/2R/3R… guide lines */}
+      {rLevels.map(({ n, y }) => (
+        <g key={`r${n}`} style={{ pointerEvents: "none" }}>
+          <line
+            x1={left} x2={right} y1={y} y2={y}
+            stroke={profitColor} strokeWidth={1} strokeDasharray="2,3" opacity={0.5}
+          />
+          <text
+            x={left + 4} y={y - 3}
+            fill={profitColor} fontSize={9} opacity={0.65}
+            fontFamily="var(--font-mono), monospace"
+          >
+            {n}R
+          </text>
+        </g>
+      ))}
 
       {/* Entry line */}
       <line
