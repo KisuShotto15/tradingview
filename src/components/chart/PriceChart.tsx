@@ -2842,6 +2842,58 @@ export function PriceChart({ symbol, timeframe }: Props) {
     return () => outer.removeEventListener("mousedown", onShiftCapture, { capture: true });
   }, []);
 
+  // OHLC/Vol legend fallback: chart.subscribeCrosshairMove only fires for
+  // mousemoves whose real DOM target lands on the chart's own canvas, but
+  // drawing overlays are a sibling that paints on top and becomes the actual
+  // target whenever the cursor is over one (e.g. inside a Long/Rectangle/Fib
+  // box) — so hovering a candle "under" a drawing would otherwise never
+  // update the legend. This computes it independently, deferring to the
+  // native path (skipping) whenever the canvas itself got the event.
+  useEffect(() => {
+    const outer = outerRef.current;
+    if (!outer) return;
+    function onHoverCapture(e: MouseEvent) {
+      if (!containerRef.current || !chartRef.current || !candleSeriesRef.current) return;
+      if (containerRef.current.contains(e.target as Node)) return; // native path handles it
+      const rect = containerRef.current.getBoundingClientRect();
+      if (
+        e.clientX < rect.left || e.clientX > rect.right ||
+        e.clientY < rect.top || e.clientY > rect.bottom
+      ) {
+        return;
+      }
+      const y = e.clientY - rect.top;
+      const rawPrice = candleSeriesRef.current.coordinateToPrice(y);
+      if (rawPrice === null) return;
+      const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
+      const x = e.clientX - rect.left;
+      const time = xToTime(chartRef.current, x, candlesRef.current, intervalSec);
+      const candles = candlesRef.current;
+      if (time === null || candles.length === 0) return;
+      const candle = candles.reduce((best, c) =>
+        Math.abs(c.time - time) < Math.abs(best.time - time) ? c : best,
+      );
+      setHover({
+        o: candle.open,
+        h: candle.high,
+        l: candle.low,
+        c: candle.close,
+        v: candle.volume,
+        time: candle.time,
+        pct: candle.open === 0 ? 0 : ((candle.close - candle.open) / candle.open) * 100,
+      });
+    }
+    function onLeave() {
+      setHover(null);
+    }
+    outer.addEventListener("mousemove", onHoverCapture, { capture: true });
+    outer.addEventListener("mouseleave", onLeave);
+    return () => {
+      outer.removeEventListener("mousemove", onHoverCapture, { capture: true });
+      outer.removeEventListener("mouseleave", onLeave);
+    };
+  }, []);
+
   // Pressing/releasing Shift snaps the placement preview to horizontal/vertical
   // instantly (no mouse move needed), matching TradingView.
   useEffect(() => {
