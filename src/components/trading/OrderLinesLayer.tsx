@@ -348,11 +348,12 @@ interface PendingCtl {
  * Discard/Confirm/tag chips only appear while a TP/SL drag is pending.
  */
 function EntryToolbarRow({
-  y, width, qty, pnlPct, onClose, pending, onPlaceTp, onPlaceSl,
+  y, width, qty, side, pnlPct, onClose, pending, onPlaceTp, onPlaceSl,
 }: {
   y: number;
   width: number;
   qty: number;
+  side: "BUY" | "SELL";
   pnlPct: number;
   onClose?: () => void;
   pending: PendingCtl | null;
@@ -364,6 +365,9 @@ function EntryToolbarRow({
   const GAP = 4;
   const yTop = y - 10;
   const chips: { w: number; el: (x: number) => React.ReactNode }[] = [];
+  // Short entries read red end-to-end (line, chips) instead of the long's
+  // blue, so the direction is legible at a glance without reading the label.
+  const entryColor = side === "SELL" ? LIQ_COLOR : LIMIT_COLOR;
 
   // P&L percent merged with the close (×) button into ONE continuous outlined
   // box (black fill, blue border), separated by a thin divider — not two
@@ -377,10 +381,10 @@ function EntryToolbarRow({
     w: mergedW,
     el: (x) => (
       <g key="pnl-close">
-        <rect x={x} y={yTop} width={mergedW} height={H} rx={3} fill="#0a0a0a" stroke={LIMIT_COLOR} />
+        <rect x={x} y={yTop} width={mergedW} height={H} rx={3} fill="#0a0a0a" stroke={entryColor} />
         <text x={x + pnlW / 2} y={y + 4} fill={pnlColor} fontSize={11} fontFamily="var(--font-mono), monospace" textAnchor="middle">{pnlStr}</text>
-        <line x1={x + pnlW} x2={x + pnlW} y1={yTop} y2={yTop + H} stroke={LIMIT_COLOR} strokeWidth={1} />
-        <text x={x + pnlW + closeW / 2} y={y + 4} fill={LIMIT_COLOR} fontSize={13} fontWeight="bold" textAnchor="middle">×</text>
+        <line x1={x + pnlW} x2={x + pnlW} y1={yTop} y2={yTop + H} stroke={entryColor} strokeWidth={1} />
+        <text x={x + pnlW + closeW / 2} y={y + 4} fill={entryColor} fontSize={13} fontWeight="bold" textAnchor="middle">×</text>
         <rect
           x={x + pnlW}
           y={yTop}
@@ -402,7 +406,7 @@ function EntryToolbarRow({
     w: sizeW,
     el: (x) => (
       <g key="size">
-        <rect x={x} y={yTop} width={sizeW} height={H} rx={3} fill={LIMIT_COLOR} />
+        <rect x={x} y={yTop} width={sizeW} height={H} rx={3} fill={entryColor} />
         <text x={x + sizeW / 2} y={y + 4} fill="#fff" fontSize={11} fontWeight="bold" fontFamily="var(--font-mono), monospace" textAnchor="middle">{sizeStr}</text>
       </g>
     ),
@@ -429,7 +433,7 @@ function EntryToolbarRow({
       el: (x) => (
         <g key="confirm" style={{ pointerEvents: "all", cursor: "pointer" }} onMouseDown={stopEvt}
            onClick={(e) => { stopEvt(e); pending.onConfirm(); }}>
-          <rect x={x} y={yTop} width={62} height={H} rx={3} fill={LIMIT_COLOR} />
+          <rect x={x} y={yTop} width={62} height={H} rx={3} fill={entryColor} />
           <text x={x + 31} y={y + 4} fill="#fff" fontSize={11} fontWeight="bold" textAnchor="middle">Confirm</text>
         </g>
       ),
@@ -458,7 +462,7 @@ function EntryToolbarRow({
 
   return (
     <g>
-      <line x1={0} x2={lineEnd} y1={y} y2={y} stroke={LIMIT_COLOR} strokeWidth={1.6} style={{ pointerEvents: "none" }} />
+      <line x1={0} x2={lineEnd} y1={y} y2={y} stroke={entryColor} strokeWidth={1.6} style={{ pointerEvents: "none" }} />
       {placed}
     </g>
   );
@@ -626,7 +630,11 @@ function computeAxisLevels(
   const out: AxisLevel[] = [];
   for (const pos of positions) {
     if (pos.positionAmt === 0 || pos.symbol !== cleanedSym) continue;
-    out.push({ id: `${cleanedSym}-EP`, price: pos.entryPrice, color: LIMIT_COLOR });
+    out.push({
+      id: `${cleanedSym}-EP`,
+      price: pos.entryPrice,
+      color: pos.positionAmt < 0 ? LIQ_COLOR : LIMIT_COLOR,
+    });
 
     const { tpOrder, slOrder } = findTpSlOrders(pos, orders, cleanedSym);
     const tpPrice = pos.takeProfit ?? tpOrder?.stopPrice ?? null;
@@ -1143,6 +1151,7 @@ export function OrderLinesLayer({
                   y={yPx}
                   width={plotW}
                   qty={line.qty}
+                  side={line.side}
                   pnlPct={line.livePct ?? 0}
                   onClose={line.onClose}
                   pending={pendingCtl}
