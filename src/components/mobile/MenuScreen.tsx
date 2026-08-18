@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { useTradingStore } from "@/lib/store/trading-store";
 import { useChartStore } from "@/lib/store/chart-store";
+import { useDrawingsStore } from "@/lib/store/drawings-store";
+import { useAlertsStore } from "@/lib/store/alerts-store";
 import { useMobileStore } from "@/lib/store/mobile-store";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +27,11 @@ export function MenuScreen() {
   const exchange = useTradingStore((s) => s.exchange);
   const openSheet = useMobileStore((s) => s.openSheet);
   const exLabel = exchange === "bybit" ? "Bybit" : "Binance";
+  const activeAlerts = useAlertsStore((s) => s.alerts.filter((a) => a.enabled).length);
+  const activeDrawingAlerts = useDrawingsStore(
+    (s) => s.drawings.filter((d) => d.alert?.enabled).length,
+  );
+  const activeAlertCount = activeAlerts + activeDrawingAlerts;
 
   // Open the chart settings dialog (reuse desktop component).
   function openChartSettings() {
@@ -59,6 +66,7 @@ export function MenuScreen() {
         <Row
           icon={Bell}
           label="Alerts"
+          hint={activeAlertCount > 0 ? `${activeAlertCount} active` : undefined}
           onClick={() => openSheet("alerts")}
         />
       </Section>
