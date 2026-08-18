@@ -249,7 +249,7 @@ export function PositionDraw({
         width={zoneWidth + handleR * 2} height={boundBottom - boundTop}
         fill="transparent"
         className="drawing-hit"
-        style={{ pointerEvents: "all", cursor: "move" }}
+        style={{ pointerEvents: "all", cursor: selected ? "move" : "pointer" }}
         onMouseDown={onZoneMouseDown}
         onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
