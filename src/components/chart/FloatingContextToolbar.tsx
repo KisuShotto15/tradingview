@@ -1,12 +1,19 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Copy, Eye, EyeOff, Lock, Settings2, Trash2, TrendingUp, Unlock } from "lucide-react";
+import { Bookmark, BookmarkPlus, Copy, Eye, EyeOff, Lock, Settings2, Trash2, TrendingUp, Unlock, X } from "lucide-react";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useChartStore, type DrawingTool } from "@/lib/store/chart-store";
 import { useTradingStore } from "@/lib/store/trading-store";
 import { ColorPicker } from "@/components/ui/color-picker";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import type { Drawing } from "@/lib/drawings/types";
 
@@ -164,6 +171,7 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
         <Btn title="Duplicate (Ctrl+D)" onClick={() => void duplicate(drawing.id)}>
           <Copy className="h-3.5 w-3.5" />
         </Btn>
+        <TemplatesButton drawing={drawing} onApply={patch} />
         <Btn title="Delete" danger onClick={() => {
           void remove(drawing.id);
           useDrawingsStore.getState().setSelected(null);
@@ -261,6 +269,83 @@ function SwatchPicker({ value, onChange }: { value: string; onChange: (v: string
     <div style={{ transform: "scale(0.78)", transformOrigin: "center" }}>
       <ColorPicker value={value} onChange={onChange} />
     </div>
+  );
+}
+
+/** The subset of style fields worth saving/restoring in a template. */
+function styleOf(d: Drawing): Record<string, unknown> {
+  const style: Record<string, unknown> = {};
+  if (d.color !== undefined) style.color = d.color;
+  if (d.lineWidth !== undefined) style.lineWidth = d.lineWidth;
+  if (d.lineStyle !== undefined) style.lineStyle = d.lineStyle;
+  if ("stopColor" in d && d.stopColor !== undefined) style.stopColor = d.stopColor;
+  if ("targetColor" in d && d.targetColor !== undefined) style.targetColor = d.targetColor;
+  return style;
+}
+
+/**
+ * Named style presets for this drawing's kind — save the current style under
+ * a name, and re-apply any saved one later. Unlike `toolDefaults` (the
+ * single "last style used", applied silently to new drawings), templates are
+ * explicit and applied on demand to the selected drawing.
+ */
+function TemplatesButton({
+  drawing,
+  onApply,
+}: {
+  drawing: Drawing;
+  onApply: (p: Partial<Drawing>) => void;
+}) {
+  const templates = useChartStore((s) => s.drawingTemplates[drawing.kind] ?? []);
+  const saveDrawingTemplate = useChartStore((s) => s.saveDrawingTemplate);
+  const deleteDrawingTemplate = useChartStore((s) => s.deleteDrawingTemplate);
+
+  function saveTemplate() {
+    const name = window.prompt("Template name:");
+    if (name && name.trim()) {
+      saveDrawingTemplate(drawing.kind, name.trim(), styleOf(drawing));
+    }
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        title="Templates"
+        className="flex h-5 w-5 items-center justify-center rounded text-tv-text-muted transition-colors hover:bg-tv-panel-hover hover:text-tv-text"
+      >
+        <Bookmark className="h-3.5 w-3.5" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-48 bg-tv-panel">
+        <DropdownMenuItem onClick={saveTemplate} className="text-xs">
+          <BookmarkPlus className="h-3.5 w-3.5" />
+          <span>Save as template…</span>
+        </DropdownMenuItem>
+        {templates.length > 0 && <DropdownMenuSeparator />}
+        {templates.map((t) => (
+          <DropdownMenuItem
+            key={t.id}
+            onClick={() => onApply(t.style as Partial<Drawing>)}
+            className="text-xs"
+          >
+            <span className="min-w-0 flex-1 truncate">{t.name}</span>
+            <span
+              role="button"
+              aria-label="Delete template"
+              title="Delete template"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                deleteDrawingTemplate(drawing.kind, t.id);
+              }}
+              className="ml-auto flex h-4 w-4 shrink-0 items-center justify-center rounded text-tv-text-dim hover:bg-tv-panel-hover hover:text-tv-red"
+            >
+              <X className="h-3 w-3" />
+            </span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

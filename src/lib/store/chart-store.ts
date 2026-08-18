@@ -238,6 +238,13 @@ export const DEFAULT_WATCHLIST = [
 ];
 
 /** Either a symbol entry or a section label inside a watchlist. */
+/** A named, saveable style preset for a drawing kind (see `drawingTemplates`). */
+export interface DrawingTemplate {
+  id: string;
+  name: string;
+  style: { color?: string; lineWidth?: number; lineStyle?: 0 | 1 | 2; [key: string]: unknown };
+}
+
 export type WatchlistItem =
   | { id: string; type: "symbol"; value: string; flagColor?: string }
   | { id: string; type: "label"; value: string };
@@ -387,6 +394,13 @@ interface ChartState {
       { color?: string; lineWidth?: number; lineStyle?: 0 | 1 | 2; [key: string]: unknown }
     >
   >;
+  /**
+   * Named, saveable style presets per drawing kind — unlike `toolDefaults`
+   * (the single "last style used" applied automatically to new drawings),
+   * these are explicit ("Save as template…") and applied on demand to the
+   * selected drawing from the floating toolbar.
+   */
+  drawingTemplates: Partial<Record<string, DrawingTemplate[]>>;
   /** User watchlists with sections/labels */
   watchlists: Watchlist[];
   activeWatchlistId: string;
@@ -454,6 +468,8 @@ interface ChartState {
     kind: string,
     patch: { color?: string; lineWidth?: number; lineStyle?: 0 | 1 | 2; [key: string]: unknown },
   ) => void;
+  saveDrawingTemplate: (kind: string, name: string, style: DrawingTemplate["style"]) => void;
+  deleteDrawingTemplate: (kind: string, templateId: string) => void;
   createWatchlist: (name: string) => string;
   renameWatchlist: (id: string, name: string) => void;
   deleteWatchlist: (id: string) => void;
@@ -562,6 +578,7 @@ export const useChartStore = create<ChartState>()(
       rightSidebarWidth: 256,
       rightSidebarTab: "watchlist",
       toolDefaults: {},
+      drawingTemplates: {},
       ...initialWatchlists(),
       watchlistSort: { key: "manual", dir: "desc" },
       watchlistCollapsedLabels: [],
@@ -854,6 +871,20 @@ export const useChartStore = create<ChartState>()(
           toolDefaults: {
             ...s.toolDefaults,
             [kind]: { ...(s.toolDefaults[kind] as Record<string, unknown> ?? {}), ...patch },
+          },
+        })),
+      saveDrawingTemplate: (kind, name, style) =>
+        set((s) => ({
+          drawingTemplates: {
+            ...s.drawingTemplates,
+            [kind]: [...(s.drawingTemplates[kind] ?? []), { id: randomId(), name, style }],
+          },
+        })),
+      deleteDrawingTemplate: (kind, templateId) =>
+        set((s) => ({
+          drawingTemplates: {
+            ...s.drawingTemplates,
+            [kind]: (s.drawingTemplates[kind] ?? []).filter((t) => t.id !== templateId),
           },
         })),
       createWatchlist: (name) => {
@@ -1199,6 +1230,7 @@ export const useChartStore = create<ChartState>()(
         rightSidebarWidth: s.rightSidebarWidth,
         rightSidebarTab: s.rightSidebarTab,
         toolDefaults: s.toolDefaults,
+        drawingTemplates: s.drawingTemplates,
         watchlists: s.watchlists,
         activeWatchlistId: s.activeWatchlistId,
         watchlistSort: s.watchlistSort,
