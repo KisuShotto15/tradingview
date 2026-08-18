@@ -6,8 +6,6 @@ import {
   ArrowUp,
   ChevronDown,
   ChevronRight,
-  ChevronsDown,
-  ChevronsUp,
   Copy,
   Flag,
   FolderInput,
@@ -63,7 +61,6 @@ export function Watchlist() {
   const setWatchlistItemFlag = useChartStore((s) => s.setWatchlistItemFlag);
   const setWatchlistItemsFlag = useChartStore((s) => s.setWatchlistItemsFlag);
   const moveWatchlistItemToList = useChartStore((s) => s.moveWatchlistItemToList);
-  const moveWatchlistItem = useChartStore((s) => s.moveWatchlistItem);
   const reorderWatchlistItems = useChartStore((s) => s.reorderWatchlistItems);
   const renameWatchlistItem = useChartStore((s) => s.renameWatchlistItem);
   const sort = useChartStore((s) => s.watchlistSort);
@@ -762,34 +759,9 @@ export function Watchlist() {
                 return null;
               })()}
               <ContextItem
-                icon={ChevronsUp}
-                label="Move up"
-                onClick={() => {
-                  moveWatchlistItem(active.id, contextMenu.itemId!, -1);
-                  setContextMenu(null);
-                }}
-              />
-              <ContextItem
-                icon={ChevronsDown}
-                label="Move down"
-                onClick={() => {
-                  moveWatchlistItem(active.id, contextMenu.itemId!, 1);
-                  setContextMenu(null);
-                }}
-              />
-              <ContextItem
                 icon={Type}
                 label="Add label above"
                 onClick={() => addLabelHere(contextMenu.itemId!)}
-              />
-              <ContextItem
-                icon={X}
-                label="Remove"
-                danger
-                onClick={() => {
-                  removeWatchlistItem(active.id, contextMenu.itemId!);
-                  setContextMenu(null);
-                }}
               />
               {(() => {
                 const item = items.find((i) => i.id === contextMenu.itemId);

@@ -255,25 +255,6 @@ export interface Watchlist {
   items: WatchlistItem[];
 }
 
-/**
- * Partition watchlist items into contiguous sections: each label plus every
- * symbol under it up to the next label, and — if the list doesn't start with
- * a label — a leading unsectioned block. Used to move a label together with
- * its children instead of stepping past just one item at a time.
- */
-function watchlistBlockRanges(items: WatchlistItem[]): { start: number; end: number }[] {
-  const boundaries = [0];
-  items.forEach((it, i) => {
-    if (i > 0 && it.type === "label") boundaries.push(i);
-  });
-  boundaries.push(items.length);
-  const ranges: { start: number; end: number }[] = [];
-  for (let i = 0; i < boundaries.length - 1; i++) {
-    ranges.push({ start: boundaries[i], end: boundaries[i + 1] });
-  }
-  return ranges;
-}
-
 /** Tabs available in the right sidebar. */
 export type RightSidebarTab = "watchlist" | "objects" | "trade" | "alerts";
 
@@ -483,7 +464,6 @@ interface ChartState {
   addLabelToWatchlist: (watchlistId: string, label: string, beforeId?: string) => void;
   removeWatchlistItem: (watchlistId: string, itemId: string) => void;
   setWatchlistItemFlag: (watchlistId: string, itemId: string, color: string | null) => void;
-  moveWatchlistItem: (watchlistId: string, itemId: string, delta: -1 | 1) => void;
   reorderWatchlistItems: (watchlistId: string, fromId: string, toId: string) => void;
   renameWatchlistItem: (watchlistId: string, itemId: string, value: string) => void;
   setWatchlistSort: (sort: WatchSort) => void;
@@ -1061,44 +1041,6 @@ export const useChartStore = create<ChartState>()(
                 }
               : w,
           ),
-        })),
-      moveWatchlistItem: (watchlistId, itemId, delta) =>
-        set((state) => ({
-          watchlists: state.watchlists.map((w) => {
-            if (w.id !== watchlistId) return w;
-            const idx = w.items.findIndex((i) => i.id === itemId);
-            if (idx === -1) return w;
-            const dragged = w.items[idx];
-
-            if (dragged.type !== "label") {
-              // Plain symbols just swap with their immediate neighbour.
-              const target = idx + delta;
-              if (target < 0 || target >= w.items.length) return w;
-              const next = [...w.items];
-              [next[idx], next[target]] = [next[target], next[idx]];
-              return { ...w, items: next };
-            }
-
-            // A label carries its whole section (itself + every symbol under
-            // it, up to the next label) when moved, so it swaps places with
-            // the adjacent section as a block instead of stepping past only
-            // its first child and leaving the rest behind.
-            const ranges = watchlistBlockRanges(w.items);
-            const rangeIdx = ranges.findIndex((r) => r.start === idx);
-            if (rangeIdx === -1) return w;
-            const neighborIdx = rangeIdx + delta;
-            if (neighborIdx < 0 || neighborIdx >= ranges.length) return w;
-            const [a, b] = delta === -1 ? [neighborIdx, rangeIdx] : [rangeIdx, neighborIdx];
-            const blockA = w.items.slice(ranges[a].start, ranges[a].end);
-            const blockB = w.items.slice(ranges[b].start, ranges[b].end);
-            const next = [
-              ...w.items.slice(0, ranges[a].start),
-              ...blockB,
-              ...blockA,
-              ...w.items.slice(ranges[b].end),
-            ];
-            return { ...w, items: next };
-          }),
         })),
       reorderWatchlistItems: (watchlistId, fromId, toId) =>
         set((state) => ({
