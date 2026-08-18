@@ -1,136 +1,209 @@
 "use client";
 
-import {
-  CalendarRange,
-  GripVertical,
-  Layers3,
-  Minus,
-  MousePointer2,
-  MoveRight,
-  Percent,
-  RectangleHorizontal,
-  Ruler,
-  Slash,
-  TrendingUp,
-} from "lucide-react";
+import { Bell, BellOff, Magnet, Star, Trash2 } from "lucide-react";
 import { useChartStore, type DrawingTool } from "@/lib/store/chart-store";
+import { useDrawingsStore } from "@/lib/store/drawings-store";
+import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useMobileStore } from "@/lib/store/mobile-store";
+import type { Drawing, AlertConfig } from "@/lib/drawings/types";
 import { MobileSheet } from "./MobileSheet";
 import { cn } from "@/lib/utils";
+import {
+  ALL_TOOLS,
+  CURSOR_TOOLS,
+  LABELED_GROUPS,
+  groupSections,
+  type ToolDef,
+} from "@/components/layout/drawing-tools";
 
 /**
  * Mobile-friendly drawing tools picker — fullscreen sheet that replaces the
- * desktop LeftSidebar on small screens. Tapping a tool sets it as active and
- * closes the sheet so the user can immediately start placing on the chart.
+ * desktop LeftSidebar on small screens. Pulls the SAME tool catalog
+ * (`drawing-tools.ts`) desktop does, so a tool added there shows up here too
+ * without a second list to maintain, and adds the utility actions the
+ * desktop sidebar keeps at its bottom (magnet mode, per-drawing alert
+ * toggle, clear drawings) plus a per-tool favorite star, since there's no
+ * right-click to favorite from on touch.
  */
-
-type AnyIcon = typeof MousePointer2;
-
-interface ToolDef {
-  key: DrawingTool;
-  icon: AnyIcon;
-  label: string;
-  hint: string;
-}
-interface ToolGroup {
-  label: string | null;
-  tools: ToolDef[];
-}
-
-const TOOL_GROUPS: ToolGroup[] = [
-  {
-    label: null,
-    tools: [
-      { key: "cursor", icon: MousePointer2, label: "Cursor", hint: "Pan & navigate" },
-    ],
-  },
-  {
-    label: "Lines",
-    tools: [
-      { key: "trendline", icon: TrendingUp, label: "Trend line", hint: "Click start, then end" },
-      { key: "ray", icon: Slash, label: "Ray", hint: "Click origin, then direction" },
-      { key: "hline", icon: Minus, label: "Horizontal line", hint: "Click a price" },
-      { key: "hray", icon: MoveRight, label: "Horizontal ray", hint: "Click anchor — extends right" },
-      { key: "vline", icon: GripVertical, label: "Vertical line", hint: "Click a time" },
-    ],
-  },
-  {
-    label: "Channels",
-    tools: [
-      { key: "parallel-channel", icon: Layers3, label: "Parallel channel", hint: "A → B (baseline) → C (offset)" },
-    ],
-  },
-  {
-    label: "Fibonacci",
-    tools: [
-      { key: "fib-retracement", icon: Percent, label: "Fib retracement", hint: "Swing high → swing low" },
-    ],
-  },
-  {
-    label: "Ranges",
-    tools: [
-      { key: "price-range", icon: RectangleHorizontal, label: "Price range", hint: "Two prices" },
-      { key: "date-range", icon: CalendarRange, label: "Date range", hint: "Two timestamps" },
-    ],
-  },
-  {
-    label: "Trade",
-    tools: [
-      { key: "long", icon: TrendingUp, label: "Long position", hint: "Entry + target; stop auto-set" },
-      { key: "short", icon: TrendingUp, label: "Short position", hint: "Entry + target; stop auto-set" },
-    ],
-  },
-  {
-    label: "Tools",
-    tools: [
-      { key: "measure", icon: Ruler, label: "Measure", hint: "Δ price / % / bars" },
-    ],
-  },
-];
-
 export function MobileDrawingsSheet() {
   const tool = useChartStore((s) => s.tool);
   const setTool = useChartStore((s) => s.setTool);
+  const symbol = useChartStore((s) => s.symbol);
+  const favoriteTools = useChartStore((s) => s.favoriteTools);
+  const toggleFavoriteTool = useChartStore((s) => s.toggleFavoriteTool);
+  const magnetMode = useChartStore((s) => s.magnetMode);
+  const toggleMagnetMode = useChartStore((s) => s.toggleMagnetMode);
+  const selectedId = useDrawingsStore((s) => s.selectedId);
+  const drawings = useDrawingsStore((s) => s.drawings);
+  const { clear: clearDrawings, update } = useDrawings();
   const closeSheet = useMobileStore((s) => s.closeSheet);
+
+  const selected = drawings.find((d) => d.id === selectedId);
+  const canAlert =
+    selected &&
+    (selected.kind === "hline" ||
+      selected.kind === "hray" ||
+      selected.kind === "trendline" ||
+      selected.kind === "ray");
+  const alertOn = canAlert ? !!selected?.alert?.enabled : false;
+
+  function toggleAlert() {
+    if (!selected || !canAlert) return;
+    const newAlert: AlertConfig = { enabled: !alertOn, sound: true, direction: "cross", lastTriggeredAt: undefined };
+    void update(selected.id, { alert: newAlert } as Partial<Drawing>);
+  }
 
   function pick(t: DrawingTool) {
     setTool(t);
     closeSheet();
   }
 
+  const favorites = favoriteTools
+    .map((k) => ALL_TOOLS[k])
+    .filter((t): t is ToolDef => !!t);
+
   return (
     <MobileSheet title="Drawing tools" onClose={closeSheet}>
-      <div>
-        {TOOL_GROUPS.map((g) => (
-          <section key={g.label ?? "default"}>
-            {g.label && (
-              <h3 className="bg-tv-panel/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-tv-text-muted">
-                {g.label}
-              </h3>
-            )}
-            {g.tools.map((t) => {
-              const Icon = t.icon;
-              const active = tool === t.key;
-              return (
-                <button
-                  key={t.key}
-                  onClick={() => pick(t.key)}
-                  className={cn(
-                    "flex w-full items-center gap-3 border-b border-tv-border/60 px-3 py-3 text-left active:bg-tv-panel-hover",
-                    active && "bg-tv-blue/15",
-                  )}
-                >
-                  <Icon className={cn("h-5 w-5", active ? "text-tv-blue" : "text-tv-text-muted")} />
-                  <div className="flex flex-1 flex-col gap-0.5">
-                    <span className="text-sm font-medium">{t.label}</span>
-                    <span className="text-[10px] text-tv-text-muted">{t.hint}</span>
-                  </div>
-                </button>
-              );
-            })}
-          </section>
-        ))}
+      {/* Utility actions — same bottom-of-sidebar actions desktop has */}
+      <div className="border-b border-tv-border/60">
+        <UtilityRow
+          icon={Magnet}
+          label="Magnet mode"
+          hint="Always snap to OHLC while placing/dragging"
+          active={magnetMode}
+          onClick={toggleMagnetMode}
+        />
+        <UtilityRow
+          icon={alertOn ? Bell : BellOff}
+          label={alertOn ? "Alert enabled" : "Alert on selected line"}
+          hint={canAlert ? "Beeps + toast when price crosses this line" : "Select a horizontal/trend line or ray first"}
+          active={!!alertOn}
+          disabled={!canAlert}
+          onClick={toggleAlert}
+        />
+        <button
+          onClick={() => void clearDrawings(symbol)}
+          className="flex w-full items-center gap-3 px-3 py-3 text-left text-tv-red active:bg-tv-red/10"
+        >
+          <Trash2 className="h-5 w-5" />
+          <span className="text-sm font-medium">Clear drawings</span>
+        </button>
       </div>
+
+      {favorites.length > 0 && (
+        <ToolSectionList
+          label="Favorites"
+          tools={favorites}
+          activeTool={tool}
+          favoriteTools={favoriteTools}
+          onPick={pick}
+          onToggleFavorite={toggleFavoriteTool}
+        />
+      )}
+
+      <ToolSectionList
+        label={null}
+        tools={CURSOR_TOOLS}
+        activeTool={tool}
+        favoriteTools={favoriteTools}
+        onPick={pick}
+        onToggleFavorite={toggleFavoriteTool}
+      />
+
+      {LABELED_GROUPS.map((group) =>
+        groupSections(group).map((section) => (
+          <ToolSectionList
+            key={`${group.label}-${section.label}`}
+            label={section.label}
+            tools={section.tools}
+            activeTool={tool}
+            favoriteTools={favoriteTools}
+            onPick={pick}
+            onToggleFavorite={toggleFavoriteTool}
+          />
+        )),
+      )}
     </MobileSheet>
+  );
+}
+
+function ToolSectionList({
+  label, tools, activeTool, favoriteTools, onPick, onToggleFavorite,
+}: {
+  label: string | null;
+  tools: ToolDef[];
+  activeTool: DrawingTool;
+  favoriteTools: DrawingTool[];
+  onPick: (t: DrawingTool) => void;
+  onToggleFavorite: (t: DrawingTool) => void;
+}) {
+  return (
+    <section>
+      {label && (
+        <h3 className="bg-tv-panel/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-tv-text-muted">
+          {label}
+        </h3>
+      )}
+      {tools.map((t) => {
+        const Icon = t.icon;
+        const active = activeTool === t.key;
+        const isFav = favoriteTools.includes(t.key);
+        return (
+          <div
+            key={t.key}
+            className={cn(
+              "flex items-center gap-3 border-b border-tv-border/60",
+              active && "bg-tv-blue/15",
+            )}
+          >
+            <button
+              onClick={() => onPick(t.key)}
+              className="flex flex-1 items-center gap-3 py-3 pl-3 text-left active:bg-tv-panel-hover"
+            >
+              <Icon className={cn("h-5 w-5", active ? "text-tv-blue" : "text-tv-text-muted")} />
+              <div className="flex flex-1 flex-col gap-0.5">
+                <span className="text-sm font-medium">{t.label}</span>
+                {t.hint && <span className="text-[10px] text-tv-text-muted">{t.hint}</span>}
+              </div>
+            </button>
+            <button
+              onClick={() => onToggleFavorite(t.key)}
+              aria-label={isFav ? "Remove from favorites" : "Add to favorites"}
+              className="flex h-10 w-10 shrink-0 items-center justify-center text-tv-text-dim active:text-tv-yellow"
+            >
+              <Star className={cn("h-4 w-4", isFav && "fill-tv-yellow text-tv-yellow")} />
+            </button>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+function UtilityRow({
+  icon: Icon, label, hint, active, disabled, onClick,
+}: {
+  icon: typeof Magnet;
+  label: string;
+  hint: string;
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "flex w-full items-center gap-3 px-3 py-3 text-left active:bg-tv-panel-hover",
+        disabled && "opacity-40",
+      )}
+    >
+      <Icon className={cn("h-5 w-5", active ? "text-tv-blue" : "text-tv-text-muted")} />
+      <div className="flex flex-1 flex-col gap-0.5">
+        <span className={cn("text-sm font-medium", active && "text-tv-blue")}>{label}</span>
+        <span className="text-[10px] text-tv-text-muted">{hint}</span>
+      </div>
+    </button>
   );
 }
