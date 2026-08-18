@@ -336,6 +336,25 @@ export async function bybitGetPositions(
     .map(mapBybitPosition);
 }
 
+/**
+ * Whether a symbol is in Bybit hedge mode (positionIdx 1/2) rather than
+ * one-way (0). Once a symbol is switched to hedge mode, `/v5/position/list`
+ * keeps returning its two dormant (size 0) position rows, so this stays
+ * accurate even while flat — unlike inferring hedge mode from currently-open
+ * (non-zero) positions, which goes blind the moment the symbol is flat and
+ * would then submit orders without a positionIdx, which Bybit rejects when
+ * the account is actually in hedge mode.
+ */
+export async function bybitIsHedgeMode(creds: BybitCreds, symbol: string): Promise<boolean> {
+  const result = ensureOk(
+    await bybitGet<{ list: RawBybitPosition[] }>(creds, "/v5/position/list", {
+      category: "linear",
+      symbol,
+    }),
+  );
+  return (result.list ?? []).some((p) => p.positionIdx === 1 || p.positionIdx === 2);
+}
+
 export async function bybitGetOrders(
   creds: BybitCreds,
   isPerp: boolean,
