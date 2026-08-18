@@ -1,10 +1,13 @@
 "use client";
 
+import { useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
   ArrowUpRight,
   CalendarRange,
+  ChevronsDown,
+  ChevronsUp,
   Eye,
   EyeOff,
   GitFork,
@@ -65,16 +68,35 @@ export function ObjectTreePanel() {
   const drawings = useDrawingsStore((s) => s.drawings);
   const selectedId = useDrawingsStore((s) => s.selectedId);
   const setSelected = useDrawingsStore((s) => s.setSelected);
-  const { update, remove, reorder } = useDrawings();
+  const { update, remove, reorder, setOrder } = useDrawings();
 
   // Front-most (last in the array) at the top of the list, TradingView-style.
   const items = drawings.filter((d) => d.symbol === symbol).slice().reverse();
+
+  const draggedId = useRef<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   function toggleHidden(d: Drawing) {
     void update(d.id, { hidden: !d.hidden });
   }
   function toggleLocked(d: Drawing) {
     void update(d.id, { locked: !d.locked });
+  }
+
+  function handleDrop(targetId: string) {
+    const fromId = draggedId.current;
+    draggedId.current = null;
+    setDragOverId(null);
+    if (!fromId || fromId === targetId) return;
+    const from = items.findIndex((d) => d.id === fromId);
+    const to = items.findIndex((d) => d.id === targetId);
+    if (from === -1 || to === -1) return;
+    const next = [...items];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    // items is displayed front-most-first; setOrder expects the underlying
+    // back-to-front array order, same as `drawings` itself.
+    void setOrder(symbol, next.map((d) => d.id).reverse());
   }
 
   return (
@@ -100,11 +122,20 @@ export function ObjectTreePanel() {
             return (
               <div
                 key={d.id}
+                draggable
+                onDragStart={() => { draggedId.current = d.id; }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (draggedId.current !== d.id) setDragOverId(d.id);
+                }}
+                onDrop={() => handleDrop(d.id)}
+                onDragEnd={() => { draggedId.current = null; setDragOverId(null); }}
                 onClick={() => setSelected(isSelected ? null : d.id)}
                 className={cn(
-                  "group flex items-center gap-1.5 px-2 py-1 text-[12px] transition-colors",
+                  "group flex cursor-grab items-center gap-1.5 px-2 py-1 text-[12px] transition-colors active:cursor-grabbing",
                   isSelected ? "bg-tv-blue/15" : "hover:bg-tv-panel-hover",
                   d.hidden && "opacity-50",
+                  dragOverId === d.id && "border-t-2 border-t-tv-blue",
                 )}
               >
                 <span
@@ -116,6 +147,18 @@ export function ObjectTreePanel() {
                 <span className="min-w-0 flex-1 truncate">{label}</span>
 
                 {/* Reorder */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void reorder(d.id, "front");
+                  }}
+                  disabled={isFirst}
+                  aria-label="Bring to front"
+                  title="Bring to front"
+                  className="flex h-5 w-5 items-center justify-center rounded text-tv-text-dim opacity-0 hover:bg-tv-border hover:text-tv-text group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-0"
+                >
+                  <ChevronsUp className="h-3.5 w-3.5" />
+                </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -139,6 +182,18 @@ export function ObjectTreePanel() {
                   className="flex h-5 w-5 items-center justify-center rounded text-tv-text-dim opacity-0 hover:bg-tv-border hover:text-tv-text group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-0"
                 >
                   <ArrowDown className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void reorder(d.id, "back");
+                  }}
+                  disabled={isLast}
+                  aria-label="Send to back"
+                  title="Send to back"
+                  className="flex h-5 w-5 items-center justify-center rounded text-tv-text-dim opacity-0 hover:bg-tv-border hover:text-tv-text group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-0"
+                >
+                  <ChevronsDown className="h-3.5 w-3.5" />
                 </button>
 
                 {/* Hide / lock / delete */}
