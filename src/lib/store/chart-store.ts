@@ -457,8 +457,13 @@ interface ChartState {
   createWatchlist: (name: string) => string;
   renameWatchlist: (id: string, name: string) => void;
   deleteWatchlist: (id: string) => void;
+  duplicateWatchlist: (id: string) => string | undefined;
+  clearWatchlistItems: (id: string) => void;
   setActiveWatchlist: (id: string) => void;
   addSymbolToWatchlist: (watchlistId: string, symbol: string) => void;
+  moveWatchlistItemToList: (fromId: string, toId: string, itemId: string) => void;
+  removeWatchlistItems: (watchlistId: string, itemIds: string[]) => void;
+  setWatchlistItemsFlag: (watchlistId: string, itemIds: string[], color: string | null) => void;
   addLabelToWatchlist: (watchlistId: string, label: string, beforeId?: string) => void;
   removeWatchlistItem: (watchlistId: string, itemId: string) => void;
   setWatchlistItemFlag: (watchlistId: string, itemId: string, color: string | null) => void;
@@ -877,6 +882,32 @@ export const useChartStore = create<ChartState>()(
                 : state.activeWatchlistId,
           };
         }),
+      duplicateWatchlist: (id) => {
+        const source = get().watchlists.find((w) => w.id === id);
+        if (!source) return undefined;
+        const newId = randomId();
+        set((state) => ({
+          watchlists: [
+            ...state.watchlists,
+            {
+              id: newId,
+              name: `${source.name} copy`,
+              // Fresh ids so the copy doesn't share item identity with the
+              // original (e.g. drag/reorder or the insert-after-this-row
+              // cursor could otherwise cross-reference the wrong list).
+              items: source.items.map((i) => ({ ...i, id: randomId() })),
+            },
+          ],
+          activeWatchlistId: newId,
+        }));
+        return newId;
+      },
+      clearWatchlistItems: (id) =>
+        set((state) => ({
+          watchlists: state.watchlists.map((w) =>
+            w.id === id ? { ...w, items: [] } : w,
+          ),
+        })),
       setActiveWatchlist: (id) => set({ activeWatchlistId: id }),
       addSymbolToWatchlist: (watchlistId, symbol) =>
         set((state) => {
@@ -934,6 +965,57 @@ export const useChartStore = create<ChartState>()(
               : w,
           ),
         })),
+      removeWatchlistItems: (watchlistId, itemIds) =>
+        set((state) => {
+          const ids = new Set(itemIds);
+          return {
+            watchlists: state.watchlists.map((w) =>
+              w.id === watchlistId
+                ? { ...w, items: w.items.filter((i) => !ids.has(i.id)) }
+                : w,
+            ),
+          };
+        }),
+      setWatchlistItemsFlag: (watchlistId, itemIds, color) =>
+        set((state) => {
+          const ids = new Set(itemIds);
+          return {
+            watchlists: state.watchlists.map((w) =>
+              w.id === watchlistId
+                ? {
+                    ...w,
+                    items: w.items.map((i) =>
+                      ids.has(i.id) && i.type === "symbol"
+                        ? { ...i, flagColor: color ?? undefined }
+                        : i,
+                    ),
+                  }
+                : w,
+            ),
+          };
+        }),
+      moveWatchlistItemToList: (fromId, toId, itemId) =>
+        set((state) => {
+          if (fromId === toId) return state;
+          const from = state.watchlists.find((w) => w.id === fromId);
+          const item = from?.items.find((i) => i.id === itemId);
+          if (!from || !item || item.type !== "symbol") return state;
+          return {
+            watchlists: state.watchlists.map((w) => {
+              if (w.id === fromId) {
+                return { ...w, items: w.items.filter((i) => i.id !== itemId) };
+              }
+              if (w.id === toId) {
+                // Skip if already present in the destination list.
+                if (w.items.some((i) => i.type === "symbol" && i.value === item.value)) {
+                  return w;
+                }
+                return { ...w, items: [...w.items, item] };
+              }
+              return w;
+            }),
+          };
+        }),
       setWatchlistItemFlag: (watchlistId, itemId, color) =>
         set((state) => ({
           watchlists: state.watchlists.map((w) =>

@@ -8,9 +8,12 @@ import {
   ChevronRight,
   ChevronsDown,
   ChevronsUp,
+  Copy,
   Flag,
+  FolderInput,
   GripVertical,
   ListPlus,
+  ListX,
   Pencil,
   Plus,
   Trash2,
@@ -24,7 +27,7 @@ import { getBinanceWS } from "@/lib/binance/ws";
 import { getBybitWS } from "@/lib/bybit/ws";
 import { resolveSource } from "@/lib/symbols/source";
 import { stripExchangePrefix } from "@/lib/symbols/prefix";
-import { useChartStore } from "@/lib/store/chart-store";
+import { useChartStore, type WatchlistItem } from "@/lib/store/chart-store";
 import { useTradingStore } from "@/lib/store/trading-store";
 import type { Position } from "@/lib/binance/trading-types";
 import {
@@ -52,9 +55,14 @@ export function Watchlist() {
   const createWatchlist = useChartStore((s) => s.createWatchlist);
   const renameWatchlist = useChartStore((s) => s.renameWatchlist);
   const deleteWatchlist = useChartStore((s) => s.deleteWatchlist);
+  const duplicateWatchlist = useChartStore((s) => s.duplicateWatchlist);
+  const clearWatchlistItems = useChartStore((s) => s.clearWatchlistItems);
   const addLabelToWatchlist = useChartStore((s) => s.addLabelToWatchlist);
   const removeWatchlistItem = useChartStore((s) => s.removeWatchlistItem);
+  const removeWatchlistItems = useChartStore((s) => s.removeWatchlistItems);
   const setWatchlistItemFlag = useChartStore((s) => s.setWatchlistItemFlag);
+  const setWatchlistItemsFlag = useChartStore((s) => s.setWatchlistItemsFlag);
+  const moveWatchlistItemToList = useChartStore((s) => s.moveWatchlistItemToList);
   const moveWatchlistItem = useChartStore((s) => s.moveWatchlistItem);
   const reorderWatchlistItems = useChartStore((s) => s.reorderWatchlistItems);
   const renameWatchlistItem = useChartStore((s) => s.renameWatchlistItem);
@@ -96,6 +104,21 @@ export function Watchlist() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [flagPickerId, setFlagPickerId] = useState<string | null>(null);
+  const [batchFlagPickerOpen, setBatchFlagPickerOpen] = useState(false);
+
+  // Multi-select (Ctrl/Cmd toggles one, Shift extends from the last click)
+  // for batch remove / flag-color actions.
+  const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set());
+  const lastClickedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (multiSelected.size === 0) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setMultiSelected(new Set());
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [multiSelected.size]);
 
   useEffect(() => {
     if (!flagPickerId) return;
@@ -103,6 +126,13 @@ export function Watchlist() {
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
   }, [flagPickerId]);
+
+  useEffect(() => {
+    if (!batchFlagPickerOpen) return;
+    function close() { setBatchFlagPickerOpen(false); }
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [batchFlagPickerOpen]);
 
   // Drag & drop state
   const draggedId = useRef<string | null>(null);
@@ -202,6 +232,7 @@ export function Watchlist() {
     const name = window.prompt("New watchlist name:");
     if (name && name.trim()) {
       createWatchlist(name.trim());
+      setMultiSelected(new Set());
     }
   }
 
@@ -221,6 +252,7 @@ export function Watchlist() {
     }
     if (window.confirm(`Delete watchlist "${active.name}"?`)) {
       deleteWatchlist(active.id);
+      setMultiSelected(new Set());
     }
   }
 
@@ -251,6 +283,37 @@ export function Watchlist() {
     [visibleItems, rows, sort],
   );
   const isSorted = sort.key !== "manual";
+
+  function handleRowClick(e: React.MouseEvent, item: WatchlistItem) {
+    if (item.type !== "symbol") return;
+    if (e.shiftKey && lastClickedRef.current) {
+      const ids = displayItems.filter((i) => i.type === "symbol").map((i) => i.id);
+      const a = ids.indexOf(lastClickedRef.current);
+      const b = ids.indexOf(item.id);
+      if (a !== -1 && b !== -1) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        const range = ids.slice(lo, hi + 1);
+        setMultiSelected((prev) => new Set([...prev, ...range]));
+      }
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) {
+      setMultiSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(item.id)) next.delete(item.id);
+        else next.add(item.id);
+        return next;
+      });
+      lastClickedRef.current = item.id;
+      return;
+    }
+    if (multiSelected.size > 0) {
+      setMultiSelected(new Set());
+      return;
+    }
+    setSymbol(item.value);
+    lastClickedRef.current = item.id;
+  }
 
   // Drag handlers
   function handleDragStart(id: string) {
@@ -290,7 +353,10 @@ export function Watchlist() {
             {watchlists.map((w) => (
               <DropdownMenuItem
                 key={w.id}
-                onClick={() => setActiveWatchlist(w.id)}
+                onClick={() => {
+                  setActiveWatchlist(w.id);
+                  setMultiSelected(new Set());
+                }}
                 className={cn(
                   "text-xs",
                   w.id === activeWatchlistId && "bg-tv-blue/15 text-tv-blue",
@@ -307,6 +373,27 @@ export function Watchlist() {
             <DropdownMenuItem onClick={renameList} className="text-xs">
               <Pencil className="h-3.5 w-3.5" />
               <span>Rename current…</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                if (active) duplicateWatchlist(active.id);
+                setMultiSelected(new Set());
+              }}
+              className="text-xs"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              <span>Duplicate current</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                if (active && items.length > 0 && window.confirm(`Remove all items from "${active.name}"?`)) {
+                  clearWatchlistItems(active.id);
+                }
+              }}
+              className="text-xs"
+            >
+              <ListX className="h-3.5 w-3.5" />
+              <span>Remove all items</span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={deleteList} className="text-xs text-tv-red">
               <Trash2 className="h-3.5 w-3.5" />
@@ -338,6 +425,95 @@ export function Watchlist() {
           onClick={() => setWatchlistSort(cycleSort(sort, "change"))}
         />
       </div>
+      {multiSelected.size > 0 && active && (
+        <div className="flex items-center gap-1.5 border-b border-tv-border bg-tv-blue/10 px-2 py-1.5">
+          <span className="flex-1 text-[11px] font-medium text-tv-text">
+            {multiSelected.size} selected
+          </span>
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setBatchFlagPickerOpen((v) => !v);
+              }}
+              title="Set flag color"
+              className="flex h-6 w-6 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+            >
+              <Flag className="h-3.5 w-3.5" />
+            </button>
+            {batchFlagPickerOpen && (
+              <div
+                className="absolute right-0 top-7 z-50 flex gap-1 rounded border border-tv-border bg-tv-panel p-1.5 shadow-lg"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {["#ef5350", "#2962ff", "#26a69a", "#ffb74d", "#ab47bc", "#00bcd4", "#f06292"].map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => {
+                      setWatchlistItemsFlag(active.id, Array.from(multiSelected), c);
+                      setBatchFlagPickerOpen(false);
+                    }}
+                    className="h-4 w-4 rounded-sm transition-opacity hover:opacity-80"
+                    style={{ backgroundColor: c }}
+                    aria-label={`Set flag to ${c}`}
+                  />
+                ))}
+                <button
+                  onClick={() => {
+                    setWatchlistItemsFlag(active.id, Array.from(multiSelected), null);
+                    setBatchFlagPickerOpen(false);
+                  }}
+                  className="flex h-4 w-4 items-center justify-center rounded-sm border border-tv-border text-tv-text-muted hover:text-tv-red"
+                  aria-label="Remove flag"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </div>
+            )}
+          </div>
+          {watchlists.length > 1 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                title="Move to another list"
+                className="flex h-6 w-6 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+              >
+                <FolderInput className="h-3.5 w-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-40 bg-tv-panel">
+                {watchlists.filter((w) => w.id !== active.id).map((w) => (
+                  <DropdownMenuItem
+                    key={w.id}
+                    onClick={() => {
+                      for (const id of multiSelected) moveWatchlistItemToList(active.id, w.id, id);
+                      setMultiSelected(new Set());
+                    }}
+                    className="text-xs"
+                  >
+                    {w.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          <button
+            onClick={() => {
+              removeWatchlistItems(active.id, Array.from(multiSelected));
+              setMultiSelected(new Set());
+            }}
+            title="Remove selected"
+            className="flex h-6 w-6 items-center justify-center rounded text-tv-text-muted hover:bg-tv-red/15 hover:text-tv-red"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => setMultiSelected(new Set())}
+            title="Clear selection"
+            className="flex h-6 w-6 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
       <ScrollArea className="flex-1">
         <div
           className="flex flex-col"
@@ -415,6 +591,7 @@ export function Watchlist() {
               : null;
             const row = rows[s];
             const isActive = s === symbol;
+            const isMultiSelected = multiSelected.has(item.id);
             const f = flash[s];
             return (
               <div
@@ -424,7 +601,7 @@ export function Watchlist() {
                 onDragOver={(e) => handleDragOver(e, item.id)}
                 onDrop={() => handleDrop(item.id)}
                 onDragEnd={handleDragEnd}
-                onClick={() => setSymbol(s)}
+                onClick={(e) => handleRowClick(e, item)}
                 onContextMenu={(e) => {
                   e.stopPropagation();
                   openContextMenu(e, item.id);
@@ -432,7 +609,8 @@ export function Watchlist() {
                 className={cn(
                   "group relative grid cursor-pointer grid-cols-[4px_auto_1fr_auto_auto] items-center gap-1 py-1.5 pr-1 text-xs transition-colors",
                   "hover:bg-tv-panel-hover",
-                  isActive && "bg-tv-panel-hover",
+                  isActive && !isMultiSelected && "bg-tv-panel-hover",
+                  isMultiSelected && "bg-tv-blue/15",
                   isDragTarget && "border-t-2 border-t-tv-blue",
                 )}
               >
@@ -595,6 +773,26 @@ export function Watchlist() {
                   setContextMenu(null);
                 }}
               />
+              {(() => {
+                const item = items.find((i) => i.id === contextMenu.itemId);
+                if (item?.type !== "symbol" || watchlists.length <= 1) return null;
+                return (
+                  <>
+                    <div className="my-1 h-px bg-tv-border" />
+                    {watchlists.filter((w) => w.id !== active.id).map((w) => (
+                      <ContextItem
+                        key={w.id}
+                        icon={FolderInput}
+                        label={`Move to "${w.name}"`}
+                        onClick={() => {
+                          moveWatchlistItemToList(active.id, w.id, contextMenu.itemId!);
+                          setContextMenu(null);
+                        }}
+                      />
+                    ))}
+                  </>
+                );
+              })()}
               <div className="my-1 h-px bg-tv-border" />
             </>
           )}
