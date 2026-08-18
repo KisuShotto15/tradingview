@@ -39,7 +39,7 @@ import {
   type IndicatorKey,
   DEFAULT_CHART_COLORS,
 } from "@/lib/store/chart-store";
-import { formatPrice, formatVolume } from "@/lib/format";
+import { formatPrice, formatVolume, priceFormatFor } from "@/lib/format";
 import { ArrowUpDown, Bell, ChevronUp, Maximize2, Settings2 } from "lucide-react";
 import { IndicatorPill } from "./IndicatorPill";
 import { MeasureOverlay } from "./MeasureOverlay";
@@ -51,7 +51,7 @@ import { FloatingContextToolbar } from "./FloatingContextToolbar";
 import { KeyLevelsOverlay } from "./KeyLevelsOverlay";
 import { computeKeyLevels } from "@/lib/indicators/keylevels";
 import type { SqueezePoint } from "@/lib/indicators/squeeze";
-import { xToTime, timeToX, timeframeToSeconds } from "@/lib/chart/coords";
+import { xToTime, timeToX, timeframeToSeconds, timeframeLabel } from "@/lib/chart/coords";
 import { getTvColors } from "@/lib/chart/theme";
 import { useReplayStore } from "@/lib/replay/replay-store";
 import { ReplayToolbar } from "./ReplayToolbar";
@@ -2278,6 +2278,15 @@ export function PriceChart({ symbol, timeframe }: Props) {
             })),
           );
         }
+        // Scale the price scale's decimal places to this symbol's price
+        // magnitude — otherwise a sub-cent altcoin flattens to "0.00" under
+        // the library's flat 2-decimal default.
+        if (klines.length > 0) {
+          const priceFormat = { type: "price" as const, ...priceFormatFor(klines[klines.length - 1].close) };
+          candleSeriesRef.current?.applyOptions({ priceFormat });
+          lineSeriesRef.current?.applyOptions({ priceFormat });
+          areaSeriesRef.current?.applyOptions({ priceFormat });
+        }
         const closeData = klines.map((k) => ({ time: k.time as UTCTimestamp, value: k.close }));
         lineSeriesRef.current?.setData(closeData);
         areaSeriesRef.current?.setData(closeData);
@@ -3166,7 +3175,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         <div className="flex flex-nowrap items-center gap-x-2 overflow-hidden whitespace-nowrap text-[12px]">
           <span className="font-semibold text-tv-text">{symbol}</span>
           <span className="text-tv-text-muted">·</span>
-          <span className="font-semibold uppercase text-tv-text-muted">{timeframe}</span>
+          <span className="font-semibold text-tv-text-muted">{timeframeLabel(timeframe)}</span>
           <span className="text-tv-text-muted">·</span>
           <span className="font-semibold text-tv-text-muted">
             {(() => {

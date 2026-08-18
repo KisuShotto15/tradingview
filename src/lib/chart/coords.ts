@@ -30,6 +30,34 @@ export function timeframeToSeconds(tf: Timeframe): number {
 }
 
 /**
+ * Short label for a timeframe, matching TradingView's casing convention:
+ * minutes/hours keep their lowercase unit (1m, 4h) while day/week/month
+ * collapse to a single uppercase letter (D, W, M) — so a CSS `uppercase`
+ * transform on this string (as some callers used to apply blindly) doesn't
+ * turn "1m"/"4h" into "1M"/"4H", which reads as months/nonsense.
+ */
+export function timeframeLabel(tf: Timeframe): string {
+  const map: Record<Timeframe, string> = {
+    "1m": "1m",
+    "3m": "3m",
+    "5m": "5m",
+    "15m": "15m",
+    "30m": "30m",
+    "1h": "1h",
+    "2h": "2h",
+    "4h": "4h",
+    "6h": "6h",
+    "8h": "8h",
+    "12h": "12h",
+    "1d": "D",
+    "3d": "3D",
+    "1w": "W",
+    "1M": "M",
+  };
+  return map[tf] ?? tf;
+}
+
+/**
  * Convert a pixel x-coordinate to a unix-second timestamp. Handles positions
  * past the last candle by extrapolating using the timeframe's interval.
  */

@@ -965,10 +965,13 @@ export function OrderLinesLayer({
     // Entry line (read-only price, but carries live PnL + a close button).
     // The percentage shown is how far PRICE has moved from the entry — not the
     // leveraged ROI (`pos.percentage`), matching TradingView's position line.
-    // The true ROI still drives the positions table.
-    const pricePct = pos.entryPrice > 0
+    // The true ROI still drives the positions table. Flipped for shorts: price
+    // rising is a loss on a short, so the sign has to track direction rather
+    // than raw price delta, or it'd contradict the USD PnL shown right next to it.
+    const rawPricePct = pos.entryPrice > 0
       ? ((pos.markPrice - pos.entryPrice) / pos.entryPrice) * 100
       : 0;
+    const pricePct = isLong ? rawPricePct : -rawPricePct;
     lines.push({
       kind: "LIMIT",
       price: pos.entryPrice,

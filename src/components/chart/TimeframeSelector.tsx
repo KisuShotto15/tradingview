@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useChartStore } from "@/lib/store/chart-store";
 import type { Timeframe } from "@/lib/binance/types";
+import { timeframeLabel } from "@/lib/chart/coords";
 import { cn } from "@/lib/utils";
 import { Plus, Star } from "lucide-react";
 
@@ -17,13 +18,6 @@ const TF_SECONDS: Record<Timeframe, number> = {
   "1h": 3600, "2h": 7200, "4h": 14400, "6h": 21600,
   "8h": 28800, "12h": 43200, "1d": 86400, "3d": 259200,
   "1w": 604800, "1M": 2592000,
-};
-
-/** Short label shown in the top bar */
-const TF_LABEL: Record<Timeframe, string> = {
-  "1m": "1m", "3m": "3m", "5m": "5m", "15m": "15m", "30m": "30m",
-  "1h": "1h", "2h": "2h", "4h": "4h", "6h": "6h", "8h": "8h", "12h": "12h",
-  "1d": "D", "3d": "3D", "1w": "W", "1M": "M",
 };
 
 /** Full label shown in the dropdown */
@@ -84,13 +78,13 @@ export function TimeframeSelector() {
           key={t}
           onClick={() => setTf(t)}
           className={cn(
-            "rounded px-2 py-1 text-xs font-medium uppercase transition-colors",
+            "rounded px-2 py-1 text-xs font-medium transition-colors",
             tf === t
               ? "bg-tv-panel-hover text-tv-text"
               : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
           )}
         >
-          {TF_LABEL[t]}
+          {timeframeLabel(t)}
         </button>
       ))}
 

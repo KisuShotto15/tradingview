@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import { expect } from "@/test-utils/expect";
-import { formatPrice, formatPct, formatVolume } from "./format";
+import { formatPrice, formatPct, formatVolume, pricePrecisionFor, priceFormatFor } from "./format";
 
 describe("formatPrice", () => {
   it("uses thousands separators above 1000", () => {
@@ -15,6 +15,30 @@ describe("formatPrice", () => {
   it("returns an em dash for non-finite input", () => {
     expect(formatPrice(Infinity)).toBe("—");
     expect(formatPrice(NaN)).toBe("—");
+  });
+});
+
+describe("pricePrecisionFor", () => {
+  it("keeps 2 decimals for prices >= 1", () => {
+    expect(pricePrecisionFor(64320.6)).toBe(2);
+    expect(pricePrecisionFor(1)).toBe(2);
+  });
+  it("gives sub-cent prices enough decimals to be readable", () => {
+    // e.g. the chart's price scale used to flatten every symbol to 2
+    // decimals, which showed a 0.00012 altcoin as "0.00".
+    expect(pricePrecisionFor(0.00012)).toBe(8);
+    expect(pricePrecisionFor(0.0814)).toBe(4);
+  });
+  it("falls back to 2 for non-finite or zero input", () => {
+    expect(pricePrecisionFor(0)).toBe(2);
+    expect(pricePrecisionFor(NaN)).toBe(2);
+  });
+});
+
+describe("priceFormatFor", () => {
+  it("pairs precision with a matching minMove", () => {
+    expect(priceFormatFor(0.00012)).toEqual({ precision: 8, minMove: 1e-8 });
+    expect(priceFormatFor(64320.6)).toEqual({ precision: 2, minMove: 0.01 });
   });
 });
 
