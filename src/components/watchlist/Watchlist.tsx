@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { fetchTickers24h, cleanSym } from "@/lib/binance/rest";
 import { fetchBybitTickers24h } from "@/lib/bybit/public";
-import { sortWatchlistItems, cycleSort, type WatchSort } from "@/lib/watchlist/sort";
+import { sortWatchlistItems, cycleSort } from "@/lib/watchlist/sort";
 import { getBinanceWS } from "@/lib/binance/ws";
 import { getBybitWS } from "@/lib/bybit/ws";
 import { resolveSource } from "@/lib/symbols/source";
@@ -58,9 +58,14 @@ export function Watchlist() {
   const moveWatchlistItem = useChartStore((s) => s.moveWatchlistItem);
   const reorderWatchlistItems = useChartStore((s) => s.reorderWatchlistItems);
   const renameWatchlistItem = useChartStore((s) => s.renameWatchlistItem);
+  const sort = useChartStore((s) => s.watchlistSort);
+  const setWatchlistSort = useChartStore((s) => s.setWatchlistSort);
+  const collapsedLabels = useChartStore((s) => s.watchlistCollapsedLabels);
+  const toggleWatchlistLabelCollapsed = useChartStore((s) => s.toggleWatchlistLabelCollapsed);
   const symbol = useChartStore((s) => s.symbol);
   const setSymbol = useChartStore((s) => s.setSymbol);
   const openSymbolDialog = useChartStore((s) => s.setSymbolDialogOpen);
+  const setSymbolDialogInsertAfterId = useChartStore((s) => s.setSymbolDialogInsertAfterId);
   const allPositions = useTradingStore((s) => s.allPositions);
   const tradingExchange = useTradingStore((s) => s.exchange);
 
@@ -91,7 +96,6 @@ export function Watchlist() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [flagPickerId, setFlagPickerId] = useState<string | null>(null);
-  const [sort, setSort] = useState<WatchSort>({ key: "manual", dir: "desc" });
 
   useEffect(() => {
     if (!flagPickerId) return;
@@ -104,8 +108,9 @@ export function Watchlist() {
   const draggedId = useRef<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
-  // Collapsed label sections
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Collapsed label sections (persisted; ids scoped globally but only the
+  // active watchlist's labels are ever looked up against this set)
+  const collapsed = useMemo(() => new Set(collapsedLabels), [collapsedLabels]);
 
   useEffect(() => {
     if (symbols.length === 0) {
@@ -225,12 +230,7 @@ export function Watchlist() {
   }
 
   function toggleCollapse(labelId: string) {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(labelId)) next.delete(labelId);
-      else next.add(labelId);
-      return next;
-    });
+    toggleWatchlistLabelCollapsed(labelId);
   }
 
   // Build visible items respecting collapsed sections
@@ -329,13 +329,13 @@ export function Watchlist() {
           label="Price"
           active={sort.key === "price"}
           dir={sort.dir}
-          onClick={() => setSort((s) => cycleSort(s, "price"))}
+          onClick={() => setWatchlistSort(cycleSort(sort, "price"))}
         />
         <SortHeader
           label="24h"
           active={sort.key === "change"}
           dir={sort.dir}
-          onClick={() => setSort((s) => cycleSort(s, "change"))}
+          onClick={() => setWatchlistSort(cycleSort(sort, "change"))}
         />
       </div>
       <ScrollArea className="flex-1">
@@ -351,7 +351,7 @@ export function Watchlist() {
               return (
                 <div
                   key={item.id}
-                  draggable
+                  draggable={!isSorted}
                   onDragStart={() => handleDragStart(item.id)}
                   onDragOver={(e) => handleDragOver(e, item.id)}
                   onDrop={() => handleDrop(item.id)}
@@ -362,7 +362,8 @@ export function Watchlist() {
                   }}
                   onDoubleClick={() => startRename(item.id, item.value)}
                   className={cn(
-                    "group flex cursor-grab items-center gap-1 border-y border-tv-border bg-tv-bg/50 px-1 py-1 active:cursor-grabbing",
+                    "group flex items-center gap-1 border-y border-tv-border bg-tv-bg/50 px-1 py-1",
+                    !isSorted && "cursor-grab active:cursor-grabbing",
                     isDragTarget && "border-t-2 border-t-tv-blue",
                   )}
                 >
@@ -601,6 +602,7 @@ export function Watchlist() {
             icon={Plus}
             label="Add symbol…"
             onClick={() => {
+              setSymbolDialogInsertAfterId(contextMenu.itemId);
               openSymbolDialog(true);
               setContextMenu(null);
             }}

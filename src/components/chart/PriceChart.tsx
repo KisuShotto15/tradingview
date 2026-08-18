@@ -40,7 +40,7 @@ import {
   DEFAULT_CHART_COLORS,
 } from "@/lib/store/chart-store";
 import { formatPrice, formatVolume } from "@/lib/format";
-import { Bell, ChevronUp, Maximize2, Settings2 } from "lucide-react";
+import { ArrowUpDown, Bell, ChevronUp, Maximize2, Settings2 } from "lucide-react";
 import { IndicatorPill } from "./IndicatorPill";
 import { MeasureOverlay } from "./MeasureOverlay";
 import { DrawingsLayer } from "./drawings/DrawingsLayer";
@@ -216,8 +216,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const indicatorOverlays = useChartStore((s) => s.indicatorOverlays);
   const paneZOrder = useChartStore((s) => s.paneZOrder);
   const setPaneZOrder = useChartStore((s) => s.setPaneZOrder);
+  const mainPaneOrder = useChartStore((s) => s.mainPaneOrder);
+  const setMainPaneOrder = useChartStore((s) => s.setMainPaneOrder);
   const logScale = useChartStore((s) => s.logScale);
   const indicatorLogScale = useChartStore((s) => s.indicatorLogScale);
+  const mainPriceScaleMode = useChartStore((s) => s.mainPriceScaleMode);
+  const mainPriceScaleInverted = useChartStore((s) => s.mainPriceScaleInverted);
   const pillsCollapsed = useChartStore((s) => s.pillsCollapsed);
   const subPanesHidden = useChartStore((s) => s.subPanesHidden);
   const keyLevelsCfg = useChartStore((s) => s.keyLevels);
@@ -1037,8 +1041,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
             }
           }
         }
-        // Empty background dblclick → toggle sub-pane visibility (TradingView-style)
-        state.toggleSubPanesHidden();
+        // Shift+dblclick on empty background → toggle sub-pane visibility.
+        // Gated on Shift so an ordinary dblclick (e.g. while trying to
+        // deselect) doesn't silently hide every RSI/MACD/etc. pane.
+        if (e.shiftKey) state.toggleSubPanesHidden();
         return;
       }
 
@@ -1590,14 +1596,24 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (vmcZeroRef.current) vmcZeroRef.current.applyOptions({ visible: v("vumanchu") });
   }, [indicators, hidden, subPanesHidden]);
 
-  // Apply logarithmic price scale toggle — main candle pane ONLY (uses the
+  // Apply price scale mode/inversion — main candle pane ONLY (uses the
   // candle series's own price scale so sub-pane indicators are unaffected).
+  // Log and percentage/indexed-to-100 are mutually exclusive in the library.
   useEffect(() => {
     if (!candleSeriesRef.current) return;
+    const mode =
+      mainPriceScaleMode === "percentage"
+        ? PriceScaleMode.Percentage
+        : mainPriceScaleMode === "indexed100"
+          ? PriceScaleMode.IndexedTo100
+          : logScale
+            ? PriceScaleMode.Logarithmic
+            : PriceScaleMode.Normal;
     candleSeriesRef.current.priceScale().applyOptions({
-      mode: logScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
+      mode,
+      invertScale: mainPriceScaleInverted,
     });
-  }, [logScale]);
+  }, [logScale, mainPriceScaleMode, mainPriceScaleInverted]);
 
   // Per-indicator log scale — applies to that indicator's pane price scale
   useEffect(() => {
@@ -2686,6 +2702,66 @@ export function PriceChart({ symbol, timeframe }: Props) {
   });
   const ownedSubPaneKeySet = new Set(ownedSubPanes.map((p) => p.key));
 
+  // Main-pane pill row (EMAs, Volume, Key Levels) — ordered by mainPaneOrder,
+  // with new/unlisted pills appended at the end in their natural order.
+  const mainPaneEntries: { key: string; node: React.ReactNode }[] = [
+    ...userEMAs.map((e) => ({
+      key: `ema:${e.id}`,
+      node: (
+        <IndicatorPill
+          name={`EMA ${e.period}`}
+          color={e.color}
+          hidden={e.hidden}
+          onToggleHide={() => toggleUserEMAHidden(e.id)}
+          onSettings={() => setSettingsTarget({ kind: "ema", id: e.id })}
+          onRemove={() => removeUserEMA(e.id)}
+        />
+      ),
+    })),
+    ...(indicators.volume
+      ? [
+          {
+            key: "volume",
+            node: (
+              <IndicatorPill
+                name="Vol"
+                value={lastValues.volume !== undefined ? formatVolume(lastValues.volume) : undefined}
+                color={INDICATOR_COLORS.volume}
+                hidden={hidden.volume}
+                onToggleHide={() => toggleHidden("volume")}
+                onSettings={() => setSettingsTarget("volume")}
+                onRemove={() => removeIndicator("volume")}
+              />
+            ),
+          },
+        ]
+      : []),
+    ...(indicators.keylevels
+      ? [
+          {
+            key: "keylevels",
+            node: (
+              <IndicatorPill
+                name="Key Levels"
+                color={INDICATOR_COLORS.keylevels}
+                hidden={hidden.keylevels}
+                onToggleHide={() => toggleHidden("keylevels")}
+                onSettings={() => setSettingsTarget("keylevels")}
+                onRemove={() => removeIndicator("keylevels")}
+              />
+            ),
+          },
+        ]
+      : []),
+  ].sort((a, b) => {
+    const ia = mainPaneOrder.indexOf(a.key);
+    const ib = mainPaneOrder.indexOf(b.key);
+    if (ia === -1 && ib === -1) return 0;
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+
   // Pointer-based drag — more reliable than HTML5 DnD which breaks on React re-renders
   useEffect(() => {
     if (!dragKey) return;
@@ -3089,38 +3165,39 @@ export function PriceChart({ symbol, timeframe }: Props) {
         <div className="mt-1 flex flex-col items-start gap-1">
           {!pillsCollapsed && (
             <>
-              {userEMAs.map((e) => (
-                <IndicatorPill
-                  key={e.id}
-                  name={`EMA ${e.period}`}
-                  color={e.color}
-                  hidden={e.hidden}
-                  onToggleHide={() => toggleUserEMAHidden(e.id)}
-                  onSettings={() => setSettingsTarget({ kind: "ema", id: e.id })}
-                  onRemove={() => removeUserEMA(e.id)}
-                />
+              {mainPaneEntries.map((entry, i) => (
+                <div key={entry.key} className="pointer-events-auto flex items-center gap-0.5">
+                  {mainPaneEntries.length > 1 && (
+                    <div className="flex flex-col">
+                      <button
+                        title="Move up"
+                        disabled={i === 0}
+                        onClick={() => {
+                          const order = mainPaneEntries.map((e) => e.key);
+                          [order[i - 1], order[i]] = [order[i], order[i - 1]];
+                          setMainPaneOrder(order);
+                        }}
+                        className={`flex h-2.5 w-3.5 items-center justify-center rounded text-[8px] leading-none ${i === 0 ? "cursor-default text-tv-text-dim/30" : "text-tv-text-dim hover:bg-tv-panel-hover hover:text-tv-text"}`}
+                      >
+                        ▲
+                      </button>
+                      <button
+                        title="Move down"
+                        disabled={i === mainPaneEntries.length - 1}
+                        onClick={() => {
+                          const order = mainPaneEntries.map((e) => e.key);
+                          [order[i], order[i + 1]] = [order[i + 1], order[i]];
+                          setMainPaneOrder(order);
+                        }}
+                        className={`flex h-2.5 w-3.5 items-center justify-center rounded text-[8px] leading-none ${i === mainPaneEntries.length - 1 ? "cursor-default text-tv-text-dim/30" : "text-tv-text-dim hover:bg-tv-panel-hover hover:text-tv-text"}`}
+                      >
+                        ▼
+                      </button>
+                    </div>
+                  )}
+                  {entry.node}
+                </div>
               ))}
-              {indicators.volume && (
-                <IndicatorPill
-                  name="Vol"
-                  value={lastValues.volume !== undefined ? formatVolume(lastValues.volume) : undefined}
-                  color={INDICATOR_COLORS.volume}
-                  hidden={hidden.volume}
-                  onToggleHide={() => toggleHidden("volume")}
-                  onSettings={() => setSettingsTarget("volume")}
-                  onRemove={() => removeIndicator("volume")}
-                />
-              )}
-              {indicators.keylevels && (
-                <IndicatorPill
-                  name="Key Levels"
-                  color={INDICATOR_COLORS.keylevels}
-                  hidden={hidden.keylevels}
-                  onToggleHide={() => toggleHidden("keylevels")}
-                  onSettings={() => setSettingsTarget("keylevels")}
-                  onRemove={() => removeIndicator("keylevels")}
-                />
-              )}
             </>
           )}
           {(userEMAs.length > 0 || indicators.volume || indicators.keylevels || ownedSubPanes.length > 0) && (
@@ -3277,7 +3354,13 @@ export function PriceChart({ symbol, timeframe }: Props) {
           />
           <div
             style={{
-              top: Math.max(8, Math.min(chartContextMenu.y, containerSize.height - 180)),
+              top: Math.max(
+                8,
+                Math.min(
+                  chartContextMenu.y,
+                  containerSize.height - (chartContextMenu.region === "scale" ? 260 : 180),
+                ),
+              ),
               left: Math.max(8, Math.min(chartContextMenu.x, containerSize.width - 232)),
             }}
             className="absolute z-50 min-w-56 overflow-hidden rounded border border-tv-border bg-tv-panel py-1 shadow-2xl"
@@ -3325,6 +3408,53 @@ export function PriceChart({ symbol, timeframe }: Props) {
               </span>
               <span>{logScale ? "Switch to linear scale" : "Switch to logarithmic scale"}</span>
             </button>
+
+            {chartContextMenu.region === "scale" && (
+              <>
+                <button
+                  onMouseDown={() => {
+                    useChartStore
+                      .getState()
+                      .setMainPriceScaleMode(
+                        mainPriceScaleMode === "percentage" ? "normal" : "percentage",
+                      );
+                    setChartContextMenu(null);
+                  }}
+                  className={MENU_ITEM_CLS}
+                >
+                  <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center text-[10px] font-bold text-tv-text-muted">
+                    %
+                  </span>
+                  <span>{mainPriceScaleMode === "percentage" ? "Switch to regular scale" : "Percentage scale"}</span>
+                </button>
+                <button
+                  onMouseDown={() => {
+                    useChartStore
+                      .getState()
+                      .setMainPriceScaleMode(
+                        mainPriceScaleMode === "indexed100" ? "normal" : "indexed100",
+                      );
+                    setChartContextMenu(null);
+                  }}
+                  className={MENU_ITEM_CLS}
+                >
+                  <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center text-[9px] font-bold text-tv-text-muted">
+                    100
+                  </span>
+                  <span>{mainPriceScaleMode === "indexed100" ? "Switch to regular scale" : "Indexed to 100"}</span>
+                </button>
+                <button
+                  onMouseDown={() => {
+                    useChartStore.getState().toggleMainPriceScaleInverted();
+                    setChartContextMenu(null);
+                  }}
+                  className={MENU_ITEM_CLS}
+                >
+                  <ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-tv-text-muted" />
+                  <span>{mainPriceScaleInverted ? "Un-invert scale" : "Invert scale"}</span>
+                </button>
+              </>
+            )}
 
             {chartContextMenu.region === "chart" && (
               <>

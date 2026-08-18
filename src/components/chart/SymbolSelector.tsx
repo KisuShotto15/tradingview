@@ -83,6 +83,7 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
   const setOpen = useChartStore((s) => s.setSymbolDialogOpen);
   const symbolDialogInitialQuery = useChartStore((s) => s.symbolDialogInitialQuery);
   const setSymbolDialogInitialQuery = useChartStore((s) => s.setSymbolDialogInitialQuery);
+  const setSymbolDialogInsertAfterId = useChartStore((s) => s.setSymbolDialogInsertAfterId);
   const activeWatchlistId = useChartStore((s) => s.activeWatchlistId);
   const watchlists = useChartStore((s) => s.watchlists);
   const addSymbolToWatchlist = useChartStore((s) => s.addSymbolToWatchlist);
@@ -185,7 +186,15 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        // Closing ends the insert-after-this-row session so the next open
+        // (header "+", another right-click) starts clean and appends normally.
+        if (!v) setSymbolDialogInsertAfterId(null);
+      }}
+    >
       {!noTrigger && (
         <DialogTrigger className="group flex items-center gap-2 rounded px-3 py-1.5 text-sm font-semibold hover:bg-tv-panel-hover">
           <Search className="h-3.5 w-3.5 text-tv-text-muted group-hover:text-tv-text" />

@@ -23,6 +23,8 @@ export interface ChartStateSnapshot {
   squeezeStyle?: SqueezeStyle;
   logScale?: boolean;
   indicatorLogScale?: Partial<Record<IndicatorKey, boolean>>;
+  mainPriceScaleMode?: "normal" | "percentage" | "indexed100";
+  mainPriceScaleInverted?: boolean;
   indicatorOverlays?: Partial<Record<IndicatorKey, IndicatorKey | "own">>;
 }
 

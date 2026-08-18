@@ -9,9 +9,22 @@ import { translateDrawing } from "@/lib/drawings/translate";
 import { timeframeToSeconds } from "@/lib/chart/coords";
 import { getPricePerPixel } from "@/lib/chart/nudge";
 import type { Drawing } from "@/lib/drawings/types";
+import type { Timeframe } from "@/lib/binance/types";
 
 /** Idle time after the last arrow press before the move becomes one undo step. */
 const NUDGE_COMMIT_MS = 500;
+
+/** How long a typed digit buffer waits for its unit letter before resetting. */
+const TF_COMMAND_TIMEOUT_MS = 1500;
+
+const VALID_TIMEFRAMES = new Set<Timeframe>([
+  "1m", "3m", "5m", "15m", "30m",
+  "1h", "2h", "4h", "6h", "8h", "12h",
+  "1d", "3d", "1w", "1M",
+]);
+
+/** Unit letters TradingView's quick timeframe command recognizes. */
+const TF_UNITS = new Set(["m", "h", "d", "w", "M"]);
 
 /**
  * Global keyboard shortcuts for the chart.
@@ -21,12 +34,14 @@ const NUDGE_COMMIT_MS = 500;
  * - Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y: redo
  * - Del / Backspace: delete selected drawing
  * - Arrows: nudge the selected drawing (Shift = 10x)
+ * - Digits + unit letter (m/h/d/w/M): quick timeframe command, e.g. "5" "d" → 5D
  */
 export function useKeyboardShortcuts() {
   const setTool = useChartStore((s) => s.setTool);
   const openAlertDialog = useChartStore((s) => s.openAlertDialog);
   const setSymbolDialogInitialQuery = useChartStore((s) => s.setSymbolDialogInitialQuery);
   const setSymbolDialogOpen = useChartStore((s) => s.setSymbolDialogOpen);
+  const setTimeframe = useChartStore((s) => s.setTimeframe);
   const resetPlacement = useDrawingsStore((s) => s.resetPlacement);
   const setSelected = useDrawingsStore((s) => s.setSelected);
   const { undo, redo, remove, updateLive, commit } = useDrawings();
@@ -36,6 +51,10 @@ export function useKeyboardShortcuts() {
   // settles — otherwise holding an arrow would spam both.
   const nudgeBeforeRef = useRef<Drawing | null>(null);
   const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Quick timeframe command buffer ("5" then "d" → 5D), TradingView-style.
+  const tfDigitsRef = useRef<string>("");
+  const tfTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -128,6 +147,38 @@ export function useKeyboardShortcuts() {
         return;
       }
 
+      // Quick timeframe command — type digits then a unit letter (m minutes,
+      // h hours, d days, w weeks, M months) to jump straight to that
+      // timeframe, e.g. "5" then "d" → 5D. Digits are reserved for this and
+      // never fall through to symbol search; an invalid combo (e.g. "9d",
+      // which isn't an offered timeframe) just clears the buffer silently.
+      const isDigit = e.key.length === 1 && e.key >= "0" && e.key <= "9";
+      const isTfUnit = TF_UNITS.has(e.key);
+      if (
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !useChartStore.getState().symbolDialogOpen &&
+        (isDigit || (isTfUnit && tfDigitsRef.current))
+      ) {
+        e.preventDefault();
+        if (tfTimerRef.current) {
+          clearTimeout(tfTimerRef.current);
+          tfTimerRef.current = null;
+        }
+        if (isDigit) {
+          tfDigitsRef.current = (tfDigitsRef.current + e.key).slice(-3);
+          tfTimerRef.current = setTimeout(() => {
+            tfDigitsRef.current = "";
+          }, TF_COMMAND_TIMEOUT_MS);
+          return;
+        }
+        const candidate = `${tfDigitsRef.current}${e.key}` as Timeframe;
+        tfDigitsRef.current = "";
+        if (VALID_TIMEFRAMES.has(candidate)) setTimeframe(candidate);
+        return;
+      }
+
       // Printable character → open symbol search pre-filled
       if (
         e.key.length === 1 &&
@@ -181,6 +232,10 @@ export function useKeyboardShortcuts() {
         nudgeBeforeRef.current = null;
         if (before) void commit(before.id, before);
       }
+      if (tfTimerRef.current) {
+        clearTimeout(tfTimerRef.current);
+        tfTimerRef.current = null;
+      }
     };
-  }, [setTool, openAlertDialog, setSymbolDialogInitialQuery, setSymbolDialogOpen, resetPlacement, setSelected, undo, redo, remove, updateLive, commit]);
+  }, [setTool, openAlertDialog, setSymbolDialogInitialQuery, setSymbolDialogOpen, setTimeframe, resetPlacement, setSelected, undo, redo, remove, updateLive, commit]);
 }

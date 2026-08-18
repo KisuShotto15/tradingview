@@ -5,6 +5,7 @@ import { persist } from "zustand/middleware";
 import type { Timeframe } from "@/lib/binance/types";
 import { unifiedHistory, isApplyingHistory, withoutHistory } from "@/lib/history";
 import type { ChartStateSnapshot } from "@/lib/history";
+import type { WatchSort } from "@/lib/watchlist/sort";
 
 export type IndicatorKey =
   | "rsi"
@@ -247,6 +248,25 @@ export interface Watchlist {
   items: WatchlistItem[];
 }
 
+/**
+ * Partition watchlist items into contiguous sections: each label plus every
+ * symbol under it up to the next label, and — if the list doesn't start with
+ * a label — a leading unsectioned block. Used to move a label together with
+ * its children instead of stepping past just one item at a time.
+ */
+function watchlistBlockRanges(items: WatchlistItem[]): { start: number; end: number }[] {
+  const boundaries = [0];
+  items.forEach((it, i) => {
+    if (i > 0 && it.type === "label") boundaries.push(i);
+  });
+  boundaries.push(items.length);
+  const ranges: { start: number; end: number }[] = [];
+  for (let i = 0; i < boundaries.length - 1; i++) {
+    ranges.push({ start: boundaries[i], end: boundaries[i + 1] });
+  }
+  return ranges;
+}
+
 /** Tabs available in the right sidebar. */
 export type RightSidebarTab = "watchlist" | "objects" | "trade";
 
@@ -308,6 +328,10 @@ interface ChartState {
   logScale: boolean;
   /** Per-indicator log scale toggle (sub-panes) */
   indicatorLogScale: Partial<Record<IndicatorKey, boolean>>;
+  /** Main pane price-scale mode — mutually exclusive with `logScale` */
+  mainPriceScaleMode: "normal" | "percentage" | "indexed100";
+  /** Main pane price-scale inversion (high/low flipped) */
+  mainPriceScaleInverted: boolean;
   /** How many recent bars to show when (re)loading a chart */
   visibleBars: number;
   /** Whether the indicator pill list on the main pane is collapsed */
@@ -325,6 +349,13 @@ interface ChartState {
    * (last element renders on top). Unset = default [host, ...guests].
    */
   paneZOrder: Partial<Record<IndicatorKey, IndicatorKey[]>>;
+  /**
+   * Display order of the main-pane pill row (EMAs, Volume, Key Levels).
+   * Entries are `ema:<id>` for user EMAs, or the bare indicator key
+   * otherwise. Unlisted/unknown keys render after listed ones, in their
+   * natural order — so new pills just show up at the end.
+   */
+  mainPaneOrder: string[];
   /** Timeframes shown in the quick-access bar. User-configurable. */
   pinnedTimeframes: Timeframe[];
 
@@ -357,6 +388,10 @@ interface ChartState {
   /** User watchlists with sections/labels */
   watchlists: Watchlist[];
   activeWatchlistId: string;
+  /** Active column sort for the watchlist (persisted so it survives reload) */
+  watchlistSort: WatchSort;
+  /** Ids of collapsed watchlist section labels (persisted so it survives reload) */
+  watchlistCollapsedLabels: string[];
 
   /** Chart color customization */
   chartColors: ChartColors;
@@ -365,6 +400,8 @@ interface ChartState {
   tool: DrawingTool;
   symbolDialogOpen: boolean;
   symbolDialogInitialQuery: string;
+  /** Watchlist item id a symbol picked from the dialog should land right after (null = append at the end). */
+  symbolDialogInsertAfterId: string | null;
   /** Which indicator/EMA's settings dialog is open (null = closed) */
   settingsTarget: SettingsTarget | null;
   chartSettingsOpen: boolean;
@@ -392,12 +429,15 @@ interface ChartState {
   setSqueezeStyle: (patch: Partial<SqueezeStyle>) => void;
   setLogScale: (v: boolean) => void;
   setIndicatorLogScale: (key: IndicatorKey, v: boolean) => void;
+  setMainPriceScaleMode: (mode: "normal" | "percentage" | "indexed100") => void;
+  toggleMainPriceScaleInverted: () => void;
   setVisibleBars: (n: number) => void;
   setPillsCollapsed: (v: boolean) => void;
   setSubPanesHidden: (v: boolean) => void;
   toggleSubPanesHidden: () => void;
   setIndicatorOverlay: (key: IndicatorKey, target: IndicatorKey | "own") => void;
   setPaneZOrder: (host: IndicatorKey, order: IndicatorKey[]) => void;
+  setMainPaneOrder: (order: string[]) => void;
   setPinnedTimeframes: (tfs: Timeframe[]) => void;
   toggleFavoriteTool: (t: DrawingTool) => void;
   /** Replace the favorites order (drag-to-reorder in the favorites bar). */
@@ -420,9 +460,12 @@ interface ChartState {
   moveWatchlistItem: (watchlistId: string, itemId: string, delta: -1 | 1) => void;
   reorderWatchlistItems: (watchlistId: string, fromId: string, toId: string) => void;
   renameWatchlistItem: (watchlistId: string, itemId: string, value: string) => void;
+  setWatchlistSort: (sort: WatchSort) => void;
+  toggleWatchlistLabelCollapsed: (labelId: string) => void;
   setTool: (t: DrawingTool) => void;
   setSymbolDialogOpen: (v: boolean) => void;
   setSymbolDialogInitialQuery: (q: string) => void;
+  setSymbolDialogInsertAfterId: (id: string | null) => void;
   setSettingsTarget: (k: SettingsTarget | null) => void;
   setChartSettingsOpen: (v: boolean) => void;
   openAlertDialog: (price?: number) => void;
@@ -492,12 +535,15 @@ export const useChartStore = create<ChartState>()(
       keyLevels: { ...DEFAULT_KEY_LEVELS },
       squeezeStyle: { ...DEFAULT_SQUEEZE_STYLE },
       logScale: false,
+      mainPriceScaleMode: "normal",
+      mainPriceScaleInverted: false,
       indicatorLogScale: {},
       visibleBars: 150,
       pillsCollapsed: false,
       subPanesHidden: false,
       indicatorOverlays: {},
       paneZOrder: {},
+      mainPaneOrder: [],
       pinnedTimeframes: ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"] as Timeframe[],
       favoriteTools: [],
       favoritesBarPos: null,
@@ -505,10 +551,13 @@ export const useChartStore = create<ChartState>()(
       rightSidebarTab: "watchlist",
       toolDefaults: {},
       ...initialWatchlists(),
+      watchlistSort: { key: "manual", dir: "desc" },
+      watchlistCollapsedLabels: [],
       chartColors: { ...DEFAULT_CHART_COLORS },
       tool: "cursor",
       symbolDialogOpen: false,
       symbolDialogInitialQuery: "",
+      symbolDialogInsertAfterId: null,
       settingsTarget: null,
       chartSettingsOpen: false,
       alertDialogOpen: false,
@@ -683,12 +732,45 @@ export const useChartStore = create<ChartState>()(
       },
 
       setLogScale: (logScale) => {
+        // Log and percentage/indexed-to-100 are mutually exclusive price-scale
+        // modes in lightweight-charts, so enabling one clears the other.
         if (!isApplyingHistory) {
-          const before: ChartStateSnapshot = { logScale: get().logScale };
-          set({ logScale });
-          unifiedHistory.push({ kind: "chartState", before, after: { logScale } });
+          const before: ChartStateSnapshot = {
+            logScale: get().logScale,
+            mainPriceScaleMode: get().mainPriceScaleMode,
+          };
+          const after: ChartStateSnapshot = { logScale, mainPriceScaleMode: "normal" };
+          set(after);
+          unifiedHistory.push({ kind: "chartState", before, after });
         } else {
-          set({ logScale });
+          set({ logScale, mainPriceScaleMode: "normal" });
+        }
+      },
+      setMainPriceScaleMode: (mainPriceScaleMode) => {
+        if (!isApplyingHistory) {
+          const before: ChartStateSnapshot = {
+            mainPriceScaleMode: get().mainPriceScaleMode,
+            logScale: get().logScale,
+          };
+          const after: ChartStateSnapshot = { mainPriceScaleMode, logScale: false };
+          set(after);
+          unifiedHistory.push({ kind: "chartState", before, after });
+        } else {
+          set({ mainPriceScaleMode, logScale: false });
+        }
+      },
+      toggleMainPriceScaleInverted: () => {
+        const mainPriceScaleInverted = !get().mainPriceScaleInverted;
+        if (!isApplyingHistory) {
+          const before: ChartStateSnapshot = { mainPriceScaleInverted: get().mainPriceScaleInverted };
+          set({ mainPriceScaleInverted });
+          unifiedHistory.push({
+            kind: "chartState",
+            before,
+            after: { mainPriceScaleInverted },
+          });
+        } else {
+          set({ mainPriceScaleInverted });
         }
       },
 
@@ -723,6 +805,7 @@ export const useChartStore = create<ChartState>()(
 
       setPaneZOrder: (host, order) =>
         set((st) => ({ paneZOrder: { ...st.paneZOrder, [host]: order } })),
+      setMainPaneOrder: (mainPaneOrder) => set({ mainPaneOrder }),
 
       setPinnedTimeframes: (pinnedTimeframes) => set({ pinnedTimeframes }),
       toggleFavoriteTool: (t) =>
@@ -787,21 +870,33 @@ export const useChartStore = create<ChartState>()(
         }),
       setActiveWatchlist: (id) => set({ activeWatchlistId: id }),
       addSymbolToWatchlist: (watchlistId, symbol) =>
-        set((state) => ({
-          watchlists: state.watchlists.map((w) => {
+        set((state) => {
+          // A symbol added right after a right-clicked row lands there instead
+          // of at the bottom; picking several in a row keeps chaining off the
+          // last one added, so a batch stays together where it was started.
+          const afterId = state.symbolDialogInsertAfterId;
+          const newId = randomId();
+          let inserted = false;
+          const watchlists = state.watchlists.map((w) => {
             if (w.id !== watchlistId) return w;
             if (w.items.some((i) => i.type === "symbol" && i.value === symbol)) {
               return w;
             }
+            inserted = true;
+            const newItem: WatchlistItem = { id: newId, type: "symbol", value: symbol };
+            const idx = afterId ? w.items.findIndex((i) => i.id === afterId) : -1;
+            if (idx === -1) return { ...w, items: [...w.items, newItem] };
             return {
               ...w,
-              items: [
-                ...w.items,
-                { id: randomId(), type: "symbol", value: symbol },
-              ],
+              items: [...w.items.slice(0, idx + 1), newItem, ...w.items.slice(idx + 1)],
             };
-          }),
-        })),
+          });
+          return {
+            watchlists,
+            symbolDialogInsertAfterId:
+              inserted && afterId ? newId : state.symbolDialogInsertAfterId,
+          };
+        }),
       addLabelToWatchlist: (watchlistId, label, beforeId) =>
         set((state) => ({
           watchlists: state.watchlists.map((w) => {
@@ -851,10 +946,35 @@ export const useChartStore = create<ChartState>()(
             if (w.id !== watchlistId) return w;
             const idx = w.items.findIndex((i) => i.id === itemId);
             if (idx === -1) return w;
-            const target = idx + delta;
-            if (target < 0 || target >= w.items.length) return w;
-            const next = [...w.items];
-            [next[idx], next[target]] = [next[target], next[idx]];
+            const dragged = w.items[idx];
+
+            if (dragged.type !== "label") {
+              // Plain symbols just swap with their immediate neighbour.
+              const target = idx + delta;
+              if (target < 0 || target >= w.items.length) return w;
+              const next = [...w.items];
+              [next[idx], next[target]] = [next[target], next[idx]];
+              return { ...w, items: next };
+            }
+
+            // A label carries its whole section (itself + every symbol under
+            // it, up to the next label) when moved, so it swaps places with
+            // the adjacent section as a block instead of stepping past only
+            // its first child and leaving the rest behind.
+            const ranges = watchlistBlockRanges(w.items);
+            const rangeIdx = ranges.findIndex((r) => r.start === idx);
+            if (rangeIdx === -1) return w;
+            const neighborIdx = rangeIdx + delta;
+            if (neighborIdx < 0 || neighborIdx >= ranges.length) return w;
+            const [a, b] = delta === -1 ? [neighborIdx, rangeIdx] : [rangeIdx, neighborIdx];
+            const blockA = w.items.slice(ranges[a].start, ranges[a].end);
+            const blockB = w.items.slice(ranges[b].start, ranges[b].end);
+            const next = [
+              ...w.items.slice(0, ranges[a].start),
+              ...blockB,
+              ...blockA,
+              ...w.items.slice(ranges[b].end),
+            ];
             return { ...w, items: next };
           }),
         })),
@@ -902,11 +1022,22 @@ export const useChartStore = create<ChartState>()(
               : w,
           ),
         })),
+      setWatchlistSort: (watchlistSort) => set({ watchlistSort }),
+      toggleWatchlistLabelCollapsed: (labelId) =>
+        set((state) => {
+          const has = state.watchlistCollapsedLabels.includes(labelId);
+          return {
+            watchlistCollapsedLabels: has
+              ? state.watchlistCollapsedLabels.filter((id) => id !== labelId)
+              : [...state.watchlistCollapsedLabels, labelId],
+          };
+        }),
       setChartColors: (patch) =>
         set((s) => ({ chartColors: { ...s.chartColors, ...patch } })),
       setTool: (tool) => set({ tool }),
       setSymbolDialogOpen: (symbolDialogOpen) => set({ symbolDialogOpen }),
       setSymbolDialogInitialQuery: (symbolDialogInitialQuery) => set({ symbolDialogInitialQuery }),
+      setSymbolDialogInsertAfterId: (symbolDialogInsertAfterId) => set({ symbolDialogInsertAfterId }),
       setSettingsTarget: (settingsTarget) => set({ settingsTarget }),
       setChartSettingsOpen: (chartSettingsOpen) => set({ chartSettingsOpen }),
       openAlertDialog: (price) => set({ alertDialogOpen: true, alertDialogPrice: price ?? null }),
@@ -958,11 +1089,14 @@ export const useChartStore = create<ChartState>()(
         squeezeStyle: s.squeezeStyle,
         logScale: s.logScale,
         indicatorLogScale: s.indicatorLogScale,
+        mainPriceScaleMode: s.mainPriceScaleMode,
+        mainPriceScaleInverted: s.mainPriceScaleInverted,
         visibleBars: s.visibleBars,
         pillsCollapsed: s.pillsCollapsed,
         subPanesHidden: s.subPanesHidden,
         indicatorOverlays: s.indicatorOverlays,
         paneZOrder: s.paneZOrder,
+        mainPaneOrder: s.mainPaneOrder,
         pinnedTimeframes: s.pinnedTimeframes,
         favoriteTools: s.favoriteTools,
         favoritesBarPos: s.favoritesBarPos,
@@ -971,6 +1105,8 @@ export const useChartStore = create<ChartState>()(
         toolDefaults: s.toolDefaults,
         watchlists: s.watchlists,
         activeWatchlistId: s.activeWatchlistId,
+        watchlistSort: s.watchlistSort,
+        watchlistCollapsedLabels: s.watchlistCollapsedLabels,
         chartColors: s.chartColors,
       }),
     },
