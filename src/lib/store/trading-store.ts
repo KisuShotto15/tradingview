@@ -96,12 +96,13 @@ interface TradingState {
     overrides?: Partial<OrderForm>,
   ) => Promise<{ ok: boolean; error?: string }>;
   cancelOrder: (symbol: string, orderId: number | string) => Promise<void>;
-  /** Cancel an existing order and immediately re-post it at `newPrice`.
-   *  Used by drag-to-modify on the chart. */
+  /** Cancel an existing order and immediately re-post it with the given
+   *  overrides (price/stopPrice depending on type, and/or quantity). Used by
+   *  drag-to-modify on the chart and by the Orders table's edit popover. */
   modifyOrder: (
     symbol: string,
     order: Order,
-    newPrice: number,
+    patch: { price?: number; quantity?: number },
   ) => Promise<{ ok: boolean; error?: string }>;
   /** POST to /api/trade/leverage to sync the exchange leverage. */
   setLeverage: (
@@ -419,7 +420,7 @@ export const useTradingStore = create<TradingState>()(
         void get().fetchOrders(symbol);
       },
 
-      modifyOrder: async (symbol, order, newPrice) => {
+      modifyOrder: async (symbol, order, patch) => {
         const { apiKey, apiSecret, testnet, exchange } = get();
         if (!apiKey || !apiSecret) return { ok: false, error: "No credentials" };
         const perp = isPerp(symbol);
@@ -446,17 +447,19 @@ export const useTradingStore = create<TradingState>()(
           return { ok: false, error: String(e) };
         }
 
-        // Re-post with the same params but the new price.
+        // Re-post with the same params but the given overrides applied.
         // For trigger orders (STOP_MARKET / TAKE_PROFIT_MARKET) the relevant
-        // field is stopPrice; for LIMIT it's price.
+        // price field is stopPrice; for LIMIT it's price.
         const isTrigger =
           order.type === "STOP_MARKET" || order.type === "TAKE_PROFIT_MARKET";
+        const price = patch.price ?? (isTrigger ? order.stopPrice : order.price);
+        const quantity = patch.quantity ?? order.origQty;
         const body: PlaceOrderParams = {
           apiKey, apiSecret, testnet, exchange,
           symbol: sym, isPerp: perp,
           side: order.side, type: order.type,
-          quantity: String(order.origQty),
-          ...(isTrigger ? { stopPrice: String(newPrice) } : { price: String(newPrice) }),
+          quantity: String(quantity),
+          ...(isTrigger ? { stopPrice: String(price) } : { price: String(price) }),
           ...(order.timeInForce && !isTrigger ? { timeInForce: order.timeInForce } : {}),
           ...(perp && order.reduceOnly ? { reduceOnly: true } : {}),
           ...(isTrigger ? { workingType: "MARK_PRICE" } : {}),

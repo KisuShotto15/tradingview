@@ -6,7 +6,6 @@ import { useTradingStore } from "@/lib/store/trading-store";
 import { useChartStore } from "@/lib/store/chart-store";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/format";
-import { cleanSym } from "@/lib/binance/rest";
 import type { Order, Position } from "@/lib/binance/trading-types";
 
 /**
@@ -22,31 +21,32 @@ export function PositionsPanel() {
   const apiSecret = useTradingStore((s) => s.apiSecret);
   const testnet = useTradingStore((s) => s.testnet);
   const exchange = useTradingStore((s) => s.exchange);
-  const positions = useTradingStore((s) => s.positions);
+  // Account-wide, not scoped to the chart's current symbol — otherwise an
+  // open position on a different symbol than the one charted would never
+  // show up here. `allPositions` is kept fresh by the global useTradingSync
+  // poll regardless of which chart is open.
+  const positions = useTradingStore((s) => s.allPositions);
   const orders = useTradingStore((s) => s.orders);
   const balance = useTradingStore((s) => s.balance);
   const fetchBalance = useTradingStore((s) => s.fetchBalance);
   const fetchOrders = useTradingStore((s) => s.fetchOrders);
-  const fetchPositions = useTradingStore((s) => s.fetchPositions);
   const symbol = useChartStore((s) => s.symbol);
 
   const [collapsed, setCollapsed] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const [tab, setTab] = useState<Tab>("positions");
 
-  // Periodic refresh while expanded so the table stays accurate.
+  // Periodic refresh while expanded so the orders table stays accurate.
   useEffect(() => {
     if (collapsed || !apiKey || !apiSecret) return;
     void fetchBalance(symbol);
     void fetchOrders(symbol);
-    void fetchPositions(symbol);
     const t = setInterval(() => {
       void fetchBalance(symbol);
       void fetchOrders(symbol);
-      void fetchPositions(symbol);
     }, 5000);
     return () => clearInterval(t);
-  }, [collapsed, apiKey, apiSecret, symbol, fetchBalance, fetchOrders, fetchPositions]);
+  }, [collapsed, apiKey, apiSecret, symbol, fetchBalance, fetchOrders]);
 
   const totalEquity = useMemo(() => {
     return balance.reduce((acc, b) => acc + b.free + b.locked, 0);
@@ -144,7 +144,7 @@ export function PositionsPanel() {
 
           {/* Body */}
           <div className="flex-1 overflow-auto">
-            {tab === "positions" && <PositionsTable positions={activePositions} orders={orders} symbol={symbol} />}
+            {tab === "positions" && <PositionsTable positions={activePositions} orders={orders} />}
             {tab === "orders" && <OrdersTable orders={orders} symbol={symbol} />}
             {tab === "history" && <Stub message="Order history not yet implemented." />}
             {tab === "summary" && <AccountSummary balance={balance} positions={positions} />}
@@ -203,19 +203,25 @@ function Stub({ message }: { message: string }) {
 
 interface TpSlMatch { tp: number | null; sl: number | null }
 
-function matchTpSl(symbol: string, position: Position, orders: Order[]): TpSlMatch {
+/** Bybit stores TP/SL on the position itself; Binance uses separate
+ *  reduceOnly orders, matched by symbol (this table lists positions across
+ *  every symbol on the account, not just the chart's current one — hence
+ *  matching against `position.symbol` rather than the chart's symbol). */
+function matchTpSl(position: Position, orders: Order[]): TpSlMatch {
+  if (position.takeProfit !== undefined || position.stopLoss !== undefined) {
+    return { tp: position.takeProfit ?? null, sl: position.stopLoss ?? null };
+  }
   const closeSide = position.positionAmt > 0 ? "SELL" : "BUY";
-  const cleanedSym = cleanSym(symbol);
   const tpOrder = orders.find(
     (o) =>
-      o.symbol === cleanedSym &&
+      o.symbol === position.symbol &&
       o.side === closeSide &&
       o.reduceOnly &&
       (o.type === "TAKE_PROFIT_MARKET" || o.type === "TAKE_PROFIT"),
   );
   const slOrder = orders.find(
     (o) =>
-      o.symbol === cleanedSym &&
+      o.symbol === position.symbol &&
       o.side === closeSide &&
       o.reduceOnly &&
       (o.type === "STOP_MARKET" || o.type === "STOP" || o.type === "STOP_LIMIT"),
@@ -227,8 +233,8 @@ function matchTpSl(symbol: string, position: Position, orders: Order[]): TpSlMat
 }
 
 function PositionsTable({
-  positions, orders, symbol,
-}: { positions: Position[]; orders: Order[]; symbol: string }) {
+  positions, orders,
+}: { positions: Position[]; orders: Order[] }) {
   const closePosition = useTradingStore((s) => s.closePosition);
   const [editing, setEditing] = useState<string | null>(null);
 
@@ -262,10 +268,15 @@ function PositionsTable({
       </thead>
       <tbody>
         {positions.map((p) => {
-          const { tp, sl } = matchTpSl(symbol, p, orders);
+          const { tp, sl } = matchTpSl(p, orders);
           const isLong = p.positionAmt > 0;
           const pnlColor = p.unrealizedProfit >= 0 ? "text-tv-green" : "text-tv-red";
           const rowKey = `${p.symbol}-${p.side}`;
+          // Positions here span every symbol on the account (not just the
+          // chart's), so reconstruct a chartable ticker from the bare
+          // exchange symbol — trading in this app is perp-only, so `.P`
+          // always applies (see isPerp()/cleanSym() in binance/rest.ts).
+          const posSymbol = `${p.symbol}.P`;
           return (
             <tr key={rowKey} className="border-b border-tv-border/50 hover:bg-tv-panel-hover">
               <td className="px-3 py-1.5 font-semibold">{p.symbol}.P</td>
@@ -307,7 +318,7 @@ function PositionsTable({
                     <Pencil className="h-3 w-3" />
                   </button>
                   <button
-                    onClick={() => void closePosition(symbol, p)}
+                    onClick={() => void closePosition(posSymbol, p)}
                     title="Close position (Market reduce-only)"
                     className="rounded p-0.5 text-tv-text-muted hover:bg-tv-red/15 hover:text-tv-red"
                   >
@@ -317,7 +328,7 @@ function PositionsTable({
                 {editing === rowKey && (
                   <EditTpSlPopover
                     position={p}
-                    symbol={symbol}
+                    symbol={posSymbol}
                     currentTp={tp}
                     currentSl={sl}
                     onClose={() => setEditing(null)}
@@ -420,6 +431,7 @@ function EditTpSlPopover({
 function OrdersTable({ orders, symbol }: { orders: Order[]; symbol: string }) {
   const cancelOrder = useTradingStore((s) => s.cancelOrder);
   const [filter, setFilter] = useState<OrderFilter>("all");
+  const [editing, setEditing] = useState<number | string | null>(null);
 
   const filtered = useMemo(() => {
     return orders.filter((o) => {
@@ -527,13 +539,29 @@ function OrdersTable({ orders, symbol }: { orders: Order[]; symbol: string }) {
                 </td>
                 <td className="px-3 py-1.5">
                   {(o.status === "NEW" || o.status === "PARTIALLY_FILLED") && (
-                    <button
-                      onClick={() => void cancelOrder(symbol, o.orderId)}
-                      title="Cancel order"
-                      className="rounded p-0.5 text-tv-text-muted hover:bg-tv-red/15 hover:text-tv-red"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setEditing(o.orderId)}
+                        title="Edit order"
+                        className="rounded p-0.5 text-tv-text-muted hover:bg-tv-bg hover:text-tv-text"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                      <button
+                        onClick={() => void cancelOrder(symbol, o.orderId)}
+                        title="Cancel order"
+                        className="rounded p-0.5 text-tv-text-muted hover:bg-tv-red/15 hover:text-tv-red"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+                  {editing === o.orderId && (
+                    <EditOrderPopover
+                      order={o}
+                      symbol={symbol}
+                      onClose={() => setEditing(null)}
+                    />
                   )}
                 </td>
               </tr>
@@ -541,6 +569,114 @@ function OrdersTable({ orders, symbol }: { orders: Order[]; symbol: string }) {
           </tbody>
         </table>
       )}
+    </div>
+  );
+}
+
+/** Edit a still-working order's price/quantity (cancel + re-post, same as
+ *  drag-to-modify on the chart) and, optionally, the symbol's leverage —
+ *  leverage lives on the symbol/account, not on the order itself, so this
+ *  changes what any position opened from this or a future order will use,
+ *  not just this one. */
+function EditOrderPopover({
+  order, symbol, onClose,
+}: { order: Order; symbol: string; onClose: () => void }) {
+  const modifyOrder = useTradingStore((s) => s.modifyOrder);
+  const setLeverage = useTradingStore((s) => s.setLeverage);
+  const currentLeverage = useTradingStore((s) => s.form.leverage);
+  const isTrigger = order.type === "STOP_MARKET" || order.type === "TAKE_PROFIT_MARKET";
+  const currentPrice = isTrigger ? order.stopPrice ?? 0 : order.price;
+  const [price, setPrice] = useState(String(currentPrice));
+  const [qty, setQty] = useState(String(order.origQty));
+  const [leverage, setLeverageInput] = useState(String(currentLeverage));
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    const priceNum = parseFloat(price);
+    const qtyNum = parseFloat(qty);
+    const leverageNum = parseInt(leverage, 10);
+    const patch: { price?: number; quantity?: number } = {};
+    if (isFinite(priceNum) && priceNum > 0 && priceNum !== currentPrice) patch.price = priceNum;
+    if (isFinite(qtyNum) && qtyNum > 0 && qtyNum !== order.origQty) patch.quantity = qtyNum;
+    if (patch.price !== undefined || patch.quantity !== undefined) {
+      await modifyOrder(symbol, order, patch);
+    }
+    if (order.isPerp && isFinite(leverageNum) && leverageNum > 0 && leverageNum !== currentLeverage) {
+      await setLeverage(symbol, leverageNum);
+    }
+    setSaving(false);
+    onClose();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-72 space-y-3 rounded-lg border border-tv-border bg-tv-panel p-4"
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold">Edit order — {order.symbol}</span>
+          <button onClick={onClose} className="text-tv-text-muted hover:text-tv-text">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="space-y-1">
+          <label className="text-[10px] uppercase text-tv-text-muted">
+            {isTrigger ? "Trigger price" : "Limit price"}
+          </label>
+          <input
+            type="number"
+            step="any"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            className="w-full rounded border border-tv-border bg-tv-bg px-2 py-1.5 font-mono text-xs tabular-nums focus:border-tv-blue"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[10px] uppercase text-tv-text-muted">Quantity</label>
+          <input
+            type="number"
+            step="any"
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            className="w-full rounded border border-tv-border bg-tv-bg px-2 py-1.5 font-mono text-xs tabular-nums focus:border-tv-blue"
+          />
+        </div>
+        {order.isPerp && (
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase text-tv-text-muted">
+              Leverage (applies to the symbol, not just this order)
+            </label>
+            <input
+              type="number"
+              step="1"
+              min="1"
+              value={leverage}
+              onChange={(e) => setLeverageInput(e.target.value)}
+              className="w-full rounded border border-tv-border bg-tv-bg px-2 py-1.5 font-mono text-xs tabular-nums focus:border-tv-blue"
+            />
+          </div>
+        )}
+        <div className="flex justify-end gap-2 pt-2">
+          <button
+            onClick={onClose}
+            className="rounded px-3 py-1 text-xs text-tv-text-muted hover:bg-tv-panel-hover"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={saving}
+            className="rounded bg-tv-blue px-3 py-1 text-xs font-semibold text-white hover:bg-tv-blue/90 disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Apply"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

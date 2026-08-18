@@ -7,6 +7,7 @@ import { useChartStore } from "@/lib/store/chart-store";
 import { isPerp, cleanSym } from "@/lib/binance/rest";
 import { resolveSource } from "@/lib/symbols/source";
 import { formatPrice } from "@/lib/format";
+import { useSymbolInfo } from "@/lib/trading/symbol-info";
 import type { Order, Position } from "@/lib/binance/trading-types";
 
 /** Bybit-style colors. Limit is always blue regardless of side. */
@@ -661,6 +662,10 @@ export function OrderLinesLayer({
   const tradingExchange = useTradingStore((s) => s.exchange);
   const tradingPanelOpen = useTradingStore((s) => s.tradingPanelOpen);
   const form = useTradingStore((s) => s.form);
+  // Actual tick precision for this symbol — a hardcoded 2 decimals breaks
+  // dragging the preview EP/TP/SL lines on sub-$1 symbols (e.g. a $0.04
+  // altcoin needs 4+ decimals just to move the price at all).
+  const pricePrecision = useSymbolInfo(symbol).pricePrecision;
   const rawOrders = useTradingStore((s) => s.orders);
   const rawPositions = useTradingStore((s) => s.positions);
   const updateForm = useTradingStore((s) => s.updateForm);
@@ -815,7 +820,7 @@ export function OrderLinesLayer({
     // They're immediately draggable, so these are just a starting point.
     const bracketPrice = (pct: number, favourable: boolean) => {
       const dir = (form.side === "BUY") === favourable ? 1 : -1;
-      return (entryPrice * (1 + dir * pct)).toFixed(2);
+      return (entryPrice * (1 + dir * pct)).toFixed(pricePrecision);
     };
     lines.push({
       kind: "LIMIT",
@@ -837,7 +842,7 @@ export function OrderLinesLayer({
               updateForm({ tpEnabled: true, tp: dflt });
               startDrag(
                 e,
-                (p) => updateForm({ tpEnabled: true, tp: p.toFixed(2) }),
+                (p) => updateForm({ tpEnabled: true, tp: p.toFixed(pricePrecision) }),
                 undefined,
                 parseFloat(dflt),
               );
@@ -850,7 +855,7 @@ export function OrderLinesLayer({
               updateForm({ slEnabled: true, sl: dflt });
               startDrag(
                 e,
-                (p) => updateForm({ slEnabled: true, sl: p.toFixed(2) }),
+                (p) => updateForm({ slEnabled: true, sl: p.toFixed(pricePrecision) }),
                 undefined,
                 parseFloat(dflt),
               );
@@ -859,7 +864,7 @@ export function OrderLinesLayer({
       // Clearing the price drops the staged order (and its brackets) from the
       // chart without touching the panel's other settings.
       onCancel: () => updateForm({ price: "", tpEnabled: false, slEnabled: false }),
-      onDrag: (p) => updateForm({ price: p.toFixed(2) }),
+      onDrag: (p) => updateForm({ price: p.toFixed(pricePrecision) }),
     });
   }
   if (hasPreviewTP) {
@@ -870,7 +875,7 @@ export function OrderLinesLayer({
       side: form.side,
       entryPrice: entryPrice || undefined,
       onRemove: () => updateForm({ tpEnabled: false }),
-      onDrag: (p) => updateForm({ tp: p.toFixed(2) }),
+      onDrag: (p) => updateForm({ tp: p.toFixed(pricePrecision) }),
     });
   }
   if (hasPreviewSL) {
@@ -881,7 +886,7 @@ export function OrderLinesLayer({
       side: form.side,
       entryPrice: entryPrice || undefined,
       onRemove: () => updateForm({ slEnabled: false }),
-      onDrag: (p) => updateForm({ sl: p.toFixed(2) }),
+      onDrag: (p) => updateForm({ sl: p.toFixed(pricePrecision) }),
     });
   }
 
@@ -916,7 +921,7 @@ export function OrderLinesLayer({
     const commit = async (p: number) => {
       const newPrice = Math.abs(p - price) < 1e-9 ? price : p;
       if (newPrice === price) return;
-      await modifyOrder(symbol, order as Order, newPrice);
+      await modifyOrder(symbol, order as Order, { price: newPrice });
     };
 
     lines.push({
