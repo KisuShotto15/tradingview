@@ -1,10 +1,13 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { BarChart2, Layers, List } from "lucide-react";
+import { BarChart2, Bell, Layers, List } from "lucide-react";
 import { Watchlist } from "@/components/watchlist/Watchlist";
 import { OrderPanel } from "@/components/trading/OrderPanel/OrderPanel";
 import { ObjectTreePanel } from "@/components/chart/ObjectTreePanel";
+import { AlertsPanel } from "@/components/alerts/AlertsPanel";
+import { useAlertsStore } from "@/lib/store/alerts-store";
+import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { useChartStore } from "@/lib/store/chart-store";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +18,11 @@ export function RightSidebar() {
   const setTab = useChartStore((s) => s.setRightSidebarTab);
   const width = useChartStore((s) => s.rightSidebarWidth);
   const setWidth = useChartStore((s) => s.setRightSidebarWidth);
+  const activeAlerts = useAlertsStore((s) => s.alerts.filter((a) => a.enabled).length);
+  const activeDrawingAlerts = useDrawingsStore(
+    (s) => s.drawings.filter((d) => d.alert?.enabled).length,
+  );
+  const activeAlertCount = activeAlerts + activeDrawingAlerts;
 
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const [resizing, setResizing] = useState(false);
@@ -94,6 +102,23 @@ export function RightSidebar() {
           <BarChart2 className="h-3.5 w-3.5" />
           Trade
         </button>
+        <button
+          onClick={() => setTab("alerts")}
+          className={cn(
+            "flex flex-1 items-center justify-center gap-1.5 py-2 text-[11px] font-medium transition-colors",
+            tab === "alerts"
+              ? "border-b-2 border-tv-blue text-tv-blue"
+              : "text-tv-text-muted hover:text-tv-text",
+          )}
+        >
+          <Bell className="h-3.5 w-3.5" />
+          Alerts
+          {activeAlertCount > 0 && (
+            <span className="flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-tv-blue px-1 text-[9px] font-semibold text-white">
+              {activeAlertCount}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Content */}
@@ -105,6 +130,9 @@ export function RightSidebar() {
       </div>
       <div className={cn("flex-1 overflow-hidden", tab !== "trade" && "hidden")}>
         <OrderPanel />
+      </div>
+      <div className={cn("flex-1 overflow-hidden", tab !== "alerts" && "hidden")}>
+        <AlertsPanel />
       </div>
     </aside>
   );

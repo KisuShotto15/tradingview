@@ -268,7 +268,7 @@ function watchlistBlockRanges(items: WatchlistItem[]): { start: number; end: num
 }
 
 /** Tabs available in the right sidebar. */
-export type RightSidebarTab = "watchlist" | "objects" | "trade";
+export type RightSidebarTab = "watchlist" | "objects" | "trade" | "alerts";
 
 /** Tagged settings target — either a builtin indicator key or an EMA instance id. */
 export type SettingsTarget = IndicatorKey | { kind: "ema"; id: string };
@@ -408,6 +408,8 @@ interface ChartState {
   /** Create-alert dialog state */
   alertDialogOpen: boolean;
   alertDialogPrice: number | null;
+  /** Id of the alert being edited, or null when the dialog is creating a new one */
+  alertDialogEditId: string | null;
   /** Latest live price for the current symbol (updated on each WS tick) */
   currentLivePrice: number | null;
 
@@ -469,6 +471,7 @@ interface ChartState {
   setSettingsTarget: (k: SettingsTarget | null) => void;
   setChartSettingsOpen: (v: boolean) => void;
   openAlertDialog: (price?: number) => void;
+  openEditAlertDialog: (alertId: string) => void;
   closeAlertDialog: () => void;
   setCurrentLivePrice: (price: number | null) => void;
   /** Apply a partial snapshot from undo/redo — does NOT push to history */
@@ -562,6 +565,7 @@ export const useChartStore = create<ChartState>()(
       chartSettingsOpen: false,
       alertDialogOpen: false,
       alertDialogPrice: null,
+      alertDialogEditId: null,
       currentLivePrice: null,
 
       setSymbol: (symbol) => {
@@ -1040,8 +1044,12 @@ export const useChartStore = create<ChartState>()(
       setSymbolDialogInsertAfterId: (symbolDialogInsertAfterId) => set({ symbolDialogInsertAfterId }),
       setSettingsTarget: (settingsTarget) => set({ settingsTarget }),
       setChartSettingsOpen: (chartSettingsOpen) => set({ chartSettingsOpen }),
-      openAlertDialog: (price) => set({ alertDialogOpen: true, alertDialogPrice: price ?? null }),
-      closeAlertDialog: () => set({ alertDialogOpen: false, alertDialogPrice: null }),
+      openAlertDialog: (price) =>
+        set({ alertDialogOpen: true, alertDialogPrice: price ?? null, alertDialogEditId: null }),
+      openEditAlertDialog: (alertId) =>
+        set({ alertDialogOpen: true, alertDialogPrice: null, alertDialogEditId: alertId }),
+      closeAlertDialog: () =>
+        set({ alertDialogOpen: false, alertDialogPrice: null, alertDialogEditId: null }),
       setCurrentLivePrice: (currentLivePrice) => set({ currentLivePrice }),
     }),
     {

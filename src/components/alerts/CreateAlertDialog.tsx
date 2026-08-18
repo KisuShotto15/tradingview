@@ -31,10 +31,14 @@ const SOURCE_LABELS: Record<AlertSource, string> = {
   macd: "MACD",
 };
 
-function defaultExpiry(): string {
-  const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
+function toLocalInput(ms: number): string {
+  const d = new Date(ms);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function defaultExpiry(): string {
+  return toLocalInput(Date.now() + 24 * 60 * 60 * 1000);
 }
 
 function autoMsg(symbol: string, source: AlertSource, condition: AlertCondition, value: number): string {
@@ -55,11 +59,18 @@ function priceStep(value: string): string {
 export function CreateAlertDialog() {
   const open = useChartStore((s) => s.alertDialogOpen);
   const closeDialog = useChartStore((s) => s.closeAlertDialog);
-  const symbol = useChartStore((s) => s.symbol);
+  const chartSymbol = useChartStore((s) => s.symbol);
   const defaultPrice = useChartStore((s) => s.alertDialogPrice);
   const currentLivePrice = useChartStore((s) => s.currentLivePrice);
+  const editId = useChartStore((s) => s.alertDialogEditId);
 
   const addAlert = useAlertsStore((s) => s.addAlert);
+  const updateAlert = useAlertsStore((s) => s.updateAlert);
+  const alerts = useAlertsStore((s) => s.alerts);
+  const editingAlert = editId ? alerts.find((a) => a.id === editId) ?? null : null;
+  // Editing shows the alert's own symbol (it may differ from the chart
+  // currently on screen); creating always targets the chart's symbol.
+  const symbol = editingAlert?.symbol ?? chartSymbol;
 
   const [source, setSource] = useState<AlertSource>("price");
   const [condition, setCondition] = useState<AlertCondition>("crossing");
@@ -73,6 +84,18 @@ export function CreateAlertDialog() {
 
   useEffect(() => {
     if (!open) return;
+    if (editingAlert) {
+      setSource(editingAlert.source ?? "price");
+      setValue(String(editingAlert.value));
+      setCondition(editingAlert.condition);
+      setTrigger(editingAlert.trigger);
+      setExpiry(editingAlert.expiresAt ? toLocalInput(editingAlert.expiresAt) : "");
+      setMessage(editingAlert.message);
+      setSound(editingAlert.sound);
+      setToast(editingAlert.toast);
+      setAutoMessage(false);
+      return;
+    }
     const price = defaultPrice ?? currentLivePrice ?? 0;
     setSource("price");
     setValue(price > 0 ? String(parseFloat(formatPrice(price))) : "");
@@ -80,7 +103,10 @@ export function CreateAlertDialog() {
     setTrigger("once");
     setExpiry(defaultExpiry());
     setAutoMessage(true);
-  }, [open, defaultPrice, currentLivePrice]);
+    // editingAlert intentionally excluded — its identity changes every
+    // render (freshly filtered), so depend on the stable editId instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, defaultPrice, currentLivePrice, editId]);
 
   // Switching source resets the value to a sensible default for that source.
   function changeSource(next: AlertSource) {
@@ -103,7 +129,7 @@ export function CreateAlertDialog() {
   function handleCreate() {
     if (!valid) return;
     const expiresAt = expiry ? new Date(expiry).getTime() : null;
-    addAlert({
+    const payload = {
       symbol,
       source,
       condition,
@@ -113,7 +139,12 @@ export function CreateAlertDialog() {
       message: message || autoMsg(symbol, source, condition, numVal || 0),
       sound,
       toast,
-    });
+    };
+    if (editingAlert) {
+      updateAlert(editingAlert.id, payload);
+    } else {
+      addAlert(payload);
+    }
     closeDialog();
   }
 
@@ -125,7 +156,9 @@ export function CreateAlertDialog() {
           {/* Header */}
           <div className="flex items-center justify-between border-b border-tv-border px-4 py-3">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-tv-text">Create alert on</span>
+              <span className="text-sm font-semibold text-tv-text">
+                {editingAlert ? "Edit alert on" : "Create alert on"}
+              </span>
               <div className="flex items-center gap-1.5 rounded bg-tv-blue/15 px-2 py-0.5">
                 <span className="text-xs font-semibold text-tv-blue">{symbol}</span>
               </div>
@@ -271,7 +304,7 @@ export function CreateAlertDialog() {
                   : "cursor-not-allowed bg-tv-blue/30 text-white/50",
               )}
             >
-              Create
+              {editingAlert ? "Save" : "Create"}
             </button>
           </div>
         </DialogPrimitive.Popup>
