@@ -28,6 +28,7 @@ import {
 } from "@/lib/binance/synthetic";
 import { fetchCandles } from "@/lib/data/fetch";
 import { resolveSource } from "@/lib/symbols/source";
+import { getSymbolInfo } from "@/lib/trading/symbol-info";
 import { ema, rsi, macd, obv } from "@/lib/indicators";
 import { adx as adxCalc } from "@/lib/indicators/adx";
 import { squeezeMomentum } from "@/lib/indicators/squeeze";
@@ -2308,14 +2309,33 @@ export function PriceChart({ symbol, timeframe }: Props) {
             })),
           );
         }
-        // Scale the price scale's decimal places to this symbol's price
-        // magnitude — otherwise a sub-cent altcoin flattens to "0.00" under
-        // the library's flat 2-decimal default.
+        // Scale the price scale's decimal places to this symbol's price —
+        // start from the magnitude-based guess so a sub-cent altcoin doesn't
+        // flatten to "0.00" under the library's flat 2-decimal default while
+        // the real precision loads, then refine to the exchange's actual
+        // tick size once known. That's what makes decimals match TradingView
+        // per symbol (e.g. BTC at 1 decimal, ETH at 2, NEAR/AVAX at 3)
+        // instead of every symbol ≥$1 flattening to the same 2 decimals.
         if (klines.length > 0) {
-          const priceFormat = { type: "price" as const, ...priceFormatFor(klines[klines.length - 1].close) };
-          candleSeriesRef.current?.applyOptions({ priceFormat });
-          lineSeriesRef.current?.applyOptions({ priceFormat });
-          areaSeriesRef.current?.applyOptions({ priceFormat });
+          const lastClose = klines[klines.length - 1].close;
+          const applyPrecision = (precision: number, minMove: number) => {
+            const priceFormat = { type: "price" as const, precision, minMove };
+            candleSeriesRef.current?.applyOptions({ priceFormat });
+            lineSeriesRef.current?.applyOptions({ priceFormat });
+            areaSeriesRef.current?.applyOptions({ priceFormat });
+          };
+          const guess = priceFormatFor(lastClose);
+          applyPrecision(guess.precision, guess.minMove);
+          if (source.kind === "binance" || source.kind === "bybit") {
+            try {
+              const info = await getSymbolInfo(symbol, false, source.kind);
+              if (!cancelled && info.tickSize > 0) {
+                applyPrecision(info.pricePrecision, info.tickSize);
+              }
+            } catch {
+              // keep the magnitude-based guess
+            }
+          }
         }
         const closeData = klines.map((k) => ({ time: k.time as UTCTimestamp, value: k.close }));
         lineSeriesRef.current?.setData(closeData);
