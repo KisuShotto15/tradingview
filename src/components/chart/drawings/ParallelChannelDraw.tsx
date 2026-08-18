@@ -2,11 +2,13 @@
 
 import { useRef } from "react";
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
-import type { ParallelChannelDrawing, Point } from "@/lib/drawings/types";
+import type { Drawing, ParallelChannelDrawing, Point } from "@/lib/drawings/types";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { DrawHandle } from "./DrawHandle";
 import { useDragPoint } from "./use-drag-point";
+import { useDragShape } from "./use-drag-shape";
 import { useDrawings } from "@/lib/supabase/use-drawings";
+import { translateDrawing } from "@/lib/drawings/translate";
 
 interface Props {
   drawing: ParallelChannelDrawing;
@@ -71,6 +73,17 @@ export function ParallelChannelDraw({
     onMove: (pt: Point) => updateLive(drawing.id, { c: pt } as Partial<ParallelChannelDrawing>),
     onEnd: commitEnd,
   });
+  const dragShape = useDragShape<ParallelChannelDrawing>(
+    chart,
+    candleSeries,
+    container,
+    (orig, dt, dp) => translateDrawing(orig as Drawing, dt, dp) as Partial<ParallelChannelDrawing>,
+    () => {
+      const current = useDrawingsStore.getState().drawings.find((d) => d.id === drawing.id);
+      return current && current.kind === "parallel-channel" ? current : null;
+    },
+    { onStart: snap, onMove: (patch) => updateLive(drawing.id, patch), onEnd: commitEnd },
+  );
 
   // Parallel line offset: project C onto AB, offset = (cx, cy) - projection
   const proj = projectOnto(ax, ay, bx, by, cx, cy);
@@ -87,11 +100,16 @@ export function ParallelChannelDraw({
         points={`${ax},${ay} ${bx},${by} ${b2x},${b2y} ${a2x},${a2y}`}
         fill={fill}
         className="drawing-hit"
-        style={{ pointerEvents: "all", cursor: "pointer" }}
+        style={{ pointerEvents: "all", cursor: selected ? "move" : "pointer" }}
         onMouseDown={(e) => {
-          e.stopPropagation();
-          onSelect();
+          if (selected) {
+            dragShape(e);
+          } else {
+            e.stopPropagation();
+            onSelect();
+          }
         }}
+        onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
       <line x1={ax} x2={bx} y1={ay} y2={by} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={strokeDasharray} style={{ pointerEvents: "none" }} />
       <line x1={a2x} x2={b2x} y1={a2y} y2={b2y} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={strokeDasharray} style={{ pointerEvents: "none" }} />

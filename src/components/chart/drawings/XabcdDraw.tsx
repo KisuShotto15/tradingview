@@ -2,12 +2,14 @@
 
 import { useRef } from "react";
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
-import type { XabcdDrawing, Point } from "@/lib/drawings/types";
+import type { Drawing, XabcdDrawing, Point } from "@/lib/drawings/types";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { DrawHandle } from "./DrawHandle";
 import { useDragPoint } from "./use-drag-point";
+import { useDragShape } from "./use-drag-shape";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { harmonicRatios } from "@/lib/drawings/geometry";
+import { translateDrawing } from "@/lib/drawings/translate";
 
 interface Props {
   drawing: XabcdDrawing;
@@ -27,6 +29,7 @@ export function XabcdDraw({
   pts,
   selected,
   onSelect,
+  onEdit,
   chart,
   candleSeries,
   container,
@@ -56,6 +59,17 @@ export function XabcdDraw({
   const d3 = useDragPoint(chart, candleSeries, container, { onStart: snap, onMove: (pt: Point) => moveIndex(3, pt), onEnd: commitEnd });
   const d4 = useDragPoint(chart, candleSeries, container, { onStart: snap, onMove: (pt: Point) => moveIndex(4, pt), onEnd: commitEnd });
   const drags = [d0, d1, d2, d3, d4];
+  const dragShape = useDragShape<XabcdDrawing>(
+    chart,
+    candleSeries,
+    container,
+    (orig, dt, dp) => translateDrawing(orig as Drawing, dt, dp) as Partial<XabcdDrawing>,
+    () => {
+      const current = useDrawingsStore.getState().drawings.find((d) => d.id === drawing.id);
+      return current && current.kind === "xabcd" ? current : null;
+    },
+    { onStart: snap, onMove: (patch) => updateLive(drawing.id, patch), onEnd: commitEnd },
+  );
 
   if (pts.length < 5) return null;
   const pointsStr = pts.map((p) => `${p.x},${p.y}`).join(" ");
@@ -75,11 +89,16 @@ export function XabcdDraw({
         stroke={color}
         strokeWidth={strokeWidth}
         className="drawing-hit"
-        style={{ pointerEvents: "stroke", cursor: "pointer" }}
+        style={{ pointerEvents: "stroke", cursor: selected ? "move" : "pointer" }}
         onMouseDown={(e) => {
-          e.stopPropagation();
-          onSelect();
+          if (selected) {
+            dragShape(e);
+          } else {
+            e.stopPropagation();
+            onSelect();
+          }
         }}
+        onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
       {pts.map((p, i) => (
         <g key={i}>

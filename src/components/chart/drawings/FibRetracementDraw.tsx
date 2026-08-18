@@ -2,12 +2,14 @@
 
 import { useRef } from "react";
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
-import type { FibRetracementDrawing, Point } from "@/lib/drawings/types";
+import type { Drawing, FibRetracementDrawing, Point } from "@/lib/drawings/types";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { DrawHandle } from "./DrawHandle";
 import { useDragPoint } from "./use-drag-point";
+import { useDragShape } from "./use-drag-shape";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { formatPrice } from "@/lib/format";
+import { translateDrawing } from "@/lib/drawings/translate";
 
 interface Props {
   drawing: FibRetracementDrawing;
@@ -67,6 +69,17 @@ export function FibRetracementDraw({
     onMove: (pt: Point) => updateLive(drawing.id, { b: pt } as Partial<FibRetracementDrawing>),
     onEnd: commitEnd,
   });
+  const dragShape = useDragShape<FibRetracementDrawing>(
+    chart,
+    candleSeries,
+    container,
+    (orig, dt, dp) => translateDrawing(orig as Drawing, dt, dp) as Partial<FibRetracementDrawing>,
+    () => {
+      const current = useDrawingsStore.getState().drawings.find((d) => d.id === drawing.id);
+      return current && current.kind === "fib-retracement" ? current : null;
+    },
+    { onStart: snap, onMove: (patch) => updateLive(drawing.id, patch), onEnd: commitEnd },
+  );
 
   const left = Math.min(ax, bx);
   const right = Math.max(ax, bx);
@@ -84,11 +97,16 @@ export function FibRetracementDraw({
         height={Math.abs(by - ay)}
         fill="transparent"
         className="drawing-hit"
-        style={{ pointerEvents: "all", cursor: "pointer" }}
+        style={{ pointerEvents: "all", cursor: selected ? "move" : "pointer" }}
         onMouseDown={(e) => {
-          e.stopPropagation();
-          onSelect();
+          if (selected) {
+            dragShape(e);
+          } else {
+            e.stopPropagation();
+            onSelect();
+          }
         }}
+        onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
       {drawing.levels.map((level) => {
         const price = startPrice + range * level;

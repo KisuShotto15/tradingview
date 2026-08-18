@@ -2,13 +2,15 @@
 
 import { useRef } from "react";
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
-import type { FibExtensionDrawing, Point } from "@/lib/drawings/types";
+import type { Drawing, FibExtensionDrawing, Point } from "@/lib/drawings/types";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { DrawHandle } from "./DrawHandle";
 import { useDragPoint } from "./use-drag-point";
+import { useDragShape } from "./use-drag-shape";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { fibExtensionLevels } from "@/lib/drawings/fib";
 import { formatPrice } from "@/lib/format";
+import { translateDrawing } from "@/lib/drawings/translate";
 
 interface Props {
   drawing: FibExtensionDrawing;
@@ -47,6 +49,7 @@ export function FibExtensionDraw({
   width,
   selected,
   onSelect,
+  onEdit,
   chart,
   candleSeries,
   container,
@@ -77,6 +80,17 @@ export function FibExtensionDraw({
     onMove: (pt: Point) => updateLive(drawing.id, { c: pt } as Partial<FibExtensionDrawing>),
     onEnd: commitEnd,
   });
+  const dragShape = useDragShape<FibExtensionDrawing>(
+    chart,
+    candleSeries,
+    container,
+    (orig, dt, dp) => translateDrawing(orig as Drawing, dt, dp) as Partial<FibExtensionDrawing>,
+    () => {
+      const current = useDrawingsStore.getState().drawings.find((d) => d.id === drawing.id);
+      return current && current.kind === "fib-extension" ? current : null;
+    },
+    { onStart: snap, onMove: (patch) => updateLive(drawing.id, patch), onEnd: commitEnd },
+  );
 
   const levels = fibExtensionLevels(drawing.a.price, drawing.b.price, drawing.c.price, drawing.levels);
   // Levels are drawn from C's x to the right edge of the chart.
@@ -95,9 +109,14 @@ export function FibExtensionDraw({
         className="drawing-hit"
         style={{ pointerEvents: "stroke", cursor: selected ? "move" : "pointer" }}
         onMouseDown={(e) => {
-          e.stopPropagation();
-          onSelect();
+          if (selected) {
+            dragShape(e);
+          } else {
+            e.stopPropagation();
+            onSelect();
+          }
         }}
+        onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
       {levels.map((lvl) => {
         const y = candleSeries?.priceToCoordinate(lvl.price) ?? null;

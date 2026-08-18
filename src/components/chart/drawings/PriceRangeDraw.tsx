@@ -2,12 +2,14 @@
 
 import { useRef } from "react";
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
-import type { PriceRangeDrawing, Point } from "@/lib/drawings/types";
+import type { Drawing, PriceRangeDrawing, Point } from "@/lib/drawings/types";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { DrawHandle } from "./DrawHandle";
 import { useDragPoint } from "./use-drag-point";
+import { useDragShape } from "./use-drag-shape";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { formatPrice } from "@/lib/format";
+import { translateDrawing } from "@/lib/drawings/translate";
 
 interface Props {
   drawing: PriceRangeDrawing;
@@ -59,6 +61,17 @@ export function PriceRangeDraw({
       updateLive(drawing.id, { priceB: pt.price, timeB: pt.time } as Partial<PriceRangeDrawing>),
     onEnd: commitEnd,
   });
+  const dragShape = useDragShape<PriceRangeDrawing>(
+    chart,
+    candleSeries,
+    container,
+    (orig, dt, dp) => translateDrawing(orig as Drawing, dt, dp) as Partial<PriceRangeDrawing>,
+    () => {
+      const current = useDrawingsStore.getState().drawings.find((d) => d.id === drawing.id);
+      return current && current.kind === "price-range" ? current : null;
+    },
+    { onStart: snap, onMove: (patch) => updateLive(drawing.id, patch), onEnd: commitEnd },
+  );
 
   const isUp = drawing.priceB >= drawing.priceA;
   const baseColor = isUp ? "#26a69a" : "#ef5350";
@@ -85,11 +98,16 @@ export function PriceRangeDraw({
         strokeWidth={drawing.lineWidth ?? 1}
         strokeDasharray={drawing.lineStyle === 1 ? "6 4" : drawing.lineStyle === 2 ? "2 4" : undefined}
         className="drawing-hit"
-        style={{ pointerEvents: "all", cursor: "pointer" }}
+        style={{ pointerEvents: "all", cursor: selected ? "move" : "pointer" }}
         onMouseDown={(e) => {
-          e.stopPropagation();
-          onSelect();
+          if (selected) {
+            dragShape(e);
+          } else {
+            e.stopPropagation();
+            onSelect();
+          }
         }}
+        onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
       <text
         x={(left + right) / 2}

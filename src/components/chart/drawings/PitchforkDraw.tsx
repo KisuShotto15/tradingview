@@ -2,12 +2,14 @@
 
 import { useRef } from "react";
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
-import type { PitchforkDrawing, Point } from "@/lib/drawings/types";
+import type { Drawing, PitchforkDrawing, Point } from "@/lib/drawings/types";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { DrawHandle } from "./DrawHandle";
 import { useDragPoint } from "./use-drag-point";
+import { useDragShape } from "./use-drag-shape";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { extendRay, midpoint } from "@/lib/drawings/geometry";
+import { translateDrawing } from "@/lib/drawings/translate";
 
 interface Props {
   drawing: PitchforkDrawing;
@@ -39,6 +41,7 @@ export function PitchforkDraw({
   height,
   selected,
   onSelect,
+  onEdit,
   chart,
   candleSeries,
   container,
@@ -71,6 +74,17 @@ export function PitchforkDraw({
     onMove: (pt: Point) => updateLive(drawing.id, { c: pt } as Partial<PitchforkDrawing>),
     onEnd: commitEnd,
   });
+  const dragShape = useDragShape<PitchforkDrawing>(
+    chart,
+    candleSeries,
+    container,
+    (orig, dt, dp) => translateDrawing(orig as Drawing, dt, dp) as Partial<PitchforkDrawing>,
+    () => {
+      const current = useDrawingsStore.getState().drawings.find((d) => d.id === drawing.id);
+      return current && current.kind === "pitchfork" ? current : null;
+    },
+    { onStart: snap, onMove: (patch) => updateLive(drawing.id, patch), onEnd: commitEnd },
+  );
 
   // Median: from A through the midpoint of B-C, extended to the edge.
   const m = midpoint({ x: bx, y: by }, { x: cx, y: cy });
@@ -91,11 +105,16 @@ export function PitchforkDraw({
         stroke="transparent"
         strokeWidth={10}
         className="drawing-hit"
-        style={{ pointerEvents: "stroke", cursor: "pointer" }}
+        style={{ pointerEvents: "stroke", cursor: selected ? "move" : "pointer" }}
         onMouseDown={(e) => {
-          e.stopPropagation();
-          onSelect();
+          if (selected) {
+            dragShape(e);
+          } else {
+            e.stopPropagation();
+            onSelect();
+          }
         }}
+        onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
       {/* Fill between the two tines */}
       <polygon

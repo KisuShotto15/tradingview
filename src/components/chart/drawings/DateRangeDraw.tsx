@@ -2,11 +2,13 @@
 
 import { useRef } from "react";
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
-import type { DateRangeDrawing, Point } from "@/lib/drawings/types";
+import type { Drawing, DateRangeDrawing, Point } from "@/lib/drawings/types";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { DrawHandle } from "./DrawHandle";
 import { useDragPoint } from "./use-drag-point";
+import { useDragShape } from "./use-drag-shape";
 import { useDrawings } from "@/lib/supabase/use-drawings";
+import { translateDrawing } from "@/lib/drawings/translate";
 
 interface Props {
   drawing: DateRangeDrawing;
@@ -54,6 +56,17 @@ export function DateRangeDraw({
     onMove: (pt: Point) => updateLive(drawing.id, { timeB: pt.time } as Partial<DateRangeDrawing>),
     onEnd: commitEnd,
   });
+  const dragShape = useDragShape<DateRangeDrawing>(
+    chart,
+    candleSeries,
+    container,
+    (orig, dt, dp) => translateDrawing(orig as Drawing, dt, dp) as Partial<DateRangeDrawing>,
+    () => {
+      const current = useDrawingsStore.getState().drawings.find((d) => d.id === drawing.id);
+      return current && current.kind === "date-range" ? current : null;
+    },
+    { onStart: snap, onMove: (patch) => updateLive(drawing.id, patch), onEnd: commitEnd },
+  );
 
   const color = "#2962ff";
   const fill = `${color}14`;
@@ -75,11 +88,16 @@ export function DateRangeDraw({
         strokeWidth={1}
         strokeDasharray="4,3"
         className="drawing-hit"
-        style={{ pointerEvents: "all", cursor: "pointer" }}
+        style={{ pointerEvents: "all", cursor: selected ? "move" : "pointer" }}
         onMouseDown={(e) => {
-          e.stopPropagation();
-          onSelect();
+          if (selected) {
+            dragShape(e);
+          } else {
+            e.stopPropagation();
+            onSelect();
+          }
         }}
+        onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
       <text
         x={(left + right) / 2}
