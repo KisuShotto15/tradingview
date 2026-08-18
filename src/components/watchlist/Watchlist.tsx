@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -203,6 +203,23 @@ export function Watchlist() {
     }
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
+  }, [contextMenu]);
+
+  // Clamp the context menu to the viewport — its item count varies (label
+  // rename, "move to list" entries scale with watchlist count), so it can't
+  // be measured up front. Runs before paint so there's no visible jump; a
+  // right-click near the bottom/edge of the list no longer opens a menu
+  // that spills off-screen and gets clipped.
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) return;
+    const el = contextMenuRef.current;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    const maxTop = window.innerHeight - rect.height - margin;
+    const maxLeft = window.innerWidth - rect.width - margin;
+    el.style.top = `${Math.max(margin, Math.min(contextMenu.y, maxTop))}px`;
+    el.style.left = `${Math.max(margin, Math.min(contextMenu.x, maxLeft))}px`;
   }, [contextMenu]);
 
   function addLabelHere(beforeId?: string) {
@@ -724,9 +741,10 @@ export function Watchlist() {
 
       {contextMenu && active && (
         <div
+          ref={contextMenuRef}
           data-watchlist-context
-          style={{ top: contextMenu.y, left: contextMenu.x }}
-          className="fixed z-50 min-w-44 rounded-md border border-tv-border bg-tv-panel py-1 shadow-xl"
+          style={{ top: contextMenu.y, left: contextMenu.x, maxHeight: "80vh" }}
+          className="fixed z-50 min-w-44 overflow-y-auto rounded-md border border-tv-border bg-tv-panel py-1 shadow-xl"
         >
           {contextMenu.itemId !== null && (
             <>
