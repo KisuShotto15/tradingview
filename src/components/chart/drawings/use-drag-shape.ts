@@ -70,8 +70,8 @@ export function useDragShape<T>(
         const rawP = candleSeries.coordinateToPrice(y);
         if (t === null || rawP === null) return;
         let p = rawP as number;
-        // Magnet snap when Ctrl/Cmd is held during drag
-        if (ev.ctrlKey || ev.metaKey) {
+        // Magnet snap: held Ctrl/Cmd, or the persistent magnet-mode toggle
+        if (ev.ctrlKey || ev.metaKey || useChartStore.getState().magnetMode) {
           const snapped = snapToOHLC(p, t, globalCandlesRef.current);
           if (snapped !== null) p = snapped;
         }

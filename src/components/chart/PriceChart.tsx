@@ -413,8 +413,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
         return;
       }
 
-      // Magnet: Ctrl held → snap price to nearest OHLC of the closest candle
-      if (param.sourceEvent?.ctrlKey && resolvedTime !== null) {
+      // Magnet: Ctrl held, or the persistent magnet-mode toggle → snap price
+      // to nearest OHLC of the closest candle
+      if (
+        (param.sourceEvent?.ctrlKey || useChartStore.getState().magnetMode) &&
+        resolvedTime !== null
+      ) {
         const snapped = snapToOHLC(price, resolvedTime, candlesRef.current);
         if (snapped !== null) price = snapped;
       }
@@ -789,14 +793,16 @@ export function PriceChart({ symbol, timeframe }: Props) {
         }
       }
 
-      // Magnet target: when Ctrl is held + tool active + cursor over chart
+      // Magnet target: when Ctrl is held (or magnet mode is on) + tool active
+      // + cursor over chart
       const t = toolRef.current;
       const tracksMagnet =
         t !== "cursor" &&
         t !== "eraser" &&
         cursorTime !== null &&
         cursorPrice !== null;
-      if (param.sourceEvent?.ctrlKey && tracksMagnet) {
+      const magnetActive = param.sourceEvent?.ctrlKey || useChartStore.getState().magnetMode;
+      if (magnetActive && tracksMagnet) {
         const snapped = snapToOHLC(cursorPrice!, cursorTime!, candlesRef.current);
         setMagnetTarget({ time: cursorTime!, price: snapped ?? cursorPrice! });
       } else {
@@ -822,7 +828,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         lastCursorRef.current = { time: cursorTime, price: cursorPrice };
         // Apply snap to preview cursor if Ctrl held
         let pc: { time: number; price: number } = { time: cursorTime, price: cursorPrice };
-        if (param.sourceEvent?.ctrlKey) {
+        if (magnetActive) {
           const snapped = snapToOHLC(cursorPrice, cursorTime, candlesRef.current);
           if (snapped !== null) pc = { time: cursorTime, price: snapped };
         }
@@ -1945,7 +1951,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       if (t === null) return;
       let price = rawPrice as number;
       const time = t;
-      if (e.ctrlKey || e.metaKey) {
+      if (e.ctrlKey || e.metaKey || useChartStore.getState().magnetMode) {
         const snapped = snapToOHLC(price, time, candlesRef.current);
         if (snapped !== null) price = snapped;
         setMagnetTarget({ time, price });

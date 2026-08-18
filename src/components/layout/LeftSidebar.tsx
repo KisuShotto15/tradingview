@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Bell, BellOff, ChevronRight, Star, Trash2 } from "lucide-react";
+import { Bell, BellOff, ChevronRight, Magnet, Star, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -76,6 +76,8 @@ export function LeftSidebar() {
   const toggleFavoriteTool = useChartStore((s) => s.toggleFavoriteTool);
   const selectedId = useDrawingsStore((s) => s.selectedId);
   const drawings = useDrawingsStore((s) => s.drawings);
+  const magnetMode = useChartStore((s) => s.magnetMode);
+  const toggleMagnetMode = useChartStore((s) => s.toggleMagnetMode);
   const { clear: clearDrawings, update } = useDrawings();
 
   // Per-category "active" tool — the one whose icon shows on the button.
@@ -217,6 +219,27 @@ export function LeftSidebar() {
 
       <div className="mt-auto flex w-full flex-col items-center gap-0.5 pb-0.5">
         <div className="my-1 h-px w-6 bg-tv-border" />
+
+        <Tooltip>
+          <TooltipTrigger
+            onClick={toggleMagnetMode}
+            aria-label="Toggle magnet mode"
+            className={cn(
+              "flex h-10 w-10 items-center justify-center rounded transition-colors",
+              magnetMode
+                ? "bg-tv-blue/15 text-tv-blue"
+                : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
+            )}
+          >
+            <Magnet className="h-7 w-7" />
+          </TooltipTrigger>
+          <TooltipContent side="right" className="text-xs">
+            <div className="font-medium">{magnetMode ? "Disable magnet" : "Enable magnet"}</div>
+            <div className="mt-0.5 text-[10px] text-tv-text-muted">
+              Always snap to OHLC while placing/dragging (same as holding Ctrl)
+            </div>
+          </TooltipContent>
+        </Tooltip>
 
         <Tooltip>
           <TooltipTrigger

@@ -338,6 +338,8 @@ interface ChartState {
   pillsCollapsed: boolean;
   /** When true, all sub-pane indicators (RSI/MACD/ADX/Squeeze/VuManChu/OBV) are hidden. */
   subPanesHidden: boolean;
+  /** Persistent OHLC snap — same effect as holding Ctrl/Cmd while dragging */
+  magnetMode: boolean;
   /**
    * Maps an indicator to the indicator whose pane it shares ("own" = its own
    * pane). E.g. { adx: "squeeze" } overlays ADX on the Squeeze pane.
@@ -437,6 +439,7 @@ interface ChartState {
   setPillsCollapsed: (v: boolean) => void;
   setSubPanesHidden: (v: boolean) => void;
   toggleSubPanesHidden: () => void;
+  toggleMagnetMode: () => void;
   setIndicatorOverlay: (key: IndicatorKey, target: IndicatorKey | "own") => void;
   setPaneZOrder: (host: IndicatorKey, order: IndicatorKey[]) => void;
   setMainPaneOrder: (order: string[]) => void;
@@ -544,6 +547,7 @@ export const useChartStore = create<ChartState>()(
       visibleBars: 150,
       pillsCollapsed: false,
       subPanesHidden: false,
+      magnetMode: false,
       indicatorOverlays: {},
       paneZOrder: {},
       mainPaneOrder: [],
@@ -794,6 +798,7 @@ export const useChartStore = create<ChartState>()(
       setPillsCollapsed: (pillsCollapsed) => set({ pillsCollapsed }),
       setSubPanesHidden: (subPanesHidden) => set({ subPanesHidden }),
       toggleSubPanesHidden: () => set((s) => ({ subPanesHidden: !s.subPanesHidden })),
+      toggleMagnetMode: () => set((s) => ({ magnetMode: !s.magnetMode })),
 
       setIndicatorOverlay: (key, target) => {
         if (!isApplyingHistory) {
@@ -1102,6 +1107,7 @@ export const useChartStore = create<ChartState>()(
         visibleBars: s.visibleBars,
         pillsCollapsed: s.pillsCollapsed,
         subPanesHidden: s.subPanesHidden,
+        magnetMode: s.magnetMode,
         indicatorOverlays: s.indicatorOverlays,
         paneZOrder: s.paneZOrder,
         mainPaneOrder: s.mainPaneOrder,

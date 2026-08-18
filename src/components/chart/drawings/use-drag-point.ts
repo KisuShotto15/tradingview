@@ -65,7 +65,8 @@ export function useDragPoint(
       }
 
       function onMove(ev: MouseEvent) {
-        const pt = toPoint(ev.clientX, ev.clientY, ev.ctrlKey || ev.metaKey);
+        const snap = ev.ctrlKey || ev.metaKey || useChartStore.getState().magnetMode;
+        const pt = toPoint(ev.clientX, ev.clientY, snap);
         if (pt) handlers.onMove(pt);
       }
 
