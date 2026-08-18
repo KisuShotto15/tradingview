@@ -329,6 +329,13 @@ export const useTradingStore = create<TradingState>()(
           }
         }
 
+        // Bybit lets an order-create call attach takeProfit/stopLoss directly,
+        // which Bybit then sets as the resulting POSITION's own TP/SL — the
+        // same thing setting it by hand in Bybit's UI does. Binance's
+        // order-create has no such field, so it still needs the separate
+        // reduceOnly STOP_MARKET/TAKE_PROFIT_MARKET orders placed below.
+        const nativeTpSl = exchange === "bybit" && perp && !f.reduceOnly;
+
         const body: PlaceOrderParams = {
           apiKey,
           apiSecret,
@@ -348,6 +355,8 @@ export const useTradingStore = create<TradingState>()(
             ? { timeInForce: f.timeInForce }
             : {}),
           ...(perp && f.reduceOnly ? { reduceOnly: true } : {}),
+          ...(nativeTpSl && f.slEnabled && f.sl ? { stopLoss: f.sl } : {}),
+          ...(nativeTpSl && f.tpEnabled && f.tp ? { takeProfit: f.tp } : {}),
         };
 
         try {
@@ -363,8 +372,9 @@ export const useTradingStore = create<TradingState>()(
             return { ok: false, error: msg };
           }
 
-          // Place SL order if enabled (perp only)
-          if (perp && f.slEnabled && f.sl) {
+          // Place SL as a separate reduceOnly order (perp only) — only when
+          // it wasn't already attached natively above (Bybit).
+          if (perp && !nativeTpSl && f.slEnabled && f.sl) {
             const slSide: OrderSide = f.side === "BUY" ? "SELL" : "BUY";
             await fetch("/api/trade/order", {
               method: "POST",
@@ -380,8 +390,9 @@ export const useTradingStore = create<TradingState>()(
             });
           }
 
-          // Place TP order if enabled (perp only)
-          if (perp && f.tpEnabled && f.tp) {
+          // Place TP as a separate reduceOnly order (perp only) — only when
+          // it wasn't already attached natively above (Bybit).
+          if (perp && !nativeTpSl && f.tpEnabled && f.tp) {
             const tpSide: OrderSide = f.side === "BUY" ? "SELL" : "BUY";
             await fetch("/api/trade/order", {
               method: "POST",

@@ -89,6 +89,12 @@ export interface PlaceOrderParams {
   exchange?: Exchange;
   /** Bybit hedge-mode position index (0 one-way, 1 long, 2 short). */
   positionIdx?: number;
+  /** Bybit only: attach TP/SL directly to this order so Bybit sets it as the
+   *  resulting position's own takeProfit/stopLoss (same as setting it by
+   *  hand in Bybit's UI), instead of a separate reduceOnly conditional
+   *  order. Binance has no equivalent field on order-create. */
+  takeProfit?: string;
+  stopLoss?: string;
 }
 
 export interface CancelOrderParams {

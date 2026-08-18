@@ -430,8 +430,19 @@ export async function bybitPlaceOrder(creds: BybitCreds, a: BybitPlaceArgs) {
   if (a.timeInForce === "GTX") body.timeInForce = "PostOnly";
   else if (a.timeInForce && a.timeInForce !== "GTC") body.timeInForce = a.timeInForce;
   if (a.reduceOnly) body.reduceOnly = true;
-  if (a.takeProfit) body.takeProfit = a.takeProfit;
-  if (a.stopLoss) body.stopLoss = a.stopLoss;
+  if (a.takeProfit || a.stopLoss) {
+    // "Full" applies the stop to the whole position (this app never splits
+    // TP/SL across partial size), matching bybitSetTradingStop's convention.
+    body.tpslMode = "Full";
+    if (a.takeProfit) {
+      body.takeProfit = a.takeProfit;
+      body.tpTriggerBy = "MarkPrice";
+    }
+    if (a.stopLoss) {
+      body.stopLoss = a.stopLoss;
+      body.slTriggerBy = "MarkPrice";
+    }
+  }
 
   if (isTrigger && a.stopPrice) {
     body.triggerPrice = a.stopPrice;

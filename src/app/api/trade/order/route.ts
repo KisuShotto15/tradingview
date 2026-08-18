@@ -40,6 +40,8 @@ export async function POST(req: Request) {
             reduceOnly: rest.reduceOnly,
             timeInForce: rest.timeInForce,
             positionIdx: rest.positionIdx,
+            takeProfit: rest.takeProfit,
+            stopLoss: rest.stopLoss,
           },
         );
         return NextResponse.json(result);
