@@ -201,13 +201,14 @@ function Stub({ message }: { message: string }) {
 
 /* ───────────────────────── Positions table ───────────────────────── */
 
-interface TpSlMatch { tp: number | null; sl: number | null }
+export interface TpSlMatch { tp: number | null; sl: number | null }
 
 /** Bybit stores TP/SL on the position itself; Binance uses separate
  *  reduceOnly orders, matched by symbol (this table lists positions across
  *  every symbol on the account, not just the chart's current one — hence
- *  matching against `position.symbol` rather than the chart's symbol). */
-function matchTpSl(position: Position, orders: Order[]): TpSlMatch {
+ *  matching against `position.symbol` rather than the chart's symbol).
+ *  Exported for reuse by the mobile Trade screen. */
+export function matchTpSl(position: Position, orders: Order[]): TpSlMatch {
   if (position.takeProfit !== undefined || position.stopLoss !== undefined) {
     return { tp: position.takeProfit ?? null, sl: position.stopLoss ?? null };
   }
@@ -577,8 +578,8 @@ function OrdersTable({ orders, symbol }: { orders: Order[]; symbol: string }) {
  *  drag-to-modify on the chart) and, optionally, the symbol's leverage —
  *  leverage lives on the symbol/account, not on the order itself, so this
  *  changes what any position opened from this or a future order will use,
- *  not just this one. */
-function EditOrderPopover({
+ *  not just this one. Exported for reuse by the mobile Trade screen. */
+export function EditOrderPopover({
   order, symbol, onClose,
 }: { order: Order; symbol: string; onClose: () => void }) {
   const modifyOrder = useTradingStore((s) => s.modifyOrder);

@@ -1,52 +1,62 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { OrderPanel } from "@/components/trading/OrderPanel/OrderPanel";
+import { matchTpSl, EditOrderPopover } from "@/components/layout/PositionsPanel";
 import { useTradingStore } from "@/lib/store/trading-store";
 import { useChartStore } from "@/lib/store/chart-store";
-import { useEffect, useMemo } from "react";
 import { formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { X } from "lucide-react";
+import { Pencil, X } from "lucide-react";
+import type { Order } from "@/lib/binance/trading-types";
 
 /**
  * Mobile Trade tab — combined view with the order form on top and the user's
  * positions + open orders below, all in one vertical scroll.
  *
  * Reuses <OrderPanel /> (the existing sidebar form) so trading parity with
- * desktop comes "for free". The form internally handles credentials and shows
- * the API-key gate when not connected.
+ * desktop comes "for free" — including switching to the typed TP/SL editor
+ * (PositionEditPanel) in place of the form whenever a position is being
+ * edited. The form internally handles credentials and shows the API-key
+ * gate when not connected.
  */
 export function TradeScreen() {
   const apiKey = useTradingStore((s) => s.apiKey);
   const apiSecret = useTradingStore((s) => s.apiSecret);
   const symbol = useChartStore((s) => s.symbol);
-  const positions = useTradingStore((s) => s.positions);
+  // Account-wide, not scoped to the chart's current symbol — otherwise an
+  // open position on a different symbol than the one charted would never
+  // show up here (same fix as the desktop PositionsPanel).
+  const allPositions = useTradingStore((s) => s.allPositions);
   const orders = useTradingStore((s) => s.orders);
-  const fetchPositions = useTradingStore((s) => s.fetchPositions);
+  const fetchAllPositions = useTradingStore((s) => s.fetchAllPositions);
   const fetchOrders = useTradingStore((s) => s.fetchOrders);
   const fetchBalance = useTradingStore((s) => s.fetchBalance);
   const balance = useTradingStore((s) => s.balance);
   const closePosition = useTradingStore((s) => s.closePosition);
   const cancelOrder = useTradingStore((s) => s.cancelOrder);
+  const openPositionEdit = useTradingStore((s) => s.openPositionEdit);
+  const editingPosition = useTradingStore((s) => s.editingPosition);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   const connected = !!apiKey && !!apiSecret;
 
   useEffect(() => {
     if (!connected) return;
     void fetchBalance(symbol);
-    void fetchPositions(symbol);
+    void fetchAllPositions();
     void fetchOrders(symbol);
     const t = setInterval(() => {
       void fetchBalance(symbol);
-      void fetchPositions(symbol);
+      void fetchAllPositions();
       void fetchOrders(symbol);
     }, 5000);
     return () => clearInterval(t);
-  }, [connected, symbol, fetchBalance, fetchPositions, fetchOrders]);
+  }, [connected, symbol, fetchBalance, fetchAllPositions, fetchOrders]);
 
   const activePositions = useMemo(
-    () => positions.filter((p) => p.positionAmt !== 0),
-    [positions],
+    () => allPositions.filter((p) => p.positionAmt !== 0),
+    [allPositions],
   );
   const activeOrders = useMemo(
     () => orders.filter((o) => o.status === "NEW" || o.status === "PARTIALLY_FILLED"),
@@ -54,6 +64,17 @@ export function TradeScreen() {
   );
   const totalEquity = balance.reduce((acc, b) => acc + b.free + b.locked, 0);
   const unrealizedPnL = activePositions.reduce((acc, p) => acc + p.unrealizedProfit, 0);
+
+  // While a position is being edited (typed TP/SL panel replaces the order
+  // form), skip the rest of this screen — same "just the panel" behavior
+  // the desktop right-click → Modify order flow gets.
+  if (editingPosition) {
+    return (
+      <div className="flex h-full flex-col overflow-hidden">
+        <OrderPanel />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -80,40 +101,71 @@ export function TradeScreen() {
         <Section title="Positions" emptyMessage="No open positions">
           {activePositions.map((p) => {
             const isLong = p.positionAmt > 0;
+            const { tp, sl } = matchTpSl(p, orders);
+            // Positions here span every symbol on the account, so reconstruct
+            // a chartable ticker from the bare exchange symbol — trading in
+            // this app is perp-only, so `.P` always applies.
+            const posSymbol = `${p.symbol}.P`;
             return (
               <div
                 key={`${p.symbol}-${p.side}`}
-                className="flex items-center justify-between border-b border-tv-border/60 px-3 py-2"
+                className="border-b border-tv-border/60 px-3 py-2.5"
               >
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-sm font-semibold">
-                    {p.symbol}{" "}
-                    <span className={cn(
-                      "rounded px-1 text-[9px]",
-                      isLong ? "bg-tv-blue/15 text-tv-blue" : "bg-tv-red/15 text-tv-red",
-                    )}>
-                      {isLong ? "LONG" : "SHORT"}
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-sm font-semibold">
+                      {p.symbol}{" "}
+                      <span className={cn(
+                        "rounded px-1 text-[9px]",
+                        isLong ? "bg-tv-blue/15 text-tv-blue" : "bg-tv-red/15 text-tv-red",
+                      )}>
+                        {isLong ? "LONG" : "SHORT"}
+                      </span>
                     </span>
-                  </span>
-                  <span className="font-mono text-[10px] text-tv-text-muted tabular-nums">
-                    {Math.abs(p.positionAmt)} @ {formatPrice(p.entryPrice)}
-                  </span>
+                    <span className="font-mono text-[10px] text-tv-text-muted tabular-nums">
+                      {Math.abs(p.positionAmt)} @ {formatPrice(p.entryPrice)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex flex-col items-end gap-0.5">
+                      <span className={cn(
+                        "font-mono text-xs tabular-nums",
+                        p.unrealizedProfit >= 0 ? "text-tv-green" : "text-tv-red",
+                      )}>
+                        {p.unrealizedProfit >= 0 ? "+" : ""}{p.unrealizedProfit.toFixed(2)}
+                      </span>
+                      <span className={cn(
+                        "font-mono text-[10px] tabular-nums",
+                        p.percentage >= 0 ? "text-tv-green" : "text-tv-red",
+                      )}>
+                        {p.percentage >= 0 ? "+" : ""}{p.percentage.toFixed(2)}%
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => openPositionEdit(posSymbol, p)}
+                      aria-label="Edit take profit / stop loss"
+                      className="rounded p-1 text-tv-text-muted active:bg-tv-panel-hover active:text-tv-text"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => void closePosition(posSymbol, p)}
+                      aria-label="Close position"
+                      className="rounded p-1 text-tv-text-muted active:bg-tv-red/15 active:text-tv-red"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={cn(
-                    "font-mono text-xs tabular-nums",
-                    p.unrealizedProfit >= 0 ? "text-tv-green" : "text-tv-red",
-                  )}>
-                    {p.unrealizedProfit >= 0 ? "+" : ""}{p.unrealizedProfit.toFixed(2)}
-                  </span>
-                  <button
-                    onClick={() => void closePosition(symbol, p)}
-                    aria-label="Close position"
-                    className="rounded p-1 text-tv-text-muted active:bg-tv-red/15 active:text-tv-red"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
+                {(tp !== null || sl !== null || p.liquidationPrice > 0) && (
+                  <div className="mt-1.5 flex items-center gap-3 font-mono text-[10px] tabular-nums">
+                    {tp !== null && <span className="text-tv-green">TP {formatPrice(tp)}</span>}
+                    {sl !== null && <span className="text-tv-yellow">SL {formatPrice(sl)}</span>}
+                    {p.liquidationPrice > 0 && (
+                      <span className="text-tv-red">Liq {formatPrice(p.liquidationPrice)}</span>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -144,16 +196,33 @@ export function TradeScreen() {
                   {o.reduceOnly && " · reduce-only"}
                 </span>
               </div>
-              <button
-                onClick={() => void cancelOrder(symbol, o.orderId)}
-                aria-label="Cancel order"
-                className="rounded p-1 text-tv-text-muted active:bg-tv-red/15 active:text-tv-red"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setEditingOrder(o)}
+                  aria-label="Edit order"
+                  className="rounded p-1 text-tv-text-muted active:bg-tv-panel-hover active:text-tv-text"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => void cancelOrder(symbol, o.orderId)}
+                  aria-label="Cancel order"
+                  className="rounded p-1 text-tv-text-muted active:bg-tv-red/15 active:text-tv-red"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           ))}
         </Section>
+      )}
+
+      {editingOrder && (
+        <EditOrderPopover
+          order={editingOrder}
+          symbol={symbol}
+          onClose={() => setEditingOrder(null)}
+        />
       )}
     </div>
   );
