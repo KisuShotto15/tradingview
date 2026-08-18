@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { IChartApi, ISeriesApi, IPriceLine } from "lightweight-charts";
 import { useTradingStore } from "@/lib/store/trading-store";
 import { useChartStore } from "@/lib/store/chart-store";
@@ -72,6 +73,9 @@ interface LineSpec {
   /** When true, the line represents an OPEN POSITION (uses "EP" label and
    *  solid styling). Distinguishes from a pending limit order. */
   isPosition?: boolean;
+  /** Right-click handler — currently only wired for a position's TP/SL lines,
+   *  opening a small "Modify order… / Remove" menu. */
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 function colorOf(kind: LineSpec["kind"]): string {
@@ -182,6 +186,7 @@ function LineRow({
           cursor: line.onDrag ? "ns-resize" : "default",
         }}
         onMouseDown={onMouseDown}
+        onContextMenu={line.onContextMenu}
       />
       {/* Visible line */}
       <line
@@ -673,6 +678,7 @@ export function OrderLinesLayer({
   const setPositionTpSl = useTradingStore((s) => s.setPositionTpSl);
   const closePosition = useTradingStore((s) => s.closePosition);
   const modifyingOrderId = useTradingStore((s) => s.modifyingOrderId);
+  const openPositionEdit = useTradingStore((s) => s.openPositionEdit);
 
   // `orders`/`positions` always come from whichever exchange is connected
   // (tradingExchange), but the chart's current symbol may be showing a
@@ -695,6 +701,11 @@ export function OrderLinesLayer({
   // on release it becomes `pending` (Discard/Confirm) until the user confirms.
   const [preview, setPreview] = useState<{ id: string; price: number } | null>(null);
   const [pending, setPending] = useState<{ id: string; price: number } | null>(null);
+  // Right-click menu on a position's SL/TP line: "Modify order…" opens the
+  // typed editor (OrderPanel's PositionEditPanel); "Remove" clears it.
+  const [ctxMenu, setCtxMenu] = useState<{
+    x: number; y: number; pos: Position; field: "TP" | "SL"; onRemove: () => void;
+  } | null>(null);
 
   // Native price lines for EP/TP/SL/liquidation: these are drawn on the chart's
   // own canvas (always in sync, no React-render lag) and span the FULL pane
@@ -1030,6 +1041,13 @@ export function OrderLinesLayer({
           // on the exchange.
           if (tpPrice !== null) void setPositionTpSl(symbol, pos, { tp: null });
         },
+        onContextMenu: (e) => {
+          e.preventDefault();
+          setCtxMenu({
+            x: e.clientX, y: e.clientY, pos, field: "TP",
+            onRemove: () => { if (tpPrice !== null) void setPositionTpSl(symbol, pos, { tp: null }); },
+          });
+        },
         modifying: modifyingOrderId === tpOrder?.orderId,
       });
     }
@@ -1051,6 +1069,13 @@ export function OrderLinesLayer({
         onRemove: () => {
           if (pending?.id === slId) setPending(null);
           if (slPrice !== null) void setPositionTpSl(symbol, pos, { sl: null });
+        },
+        onContextMenu: (e) => {
+          e.preventDefault();
+          setCtxMenu({
+            x: e.clientX, y: e.clientY, pos, field: "SL",
+            onRemove: () => { if (slPrice !== null) void setPositionTpSl(symbol, pos, { sl: null }); },
+          });
         },
         modifying: modifyingOrderId === slOrder?.orderId,
       });
@@ -1092,6 +1117,7 @@ export function OrderLinesLayer({
   }
 
   return (
+    <>
     <svg
       className="pointer-events-none absolute inset-0 z-20 h-full w-full"
       style={{ overflow: "visible" }}
@@ -1216,5 +1242,90 @@ export function OrderLinesLayer({
         })()}
       </g>
     </svg>
+    {ctxMenu && (
+      <PositionContextMenu
+        x={ctxMenu.x}
+        y={ctxMenu.y}
+        pos={ctxMenu.pos}
+        field={ctxMenu.field}
+        onModify={() => {
+          openPositionEdit(symbol, ctxMenu.pos);
+          setCtxMenu(null);
+        }}
+        onRemove={() => {
+          ctxMenu.onRemove();
+          setCtxMenu(null);
+        }}
+        onClose={() => setCtxMenu(null)}
+      />
+    )}
+    </>
+  );
+}
+
+/**
+ * Small right-click menu on a position's SL/TP line: "Modify order…" opens
+ * the typed editor in the trading panel (`PositionEditPanel` in
+ * `OrderPanel.tsx`); "Remove" clears that level, same as the ×-chip.
+ */
+function PositionContextMenu({
+  x, y, pos, field, onModify, onRemove, onClose,
+}: {
+  x: number;
+  y: number;
+  pos: Position;
+  field: "TP" | "SL";
+  onModify: () => void;
+  onRemove: () => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onPointerDown(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) onClose();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("mousedown", onPointerDown, true);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onClose, true);
+    window.addEventListener("resize", onClose);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown, true);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onClose, true);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [onClose]);
+
+  if (typeof document === "undefined") return null;
+  const isLong = pos.positionAmt > 0;
+  const label = field === "TP" ? "Take Profit" : "Stop Loss";
+
+  return createPortal(
+    <div
+      ref={ref}
+      style={{ position: "fixed", left: x, top: y }}
+      className="z-50 w-56 overflow-hidden rounded-md border border-tv-border bg-tv-panel shadow-xl"
+    >
+      <div className="border-b border-tv-border px-3 py-2 text-[10px] text-tv-text-muted">
+        {isLong ? "Long" : "Short"} {Math.abs(pos.positionAmt)} @ {formatPrice(pos.entryPrice)} · {label}
+      </div>
+      <button
+        onClick={onModify}
+        className="block w-full px-3 py-2 text-left text-xs text-tv-text hover:bg-tv-panel-hover"
+      >
+        Modify order…
+      </button>
+      <button
+        onClick={onRemove}
+        className="block w-full px-3 py-2 text-left text-xs text-tv-red hover:bg-tv-panel-hover"
+      >
+        Remove
+      </button>
+    </div>,
+    document.body,
   );
 }

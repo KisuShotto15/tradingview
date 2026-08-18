@@ -3,6 +3,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { isPerp, cleanSym } from "@/lib/binance/rest";
+import { useChartStore } from "@/lib/store/chart-store";
+import { useMobileStore } from "@/lib/store/mobile-store";
 import type {
   Order,
   Position,
@@ -75,6 +77,11 @@ interface TradingState {
   lastError: string | null;
   /** OrderId currently being modified via drag-to-modify on the chart. */
   modifyingOrderId: number | string | null;
+  /** Position shown in the typed TP/SL editor — opened by right-clicking the
+   *  position's SL/TP line on the chart, rendered by `OrderPanel` in place of
+   *  the normal order form. An alternative to the drag → pending → Confirm
+   *  flow for when you want to type an exact price instead of dragging. */
+  editingPosition: { symbol: string; position: Position } | null;
 
   // Actions
   setExchange: (exchange: Exchange) => void;
@@ -82,6 +89,10 @@ interface TradingState {
   setConnected: (v: boolean) => void;
   setTradingPanelOpen: (v: boolean) => void;
   setApiKeyDialogOpen: (v: boolean) => void;
+  /** Opens the typed TP/SL editor for `position` and switches the right
+   *  sidebar / mobile shell to the Trade tab so it's actually visible. */
+  openPositionEdit: (symbol: string, position: Position) => void;
+  closePositionEdit: () => void;
   updateForm: (patch: Partial<OrderForm>) => void;
   resetForm: (price?: number) => void;
 
@@ -161,6 +172,7 @@ export const useTradingStore = create<TradingState>()(
       isLoading: false,
       lastError: null,
       modifyingOrderId: null,
+      editingPosition: null,
 
       setExchange: (exchange) => {
         // Switching exchange invalidates the current connection + cached data.
@@ -171,6 +183,12 @@ export const useTradingStore = create<TradingState>()(
       },
       setConnected: (v) => set({ isConnected: v }),
       setTradingPanelOpen: (v) => set({ tradingPanelOpen: v }),
+      openPositionEdit: (symbol, position) => {
+        set({ editingPosition: { symbol, position } });
+        useChartStore.getState().setRightSidebarTab("trade");
+        useMobileStore.getState().setTab("trade");
+      },
+      closePositionEdit: () => set({ editingPosition: null }),
       setApiKeyDialogOpen: (v) => set({ apiKeyDialogOpen: v }),
       updateForm: (patch) =>
         set((s) => ({ form: { ...s.form, ...patch } })),

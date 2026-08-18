@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, ChevronUp, KeyRound, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronUp, KeyRound, RefreshCw, X } from "lucide-react";
 import { useTradingStore } from "@/lib/store/trading-store";
 import { useChartStore } from "@/lib/store/chart-store";
 import { useBookTicker } from "@/lib/binance/use-book-ticker";
@@ -21,7 +21,7 @@ import {
 import { isPerp } from "@/lib/binance/rest";
 import { getBaseAsset } from "@/components/watchlist/CoinIcon";
 import { cn } from "@/lib/utils";
-import type { SizingMode, SlMode, TimeInForce } from "@/lib/binance/trading-types";
+import type { Position, SizingMode, SlMode, TimeInForce } from "@/lib/binance/trading-types";
 import { ApiKeyDialog } from "../ApiKeyDialog";
 
 const SIZING_LABELS: Record<SizingMode, string> = {
@@ -135,6 +135,7 @@ export function OrderPanel() {
   const fetchBalance = useTradingStore((s) => s.fetchBalance);
   const fetchOrders = useTradingStore((s) => s.fetchOrders);
   const fetchPositions = useTradingStore((s) => s.fetchPositions);
+  const editingPosition = useTradingStore((s) => s.editingPosition);
 
   // Lifted to trading-store so mobile screens can open it too.
   const keyDialogOpen = useTradingStore((s) => s.apiKeyDialogOpen);
@@ -215,6 +216,13 @@ export function OrderPanel() {
         {keyDialogOpen && <ApiKeyDialog onClose={() => setKeyDialogOpen(false)} />}
       </>
     );
+  }
+
+  // Right-clicking a position's SL/TP line on the chart opens this typed
+  // editor here instead of the normal order form — an alternative to
+  // dragging the line when you want an exact price.
+  if (editingPosition) {
+    return <PositionEditPanel symbol={editingPosition.symbol} position={editingPosition.position} />;
   }
 
   return (
@@ -331,6 +339,137 @@ export function OrderPanel() {
       />
 
       {keyDialogOpen && <ApiKeyDialog onClose={() => setKeyDialogOpen(false)} />}
+    </div>
+  );
+}
+
+/**
+ * Typed TP/SL editor for an already-open position, shown in place of the
+ * order form. Opened by right-clicking the position's SL/TP line on the
+ * chart (`OrderLinesLayer`'s context menu → "Modify order…") — an
+ * alternative to dragging the line when an exact price is easier to type.
+ * Confirm goes through the same `setPositionTpSl()` the drag flow uses, so
+ * Bybit still gets its native position stop and Binance its reduceOnly
+ * orders (see CLAUDE.md's "TP/SL attachment" note).
+ */
+function PositionEditPanel({ symbol, position }: { symbol: string; position: Position }) {
+  const closePositionEdit = useTradingStore((s) => s.closePositionEdit);
+  const setPositionTpSl = useTradingStore((s) => s.setPositionTpSl);
+  const symInfo = useSymbolInfo(symbol);
+  const isLong = position.positionAmt > 0;
+  const qty = Math.abs(position.positionAmt);
+
+  const [tpEnabled, setTpEnabled] = useState(!!position.takeProfit && position.takeProfit > 0);
+  const [slEnabled, setSlEnabled] = useState(!!position.stopLoss && position.stopLoss > 0);
+  const [tp, setTp] = useState(position.takeProfit ? String(position.takeProfit) : "");
+  const [sl, setSl] = useState(position.stopLoss ? String(position.stopLoss) : "");
+  const [saving, setSaving] = useState(false);
+
+  const tpNum = parseFloat(tp);
+  const slNum = parseFloat(sl);
+  const tpTicks = tp && isFinite(tpNum) ? ticksBetween(position.entryPrice, tpNum, symInfo.tickSize) : 0;
+  const slTicks = sl && isFinite(slNum) ? ticksBetween(position.entryPrice, slNum, symInfo.tickSize) : 0;
+
+  async function confirm() {
+    setSaving(true);
+    // Toggle off, or an emptied field, means "clear" — matches the ×-chip
+    // remove behavior on the chart line and PositionsPanel's edit popover.
+    const tpVal = tpEnabled ? (tp.trim() === "" ? null : tpNum) : null;
+    const slVal = slEnabled ? (sl.trim() === "" ? null : slNum) : null;
+    await setPositionTpSl(symbol, position, {
+      tp: tpVal === null || isFinite(tpVal) ? tpVal : undefined,
+      sl: slVal === null || isFinite(slVal) ? slVal : undefined,
+    });
+    setSaving(false);
+    closePositionEdit();
+  }
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden text-tv-text">
+      <div className="flex items-center justify-between border-b border-tv-border bg-tv-panel px-3 py-2">
+        <span className="text-[11px] font-semibold">{position.symbol}.P</span>
+        <button
+          onClick={closePositionEdit}
+          className="rounded p-1 text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-3 py-2.5 space-y-4">
+        <div className={cn("text-xs font-semibold", isLong ? "text-tv-blue" : "text-tv-red")}>
+          {isLong ? "Long" : "Short"} {qty} @ {position.entryPrice.toFixed(symInfo.pricePrecision)}
+        </div>
+
+        <div className="space-y-2">
+          <span className="text-[10px] uppercase tracking-wider text-tv-text-muted">Exits</span>
+
+          <div className="space-y-1">
+            <label className="flex items-center justify-between">
+              <span className="text-[10px] text-tv-text">Take profit, price</span>
+              <Switch checked={tpEnabled} onChange={setTpEnabled} />
+            </label>
+            {tpEnabled && (
+              <div className="grid grid-cols-[1fr,auto] gap-2">
+                <input
+                  type="number"
+                  step="any"
+                  value={tp}
+                  onChange={(e) => setTp(e.target.value)}
+                  placeholder={position.entryPrice.toFixed(symInfo.pricePrecision)}
+                  className="rounded border border-tv-border bg-tv-bg px-2 py-1.5 font-mono text-xs tabular-nums focus:border-tv-blue"
+                />
+                <span className="self-center text-[10px] text-tv-text-muted">
+                  {tp ? `${Math.abs(tpTicks)} ticks` : ""}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <label className="flex items-center justify-between">
+              <span className="text-[10px] text-tv-text">Stop loss, price</span>
+              <Switch checked={slEnabled} onChange={setSlEnabled} />
+            </label>
+            {slEnabled && (
+              <div className="grid grid-cols-[1fr,auto] gap-2">
+                <input
+                  type="number"
+                  step="any"
+                  value={sl}
+                  onChange={(e) => setSl(e.target.value)}
+                  placeholder={position.entryPrice.toFixed(symInfo.pricePrecision)}
+                  className="rounded border border-tv-border bg-tv-bg px-2 py-1.5 font-mono text-xs tabular-nums focus:border-tv-blue"
+                />
+                <span className="self-center text-[10px] text-tv-text-muted">
+                  {sl ? `${Math.abs(slTicks)} ticks` : ""}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between text-[11px]">
+          <span className="text-tv-text-muted">Trade value</span>
+          <span className="font-mono tabular-nums">{position.notional.toFixed(2)} USD</span>
+        </div>
+      </div>
+
+      <div className="flex gap-2 border-t border-tv-border p-3">
+        <button
+          onClick={closePositionEdit}
+          className="flex-1 rounded border border-tv-border py-2 text-xs font-semibold text-tv-text hover:bg-tv-panel-hover"
+        >
+          Discard
+        </button>
+        <button
+          onClick={confirm}
+          disabled={saving}
+          className="flex-1 rounded bg-tv-blue py-2 text-xs font-semibold text-white hover:bg-tv-blue/90 disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Confirm"}
+        </button>
+      </div>
     </div>
   );
 }
