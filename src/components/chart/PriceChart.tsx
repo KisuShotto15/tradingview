@@ -3119,7 +3119,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
         const autoFit = () => {
           if (!chartRef.current) return;
           if (key === "main") {
-            chartRef.current.timeScale().fitContent();
+            // Rescale the price axis only — matching TradingView's "Auto"
+            // button, this must NOT touch pan/zoom (timeScale) at all.
+            candleSeriesRef.current?.priceScale().applyOptions({ autoScale: true });
           } else {
             // Reset just the price scale of the pane to auto
             const seriesByPane = {
@@ -3454,8 +3456,14 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
             <button
               onMouseDown={() => {
-                chartRef.current?.timeScale().fitContent();
-                candleSeriesRef.current?.priceScale().applyOptions({ autoScale: true });
+                if (chartContextMenu.region === "scale") {
+                  // Price-scale-only auto-fit — rescales the Y axis to the
+                  // currently visible candles without touching pan/zoom.
+                  candleSeriesRef.current?.priceScale().applyOptions({ autoScale: true });
+                } else {
+                  chartRef.current?.timeScale().fitContent();
+                  candleSeriesRef.current?.priceScale().applyOptions({ autoScale: true });
+                }
                 setChartContextMenu(null);
               }}
               className={MENU_ITEM_CLS}
