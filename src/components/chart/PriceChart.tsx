@@ -15,6 +15,7 @@ import {
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
   type SeriesMarker,
+  type SeriesType,
   type Time,
   type UTCTimestamp,
   type MouseEventParams,
@@ -265,6 +266,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const [lastPrice, setLastPrice] = useState<{ value: number; pct: number } | null>(null);
   const [lastValues, setLastValues] = useState<LastValues>({});
   const [paneOffsets, setPaneOffsets] = useState<PaneOffset[]>([]);
+  // Whether each pane's price scale is currently in auto-scale mode, so the
+  // "A" button can highlight like "L" does — keyed the same as those buttons
+  // ("main" | IndicatorKey). Undefined reads as true (the library's default).
+  // Re-synced after any mouseup, since dragging the price scale flips this
+  // off internally with no public change event to subscribe to.
+  const [autoScaleOn, setAutoScaleOn] = useState<Record<string, boolean>>({});
   const [measure, setMeasure] = useState<MeasureState>(INITIAL_MEASURE);
   const [dragKey, setDragKey] = useState<IndicatorKey | null>(null);
   const pointerDragRef = useRef<{ key: IndicatorKey } | null>(null);
@@ -302,6 +309,25 @@ export function PriceChart({ symbol, timeframe }: Props) {
       return o;
     });
     setPaneOffsets(offsets);
+  }
+
+  // Re-read each pane's actual autoScale flag off its series, so the "A"
+  // button's highlight reflects reality after a price-scale drag (which
+  // flips it off internally) without a public event to react to instead.
+  function resyncAutoScaleStates() {
+    const next: Record<string, boolean> = {};
+    const bySeries: Record<string, ISeriesApi<SeriesType> | null> = {
+      main: candleSeriesRef.current,
+      rsi: rsiRef.current,
+      macd: macdRef.current,
+      adx: adxRef.current,
+      squeeze: squeezeHistRef.current,
+      vumanchu: vmcWt2Ref.current,
+    };
+    for (const [key, s] of Object.entries(bySeries)) {
+      if (s) next[key] = s.priceScale().options().autoScale;
+    }
+    setAutoScaleOn(next);
   }
 
   // Create chart once
@@ -948,7 +974,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
     ro.observe(containerRef.current);
     // mouseup on the chart container catches pane-separator drag-resizes
     // (ResizeObserver only fires on container resize, not internal pane layout changes)
-    const onPaneMouseUp = () => requestAnimationFrame(() => recomputePaneOffsets());
+    const onPaneMouseUp = () =>
+      requestAnimationFrame(() => {
+        recomputePaneOffsets();
+        resyncAutoScaleStates();
+      });
     containerRef.current.addEventListener("mouseup", onPaneMouseUp);
 
     // Right-click context menu — "Add alert at [price]"
@@ -3145,7 +3175,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
               s.priceScale().applyOptions({ autoScale: true });
             }
           }
+          setAutoScaleOn((prev) => ({ ...prev, [key]: true }));
         };
+        const autoScaleActive = autoScaleOn[key] ?? true;
         return (
           <div
             key={paneIdx}
@@ -3158,7 +3190,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
             <button
               onClick={autoFit}
               title="Auto scale"
-              className="flex h-5 w-5 items-center justify-center rounded border border-tv-border bg-tv-panel text-[10px] font-semibold text-tv-text-muted hover:text-tv-text"
+              className={`flex h-5 w-5 items-center justify-center rounded border border-tv-border text-[10px] font-semibold transition-colors ${
+                autoScaleActive
+                  ? "bg-tv-blue/20 text-tv-blue"
+                  : "bg-tv-panel text-tv-text-muted hover:text-tv-text"
+              }`}
             >
               A
             </button>
