@@ -186,7 +186,6 @@ function LineRow({
           cursor: line.onDrag ? "ns-resize" : "default",
         }}
         onMouseDown={onMouseDown}
-        onContextMenu={line.onContextMenu}
       />
       {/* Visible line */}
       <line
@@ -208,9 +207,13 @@ function LineRow({
         fill={pillFill}
         stroke={pillStroke}
         rx={2}
-        style={{ pointerEvents: line.tooltip ? "all" : "none" }}
+        style={{
+          pointerEvents: line.tooltip || line.onContextMenu ? "all" : "none",
+          cursor: line.onContextMenu ? "context-menu" : undefined,
+        }}
         onMouseEnter={() => line.tooltip && setHovered(true)}
         onMouseLeave={() => setHovered(false)}
+        onContextMenu={line.onContextMenu}
       />
       <text
         x={boxLeft + (dividerX - boxLeft) / 2}
@@ -253,6 +256,7 @@ function LineRow({
             height={20}
             fill="transparent"
             style={{ pointerEvents: "all", cursor: "pointer" }}
+            onContextMenu={line.onContextMenu}
             onMouseDown={(e) => {
               e.preventDefault();
               e.stopPropagation();
