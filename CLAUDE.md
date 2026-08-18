@@ -86,13 +86,13 @@ Pure TypeScript, computed client-side over the candle array on every update (`sr
 - `chart-store.ts` — symbol, timeframe, indicators + config, colors/visual settings, watchlists, chart type, right-sidebar tab/width. `persist`ed to localStorage.
 - `drawings-store.ts` — all chart drawings (see below).
 - `trading-store.ts` — exchange choice, API credentials, orders, positions, balance, order form.
+- `alerts-store.ts` — standalone price/RSI/MACD alerts (see "Alerts" below). `persist`ed to localStorage only — unlike drawing-attached alerts, these do **not** sync to Supabase.
 - `mobile-store.ts` — mobile sheet/screen navigation.
-- `alerts/toast-store.ts` — alert toasts.
 - `replay/replay-store.ts` — bar-replay cursor/playback (session-only, not persisted).
 
-Note `trading-store` keeps **two** position lists: `positions` (scoped to the chart's current symbol, drives the chart overlay and order panel) and `allPositions` (every open position on the account, so the watchlist can badge any row). Both are refreshed by `useTradingSync`.
+Note `trading-store` keeps **two** position lists: `positions` (scoped to the chart's current symbol, drives the chart overlay and order panel) and `allPositions` (every open position on the account, refreshed regardless of which symbol is charted — used by the watchlist to badge any row, and by the bottom "Trading Account" panel so it isn't blank just because a different symbol is on the chart). Both are refreshed by `useTradingSync`.
 
-Cross-cutting hooks are mounted once in [src/components/providers.tsx](src/components/providers.tsx): `useCloudSync`, `useDrawingsSync`, `useKeyboardShortcuts`, `useTradingSync` (5s account poll), `useBybitSymbols`.
+Cross-cutting hooks are mounted once in [src/components/providers.tsx](src/components/providers.tsx): `useCloudSync`, `useDrawingsSync`, `useKeyboardShortcuts`, `useTradingSync` (2s account poll), `useBybitSymbols`.
 
 ### Undo/redo (unified history)
 
@@ -109,6 +109,15 @@ All chart drawings (trendlines, fibs, rays, channels, long/short positions, hori
 
 The data model is a **discriminated union** by `kind`. All operations (render, hit-test, drag, serialize) `switch (drawing.kind)`. Coordinate ↔ price/time conversion helpers live in `src/lib/chart/coords.ts` and `snap.ts`; shared drag logic in `use-drag-point.ts` / `use-drag-shape.ts`.
 
+### Alerts
+
+Two independent mechanisms feed one evaluator:
+
+- **Drawing-attached alerts** — the `.alert` field on `hline`/`hray`/`trendline`/`ray` drawings, synced to Supabase along with the rest of the drawing (see above).
+- **Standalone alerts** (price / RSI / MACD) — `alerts-store.ts`, localStorage-only.
+
+Both are evaluated together in [src/hooks/useAlertMonitor.ts](src/hooks/useAlertMonitor.ts), mounted **per-symbol inside `PriceChart`** (not globally in `providers.tsx`) and driven off the live last-price tick, so an alert only fires while its symbol's chart is open. Crossing detection (`conditionHit`/`priceLevelFor` in `src/lib/alerts/alert-eval.ts`) compares the previous vs current tick; sloped drawings (trend line / ray) are interpolated to the current bar's time so a moving price can cross a projected line. A 30s per-alert cooldown avoids duplicate toasts on a chattering price. Firing pushes to `alerts/toast-store.ts` (rendered by `AlertsToast.tsx`, mounted once in `providers.tsx`) and optionally plays a sound (`alerts/sound.ts`).
+
 ### Trading (live Binance + Bybit orders)
 
 The user picks an exchange and enters API key/secret in the UI (`trading-store.ts`, persisted). Everything private goes through `src/app/api/trade/*`, which signs server-side and forwards to the venue. Credentials are passed per-request in the body/query — they are **not** stored server-side.
@@ -117,8 +126,8 @@ Each route takes an `exchange` param and dispatches: Binance is signed inline (H
 
 Two venue differences leak into the shared model and are easy to get wrong:
 
-- **TP/SL attachment.** Binance expresses them as separate `reduceOnly` orders; Bybit stores them *on the position* (`takeProfit`/`stopLoss`, set via the Bybit-only `/api/trade/trading-stop` route). `Position` carries optional fields for both, and UI prefers the position's own values, falling back to matching orders. A position's stop can therefore surface twice (as a position field *and* an order) — the chart overlay deliberately skips orders a position already draws.
-- **Hedge mode.** Bybit rejects orders whose `positionIdx` doesn't match the account's position mode (0 one-way, 1 hedge-long, 2 hedge-short). `Position.positionIdx` is plumbed through so TP/SL edits, closes, and new orders send the right index.
+- **TP/SL attachment.** Binance always expresses them as separate `reduceOnly` orders. Bybit stores them *on the position* (`takeProfit`/`stopLoss`): `placeOrder()` attaches them directly to a brand-new entry order's `/v5/order/create` call (`bybitPlaceOrder`'s `takeProfit`/`stopLoss` args) so the position gets its native TP/SL from the moment it opens, while editing an *already-open* position's TP/SL goes through the Bybit-only `/api/trade/trading-stop` route (`bybitSetTradingStop`) instead — two different Bybit endpoints for what looks like the same UI action, depending on whether a position exists yet. `Position` carries optional fields for both, and UI prefers the position's own values, falling back to matching reduceOnly orders (always for Binance; for Bybit only orders placed before this native-attach path existed). A position's stop can therefore surface twice (as a position field *and* an order) — the chart overlay deliberately skips orders a position already draws.
+- **Hedge mode.** Bybit rejects orders whose `positionIdx` doesn't match the account's position mode (0 one-way, 1 hedge-long, 2 hedge-short). `Position.positionIdx` is plumbed through so TP/SL edits, closes, and new orders send the right index. Inferring hedge mode from *currently open* positions goes blind while flat (no positions ⇒ nothing to inspect) — `bybitIsHedgeMode()` (`/api/trade/position-mode`) queries `/v5/position/list` directly instead, since Bybit keeps returning a hedge-mode symbol's two dormant size-0 rows even with no position open.
 
 `Position.percentage` is the true **ROI** (`unrealizedPnl / initialMargin`), not a naive price-delta × leverage estimate — those diverge, and even flip sign, once margin is added or the account is on cross. The chart's entry line intentionally shows *price movement* instead, matching TradingView; the positions table shows the ROI.
 
@@ -126,7 +135,11 @@ Two venue differences leak into the shared model and are easy to get wrong:
 
 Order sizing/risk math is pure and tested in [src/lib/trading/sizing.ts](src/lib/trading/sizing.ts). Canonical state is `qty` (base asset); every other display value is derived. Two distinct concepts share the word "risk" and must not be conflated: `SizingMode.RISK_USD`/`RISK_PCT` size the position *from* a risk budget and the stop distance, whereas `SlMode` only expresses *where* the stop sits (`PRICE` / `PCT_PRICE`). Risk is deliberately not an `SlMode`, since risk-on-both-sides is circular.
 
+Per-symbol tick/lot precision (`pricePrecision`, `stepSize`, `minNotional`, …) comes from `useSymbolInfo()` ([src/lib/trading/symbol-info.ts](src/lib/trading/symbol-info.ts)), a client-cached wrapper around `/api/trade/exchange-info`. Anywhere a price gets rounded — a typed input, a bid/ask click, or a chart-line drag — must use this precision rather than a fixed decimal count: a hardcoded `.toFixed(2)` silently breaks sub-$1 symbols that need more decimals just to move the price at all.
+
 Chart-side trading UI is in `src/components/trading/`. `OrderLinesLayer.tsx` draws entry/TP/SL/liquidation as an SVG overlay **plus** native lightweight-charts price lines — the native ones give the colored price-scale label and span the full pane (so a line continues past the SVG chip toolbar), and they're kept in sync with any in-progress drag so a dragged level doesn't leave a duplicate behind. Position TP/SL edits are two-step: drag → `pending` → explicit Confirm/Discard on the entry line before anything is sent.
+
+A working order's price/quantity can be edited either from the chart (drag its line) or from the Orders table ([src/components/layout/PositionsPanel.tsx](src/components/layout/PositionsPanel.tsx)'s edit popover) — both go through `modifyOrder()`, which cancels and re-posts with the given overrides since neither exchange supports an in-place amend. Leverage lives on the symbol/account, not the order, so editing it from that same popover calls `setLeverage()` separately and affects any future fill on that symbol, not just the order being edited.
 
 ### Chart snapshots
 
