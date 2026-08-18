@@ -114,6 +114,10 @@ export function PositionDraw({
       if (drawing.locked) return;
       e.preventDefault();
       e.stopPropagation();
+      // Select on grab, not just on release — otherwise resizing straight
+      // from a hover (without a separate prior click) never shows the
+      // selected-only UI (R:R, inner stats) during the whole drag.
+      onSelect();
       snap();
       const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
       function onMove(ev: MouseEvent) {
@@ -146,6 +150,7 @@ export function PositionDraw({
     if (drawing.locked) return;
     e.preventDefault();
     e.stopPropagation();
+    onSelect();
     snap();
     const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
     function onMove(ev: MouseEvent) {
@@ -317,21 +322,23 @@ export function PositionDraw({
         </g>
       )}
 
-      {/* Handles — visible on hover or selected */}
-      {(hovered || selected) && (
-        <>
-          <DrawHandle x={left} y={yEntry} color={entryColor} selected={selected} onMouseDown={makeYDrag("entry")} />
-          <DrawHandle x={left} y={yStop} color={lossColor} selected={selected} onMouseDown={makeYDrag("stop")} />
-          <DrawHandle x={left} y={yTarget} color={profitColor} selected={selected} onMouseDown={makeYDrag("target")} />
-          <DrawHandle
-            x={xB}
-            y={(Math.min(profitY1, lossY1) + Math.max(profitY2, lossY2)) / 2}
-            color={entryColor}
-            selected={selected}
-            onMouseDown={onRightHandleDrag}
-          />
-        </>
-      )}
+      {/* Handles — always mounted (never unmounted/remounted on hover) so a
+          fast hover-then-grab never races the state update that would
+          otherwise need to land first for the handle to exist to click on.
+          Only their visibility is hover/selection-gated. */}
+      <g style={{ opacity: hovered || selected ? 1 : 0, transition: "opacity 80ms" }}>
+        <DrawHandle x={left} y={yEntry} color={entryColor} selected={selected} onMouseDown={makeYDrag("entry")} />
+        <DrawHandle x={left} y={yStop} color={lossColor} selected={selected} shape="square" onMouseDown={makeYDrag("stop")} />
+        <DrawHandle x={left} y={yTarget} color={profitColor} selected={selected} shape="square" onMouseDown={makeYDrag("target")} />
+        <DrawHandle
+          x={xB}
+          y={(Math.min(profitY1, lossY1) + Math.max(profitY2, lossY2)) / 2}
+          color={entryColor}
+          selected={selected}
+          shape="square"
+          onMouseDown={onRightHandleDrag}
+        />
+      </g>
     </g>
   );
 }
