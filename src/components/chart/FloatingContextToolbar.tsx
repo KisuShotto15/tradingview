@@ -16,6 +16,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import type { Drawing } from "@/lib/drawings/types";
+import type { DrawingTemplate } from "@/lib/store/chart-store";
+
+// Stable empty-array reference: a fresh `[]` on every selector call would
+// give useSyncExternalStore a snapshot that "changes" on every render even
+// when nothing did, which crashes with "Maximum update depth exceeded" the
+// instant a drawing kind with no saved templates gets selected.
+const NO_TEMPLATES: DrawingTemplate[] = [];
 
 interface Props {
   containerSize: { width: number; height: number };
@@ -296,7 +303,7 @@ function TemplatesButton({
   drawing: Drawing;
   onApply: (p: Partial<Drawing>) => void;
 }) {
-  const templates = useChartStore((s) => s.drawingTemplates[drawing.kind] ?? []);
+  const templates = useChartStore((s) => s.drawingTemplates[drawing.kind] ?? NO_TEMPLATES);
   const saveDrawingTemplate = useChartStore((s) => s.saveDrawingTemplate);
   const deleteDrawingTemplate = useChartStore((s) => s.deleteDrawingTemplate);
 
