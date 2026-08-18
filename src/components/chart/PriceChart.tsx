@@ -2851,13 +2851,14 @@ export function PriceChart({ symbol, timeframe }: Props) {
     return () => outer.removeEventListener("mousedown", onShiftCapture, { capture: true });
   }, []);
 
-  // OHLC/Vol legend fallback: chart.subscribeCrosshairMove only fires for
-  // mousemoves whose real DOM target lands on the chart's own canvas, but
-  // drawing overlays are a sibling that paints on top and becomes the actual
-  // target whenever the cursor is over one (e.g. inside a Long/Rectangle/Fib
-  // box) — so hovering a candle "under" a drawing would otherwise never
-  // update the legend. This computes it independently, deferring to the
-  // native path (skipping) whenever the canvas itself got the event.
+  // OHLC/Vol legend + native crosshair fallback: chart.subscribeCrosshairMove
+  // (and the crosshair lines it drives) only fire for mousemoves whose real
+  // DOM target lands on the chart's own canvas, but drawing overlays are a
+  // sibling that paints on top and becomes the actual target whenever the
+  // cursor is over one (e.g. inside a Long/Rectangle/Fib box) — so hovering a
+  // candle "under" a drawing would otherwise show neither the legend nor the
+  // dotted crosshair. This computes/positions both independently, deferring
+  // to the native path (skipping) whenever the canvas itself got the event.
   useEffect(() => {
     const outer = outerRef.current;
     if (!outer) return;
@@ -2891,9 +2892,17 @@ export function PriceChart({ symbol, timeframe }: Props) {
         time: candle.time,
         pct: candle.open === 0 ? 0 : ((candle.close - candle.open) / candle.open) * 100,
       });
+      // Draws the dotted guide lines + axis labels via the library's own
+      // public API, since we can't dispatch a real DOM event onto its canvas.
+      chartRef.current.setCrosshairPosition(
+        rawPrice as number,
+        candle.time as UTCTimestamp,
+        candleSeriesRef.current,
+      );
     }
     function onLeave() {
       setHover(null);
+      chartRef.current?.clearCrosshairPosition();
     }
     outer.addEventListener("mousemove", onHoverCapture, { capture: true });
     outer.addEventListener("mouseleave", onLeave);
