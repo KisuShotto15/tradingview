@@ -2924,9 +2924,14 @@ export function PriceChart({ symbol, timeframe }: Props) {
       });
       // Draws the dotted guide lines + axis labels via the library's own
       // public API, since we can't dispatch a real DOM event onto its canvas.
+      // Uses the exact extrapolated cursor time (not the snapped `candle`
+      // used for the legend above) — CrosshairMode.Normal follows the cursor
+      // exactly rather than snapping to bars, and snapping here pinned the
+      // crosshair to the last candle whenever the cursor was past it (e.g.
+      // over a drawing that extends into the right-offset margin).
       chartRef.current.setCrosshairPosition(
         rawPrice as number,
-        candle.time as UTCTimestamp,
+        time as UTCTimestamp,
         candleSeriesRef.current,
       );
     }
