@@ -14,9 +14,9 @@ interface MobileState {
   sheet:
     | null
     | "symbolSearch"
+    | "timeframe"
     | "indicators"
     | "drawings"
-    | "drawingSettings"
     | "chartSettings"
     | "alerts"
     | "apiKey";

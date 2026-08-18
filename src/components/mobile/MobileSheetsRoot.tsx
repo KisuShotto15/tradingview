@@ -7,6 +7,7 @@ import { useTradingStore } from "@/lib/store/trading-store";
 import { MobileDrawingsSheet } from "./MobileDrawingsSheet";
 import { MobileIndicatorsSheet } from "./MobileIndicatorsSheet";
 import { MobileAlertsSheet } from "./MobileAlertsSheet";
+import { MobileTimeframeSheet } from "./MobileTimeframeSheet";
 import { ApiKeyDialog } from "@/components/trading/ApiKeyDialog";
 import { SymbolSelector } from "@/components/chart/SymbolSelector";
 
@@ -17,6 +18,7 @@ import { SymbolSelector } from "@/components/chart/SymbolSelector";
  *  - "drawings"        → MobileDrawingsSheet (custom fullscreen list)
  *  - "indicators"      → MobileIndicatorsSheet (custom fullscreen list)
  *  - "alerts"          → MobileAlertsSheet (custom fullscreen list)
+ *  - "timeframe"       → MobileTimeframeSheet (custom fullscreen list)
  *  - "symbolSearch"    → opens the existing SymbolSelector dialog (chart store)
  *  - "chartSettings"   → opens the existing Chart settings dialog (chart store)
  *  - "apiKey"          → opens the API-key dialog (trading store)
@@ -51,6 +53,7 @@ export function MobileSheetsRoot() {
       {sheet === "drawings" && <MobileDrawingsSheet />}
       {sheet === "indicators" && <MobileIndicatorsSheet />}
       {sheet === "alerts" && <MobileAlertsSheet />}
+      {sheet === "timeframe" && <MobileTimeframeSheet />}
       {/* Headless SymbolSelector — renders only its dialog, no trigger. */}
       <SymbolSelector noTrigger />
       {/* Render ApiKeyDialog at root so it's reachable from mobile menu. */}
