@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -28,6 +28,7 @@ import {
   TrendingUp,
   Type,
   Unlock,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { useChartStore } from "@/lib/store/chart-store";
@@ -76,11 +77,76 @@ export function ObjectTreePanel() {
   const draggedId = useRef<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
+  // Multi-select (Ctrl/Cmd toggles one, Shift extends from the last click)
+  // for batch hide/lock/delete — separate from `selectedId`, which drives
+  // the single chart selection (floating toolbar, handles, etc).
+  const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set());
+  const lastClickedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (multiSelected.size === 0) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setMultiSelected(new Set());
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [multiSelected.size]);
+
+  // Switching symbols invalidates any selection (the ids no longer belong to
+  // `items`, which is scoped to the current symbol). Reset during render —
+  // React's documented pattern for "state that depends on a changed prop" —
+  // rather than an effect, so it can't cause an extra render pass.
+  const [selectionSymbol, setSelectionSymbol] = useState(symbol);
+  if (selectionSymbol !== symbol) {
+    setSelectionSymbol(symbol);
+    setMultiSelected(new Set());
+  }
+
   function toggleHidden(d: Drawing) {
     void update(d.id, { hidden: !d.hidden });
   }
   function toggleLocked(d: Drawing) {
     void update(d.id, { locked: !d.locked });
+  }
+
+  function handleRowClick(e: React.MouseEvent, d: Drawing) {
+    if (e.shiftKey && lastClickedRef.current) {
+      const ids = items.map((i) => i.id);
+      const a = ids.indexOf(lastClickedRef.current);
+      const b = ids.indexOf(d.id);
+      if (a !== -1 && b !== -1) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        setMultiSelected((prev) => new Set([...prev, ...ids.slice(lo, hi + 1)]));
+      }
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) {
+      setMultiSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(d.id)) next.delete(d.id);
+        else next.add(d.id);
+        return next;
+      });
+      lastClickedRef.current = d.id;
+      return;
+    }
+    if (multiSelected.size > 0) {
+      setMultiSelected(new Set());
+      return;
+    }
+    setSelected(d.id === selectedId ? null : d.id);
+    lastClickedRef.current = d.id;
+  }
+
+  function batchHide(hide: boolean) {
+    for (const id of multiSelected) void update(id, { hidden: hide });
+  }
+  function batchLock(lock: boolean) {
+    for (const id of multiSelected) void update(id, { locked: lock });
+  }
+  function batchDelete() {
+    for (const id of multiSelected) void remove(id);
+    setMultiSelected(new Set());
   }
 
   function handleDrop(targetId: string) {
@@ -108,6 +174,56 @@ export function ObjectTreePanel() {
         <span className="text-[11px] text-tv-text-dim">{items.length}</span>
       </div>
 
+      {multiSelected.size > 0 && (
+        <div className="flex items-center gap-1.5 border-b border-tv-border bg-tv-blue/10 px-2 py-1.5">
+          <span className="flex-1 text-[11px] font-medium text-tv-text">
+            {multiSelected.size} selected
+          </span>
+          <button
+            onClick={() => batchHide(true)}
+            title="Hide selected"
+            className="flex h-6 w-6 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+          >
+            <EyeOff className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => batchHide(false)}
+            title="Show selected"
+            className="flex h-6 w-6 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => batchLock(true)}
+            title="Lock selected"
+            className="flex h-6 w-6 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+          >
+            <Lock className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => batchLock(false)}
+            title="Unlock selected"
+            className="flex h-6 w-6 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+          >
+            <Unlock className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={batchDelete}
+            title="Delete selected"
+            className="flex h-6 w-6 items-center justify-center rounded text-tv-text-muted hover:bg-tv-red/15 hover:text-tv-red"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => setMultiSelected(new Set())}
+            title="Clear selection"
+            className="flex h-6 w-6 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       {items.length === 0 ? (
         <div className="flex flex-1 items-center justify-center px-4 text-center text-[11px] text-tv-text-dim">
           No drawings on {symbol}. Pick a tool from the left toolbar to start.
@@ -117,6 +233,7 @@ export function ObjectTreePanel() {
           {items.map((d, i) => {
             const { label, icon: Icon } = metaFor(d.kind);
             const isSelected = d.id === selectedId;
+            const isMultiSelected = multiSelected.has(d.id);
             const isFirst = i === 0; // front-most
             const isLast = i === items.length - 1; // back-most
             return (
@@ -130,10 +247,11 @@ export function ObjectTreePanel() {
                 }}
                 onDrop={() => handleDrop(d.id)}
                 onDragEnd={() => { draggedId.current = null; setDragOverId(null); }}
-                onClick={() => setSelected(isSelected ? null : d.id)}
+                onClick={(e) => handleRowClick(e, d)}
                 className={cn(
                   "group flex cursor-grab items-center gap-1.5 px-2 py-1 text-[12px] transition-colors active:cursor-grabbing",
-                  isSelected ? "bg-tv-blue/15" : "hover:bg-tv-panel-hover",
+                  isSelected && !isMultiSelected ? "bg-tv-blue/15" : "hover:bg-tv-panel-hover",
+                  isMultiSelected && "bg-tv-blue/25",
                   d.hidden && "opacity-50",
                   dragOverId === d.id && "border-t-2 border-t-tv-blue",
                 )}
