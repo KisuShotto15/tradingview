@@ -33,6 +33,7 @@ const TF_UNITS = new Set(["m", "h", "d", "w", "M"]);
  * - Ctrl+Z / Cmd+Z: undo
  * - Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y: redo
  * - Del / Backspace: delete selected drawing
+ * - Ctrl+D / Cmd+D: duplicate selected drawing
  * - Arrows: nudge the selected drawing (Shift = 10x)
  * - Digits + unit letter (m/h/d/w/M): quick timeframe command, e.g. "5" "d" → 5D
  */
@@ -44,7 +45,7 @@ export function useKeyboardShortcuts() {
   const setTimeframe = useChartStore((s) => s.setTimeframe);
   const resetPlacement = useDrawingsStore((s) => s.resetPlacement);
   const setSelected = useDrawingsStore((s) => s.setSelected);
-  const { undo, redo, remove, updateLive, commit } = useDrawings();
+  const { undo, redo, remove, duplicate, updateLive, commit } = useDrawings();
 
   // A run of arrow presses is one gesture, like a drag: live-update on each
   // key, then record a single history entry (and one cloud write) once it
@@ -81,6 +82,17 @@ export function useKeyboardShortcuts() {
       if (isRedo) {
         e.preventDefault();
         void redo();
+        return;
+      }
+
+      // Ctrl+D — duplicate the selected drawing (offset so it doesn't land
+      // exactly on top of the original)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
+        const { selectedId } = useDrawingsStore.getState();
+        if (selectedId) {
+          e.preventDefault();
+          void duplicate(selectedId);
+        }
         return;
       }
 
@@ -237,5 +249,5 @@ export function useKeyboardShortcuts() {
         tfTimerRef.current = null;
       }
     };
-  }, [setTool, openAlertDialog, setSymbolDialogInitialQuery, setSymbolDialogOpen, setTimeframe, resetPlacement, setSelected, undo, redo, remove, updateLive, commit]);
+  }, [setTool, openAlertDialog, setSymbolDialogInitialQuery, setSymbolDialogOpen, setTimeframe, resetPlacement, setSelected, undo, redo, remove, duplicate, updateLive, commit]);
 }

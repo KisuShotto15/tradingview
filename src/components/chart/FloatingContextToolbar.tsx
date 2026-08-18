@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Eye, EyeOff, Lock, Settings2, Trash2, TrendingUp, Unlock } from "lucide-react";
+import { Copy, Eye, EyeOff, Lock, Settings2, Trash2, TrendingUp, Unlock } from "lucide-react";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useChartStore, type DrawingTool } from "@/lib/store/chart-store";
@@ -20,7 +20,7 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
   const drawings = useDrawingsStore((s) => s.drawings);
   const drawing = selectedId ? drawings.find((d) => d.id === selectedId) ?? null : null;
 
-  const { update, remove } = useDrawings();
+  const { update, remove, duplicate } = useDrawings();
 
   const [pos, setPos] = useState({ x: -9999, y: 8 });
   const dragRef = useRef<{ ox: number; oy: number; px: number; py: number } | null>(null);
@@ -161,6 +161,9 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
         </Btn>
         <VisBtn drawing={drawing} onPatch={patch} />
         <LockBtn drawing={drawing} onPatch={patch} />
+        <Btn title="Duplicate (Ctrl+D)" onClick={() => void duplicate(drawing.id)}>
+          <Copy className="h-3.5 w-3.5" />
+        </Btn>
         <Btn title="Delete" danger onClick={() => {
           void remove(drawing.id);
           useDrawingsStore.getState().setSelected(null);
