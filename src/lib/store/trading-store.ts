@@ -305,15 +305,27 @@ export const useTradingStore = create<TradingState>()(
 
         set({ isLoading: true, lastError: null });
 
-        // Bybit hedge mode: if the account holds a hedge position on this symbol,
-        // orders must carry a positionIdx (1 long / 2 short). The entry side
-        // decides it; its attached reduceOnly SL/TP share the same index.
+        // Bybit hedge mode: orders must carry a positionIdx (1 long / 2 short)
+        // when the symbol is in hedge mode. The entry side decides it; its
+        // attached reduceOnly SL/TP share the same index. This is checked
+        // live rather than inferred from `positions`, since that list is
+        // empty while flat — hedge mode would then go undetected and the
+        // order would be submitted without a positionIdx, which Bybit
+        // rejects when the account is actually in hedge mode.
         let posIdx: number | undefined;
         if (exchange === "bybit" && perp) {
-          const hedge = get().positions.some(
-            (p) => p.symbol === sym && (p.positionIdx === 1 || p.positionIdx === 2),
-          );
-          if (hedge) posIdx = f.side === "BUY" ? 1 : 2;
+          try {
+            const params = new URLSearchParams({
+              apiKey, apiSecret, testnet: String(testnet), exchange, symbol: sym,
+            });
+            const res = await fetch(`/api/trade/position-mode?${params}`);
+            if (res.ok) {
+              const { hedge } = await res.json() as { hedge: boolean };
+              if (hedge) posIdx = f.side === "BUY" ? 1 : 2;
+            }
+          } catch {
+            // fall back to no positionIdx (one-way default)
+          }
         }
 
         const body: PlaceOrderParams = {
