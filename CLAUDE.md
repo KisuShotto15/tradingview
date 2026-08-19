@@ -90,9 +90,9 @@ Pure TypeScript, computed client-side over the candle array on every update (`sr
 - `mobile-store.ts` — mobile sheet/screen navigation.
 - `replay/replay-store.ts` — bar-replay cursor/playback (session-only, not persisted).
 
-Note `trading-store` keeps **two** position lists: `positions` (scoped to the chart's current symbol, drives the chart overlay and order panel) and `allPositions` (every open position on the account, refreshed regardless of which symbol is charted — used by the watchlist to badge any row, and by the bottom "Trading Account" panel so it isn't blank just because a different symbol is on the chart). Both are refreshed by `useTradingSync`.
+Note `trading-store` keeps **two** position lists: `positions` (scoped to the chart's current symbol, drives the chart overlay and order panel) and `allPositions` (every open position on the account, refreshed regardless of which symbol is charted — used by the watchlist to badge any row, and by the bottom "Trading Account" panel so it isn't blank just because a different symbol is on the chart). `allPositions` is the one actually fetched over the network (`fetchAllPositions`, unscoped `/api/trade/positions`); `positions` is derived from it client-side via `syncPositionsFromAll(symbol)` — no second request. `fetchPositions(symbol)` (a real, scoped fetch) still exists for one-off post-action refreshes (after placing/closing/modifying), just not inside the polling loop.
 
-Cross-cutting hooks are mounted once in [src/components/providers.tsx](src/components/providers.tsx): `useCloudSync`, `useDrawingsSync`, `useKeyboardShortcuts`, `useTradingSync` (2s account poll), `useBybitSymbols`.
+Cross-cutting hooks are mounted once in [src/components/providers.tsx](src/components/providers.tsx): `useCloudSync`, `useDrawingsSync`, `useKeyboardShortcuts`, `useTradingSync`, `useBybitSymbols`. `useTradingSync` polls `/api/trade/*` every 2s **while the tab is visible** — every route it hits is a real Node.js Vercel Function (Fluid compute bills these), so it pauses entirely on `visibilitychange`/`document.hidden` and resumes with an immediate refresh on foreground, rather than polling a backgrounded tab all day.
 
 ### Undo/redo (unified history)
 

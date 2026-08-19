@@ -101,6 +101,10 @@ interface TradingState {
   fetchPositions: (symbol: string) => Promise<void>;
   /** Fetch every open perp position on the account into `allPositions`. */
   fetchAllPositions: () => Promise<void>;
+  /** Derives `positions` (scoped to `symbol`) from the already-fetched
+   *  `allPositions` instead of issuing a second network request — used by the
+   *  polling loop, which already fetches the whole account every tick. */
+  syncPositionsFromAll: (symbol: string) => void;
 
   placeOrder: (
     symbol: string,
@@ -312,6 +316,17 @@ export const useTradingStore = create<TradingState>()(
           set({ allPositions: data as Position[] });
         } catch {
           // silently fail
+        }
+      },
+
+      syncPositionsFromAll: (symbol) => {
+        if (!isPerp(symbol)) return;
+        const sym = cleanSym(symbol);
+        const positions = get().allPositions.filter((p) => p.symbol === sym);
+        set({ positions });
+        const pos = positions.find((p) => p.positionAmt !== 0);
+        if (pos && pos.leverage) {
+          set((s) => ({ form: { ...s.form, leverage: pos.leverage } }));
         }
       },
 

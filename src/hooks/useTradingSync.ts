@@ -4,7 +4,6 @@ import { useEffect, useRef } from "react";
 import { useTradingStore } from "@/lib/store/trading-store";
 import { useChartStore } from "@/lib/store/chart-store";
 import { useToastStore } from "@/lib/alerts/toast-store";
-import { isPerp } from "@/lib/binance/rest";
 import { formatPrice } from "@/lib/format";
 import type { Position } from "@/lib/binance/trading-types";
 
@@ -19,6 +18,13 @@ import type { Position } from "@/lib/binance/trading-types";
  *
  * The per-panel effects still run when their panels are visible; this hook just
  * guarantees a baseline refresh so the chart overlay is never stale.
+ *
+ * Each tick fires signed requests to `/api/trade/*` — real Vercel Function
+ * invocations. To keep that cheap: `positions` (the chart-scoped list) is
+ * derived from `allPositions` client-side (`syncPositionsFromAll`) instead of
+ * a second `/api/trade/positions` call, and the whole loop pauses while the
+ * tab is in the background (Page Visibility API), resuming with an immediate
+ * refresh when it's foregrounded again.
  */
 // Fast enough that a fill shows up on the chart almost immediately.
 const POLL_MS = 2000;
@@ -48,23 +54,47 @@ export function useTradingSync() {
 
   useEffect(() => {
     if (!apiKey || !apiSecret) return;
-    const perp = isPerp(symbol);
     let cancelled = false;
 
     async function refresh() {
       const s = useTradingStore.getState();
       void s.fetchBalance(symbol);
       void s.fetchOrders(symbol);
-      if (perp) void s.fetchPositions(symbol);
       await s.fetchAllPositions();
+      s.syncPositionsFromAll(symbol);
       if (!cancelled) seededRef.current = true;
     }
 
     void refresh();
-    const t = setInterval(() => void refresh(), POLL_MS);
+    // Background tabs don't need live account data — pausing here is the
+    // single biggest lever on invocation volume, since a trading dashboard is
+    // routinely left open (and backgrounded) for hours.
+    let t: ReturnType<typeof setInterval> | null = null;
+    function startInterval() {
+      if (t !== null) return;
+      t = setInterval(() => void refresh(), POLL_MS);
+    }
+    function stopInterval() {
+      if (t === null) return;
+      clearInterval(t);
+      t = null;
+    }
+    function onVisibilityChange() {
+      if (document.hidden) {
+        stopInterval();
+      } else {
+        void refresh();
+        startInterval();
+      }
+    }
+
+    if (!document.hidden) startInterval();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     return () => {
       cancelled = true;
-      clearInterval(t);
+      stopInterval();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [apiKey, apiSecret, exchange, testnet, symbol]);
 
