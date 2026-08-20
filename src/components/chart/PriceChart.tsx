@@ -2399,7 +2399,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
             source.kind === "yahoo" ? 5000
             : source.kind === "coingecko" ? 60_000
             : 3_600_000; // FRED updates at most daily
-          const timer = setInterval(async () => {
+          const poll = async () => {
             try {
               const fresh = await fetchCandles(symbol, timeframe, 1000);
               if (cancelled || !candleSeriesRef.current || fresh.length === 0) return;
@@ -2444,8 +2444,28 @@ export function PriceChart({ symbol, timeframe }: Props) {
             } catch (e) {
               console.error("Polling refresh failed:", e);
             }
-          }, intervalMs);
-          unsub = () => clearInterval(timer);
+          };
+          // These sources go through our own /api/* proxies (real Vercel
+          // Functions), so keep the timer off while the tab is backgrounded
+          // and catch up with one immediate poll on the way back — same
+          // treatment as the account poll in useTradingSync.
+          let timer: ReturnType<typeof setInterval> | null = null;
+          const startPoll = () => {
+            if (timer === null) timer = setInterval(() => void poll(), intervalMs);
+          };
+          const stopPoll = () => {
+            if (timer !== null) { clearInterval(timer); timer = null; }
+          };
+          const onVisibility = () => {
+            if (document.hidden) stopPoll();
+            else { void poll(); startPoll(); }
+          };
+          if (!document.hidden) startPoll();
+          document.addEventListener("visibilitychange", onVisibility);
+          unsub = () => {
+            stopPoll();
+            document.removeEventListener("visibilitychange", onVisibility);
+          };
           return;
         }
 

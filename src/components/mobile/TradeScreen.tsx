@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { OrderPanel } from "@/components/trading/OrderPanel/OrderPanel";
 import { matchTpSl, EditOrderPopover } from "@/components/layout/PositionsPanel";
 import { useTradingStore } from "@/lib/store/trading-store";
@@ -29,9 +29,6 @@ export function TradeScreen() {
   // show up here (same fix as the desktop PositionsPanel).
   const allPositions = useTradingStore((s) => s.allPositions);
   const orders = useTradingStore((s) => s.orders);
-  const fetchAllPositions = useTradingStore((s) => s.fetchAllPositions);
-  const fetchOrders = useTradingStore((s) => s.fetchOrders);
-  const fetchBalance = useTradingStore((s) => s.fetchBalance);
   const balance = useTradingStore((s) => s.balance);
   const closePosition = useTradingStore((s) => s.closePosition);
   const cancelOrder = useTradingStore((s) => s.cancelOrder);
@@ -41,18 +38,9 @@ export function TradeScreen() {
 
   const connected = !!apiKey && !!apiSecret;
 
-  useEffect(() => {
-    if (!connected) return;
-    void fetchBalance(symbol);
-    void fetchAllPositions();
-    void fetchOrders(symbol);
-    const t = setInterval(() => {
-      void fetchBalance(symbol);
-      void fetchAllPositions();
-      void fetchOrders(symbol);
-    }, 5000);
-    return () => clearInterval(t);
-  }, [connected, symbol, fetchBalance, fetchAllPositions, fetchOrders]);
+  // No poll of its own: `useTradingSync` (mounted globally in providers.tsx)
+  // already refreshes balance / orders / positions and pauses on a hidden tab.
+  // A second interval here just doubled the `/api/trade/*` invocations.
 
   const activePositions = useMemo(
     () => allPositions.filter((p) => p.positionAmt !== 0),

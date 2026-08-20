@@ -42,6 +42,14 @@ interface GlobalData {
 
 const CG_BASE = "https://api.coingecko.com/api/v3";
 
+/** This route fans out to up to 6 upstream calls and maps a year of points
+ *  per coin, so it is the most expensive public route here. The result is
+ *  public and identical for everyone — let the CDN serve repeat hits rather
+ *  than re-running the whole fan-out per poll (the client polls it every 60s). */
+const CACHE_HEADERS = {
+  "Cache-Control": "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400",
+} as const;
+
 // Top-5 coins used for the denominator approximation.
 const TOP_COINS = ["bitcoin", "ethereum", "tether", "binancecoin", "solana"];
 
@@ -152,7 +160,7 @@ export async function GET(req: Request) {
         }
         return { time, value: sum / coverageFactor };
       });
-      return NextResponse.json({ candles: buildCandles(points) });
+      return NextResponse.json({ candles: buildCandles(points) }, { headers: CACHE_HEADERS });
     }
 
     // --- Dominance for a specific coin ---
@@ -190,7 +198,7 @@ export async function GET(req: Request) {
       return { time, value: estimatedTotal > 0 ? (own / estimatedTotal) * 100 : 0 };
     });
 
-    return NextResponse.json({ candles: buildCandles(points) });
+    return NextResponse.json({ candles: buildCandles(points) }, { headers: CACHE_HEADERS });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "fetch failed" },

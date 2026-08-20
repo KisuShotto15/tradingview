@@ -43,8 +43,23 @@ export async function middleware(request: NextRequest) {
   return supabaseResponse;
 }
 
+/**
+ * Every matched request runs this middleware as its own serverless invocation,
+ * *before* Vercel's CDN cache is consulted — so a matched path can never be
+ * served purely from cache, no matter what `Cache-Control` its route sets.
+ *
+ * The public data proxies below serve identical, credential-free market data
+ * to everyone and set long `Cache-Control` headers precisely so the CDN can
+ * answer repeat hits without running any function. Excluding them here is what
+ * actually makes that work; gating them behind auth bought nothing anyway,
+ * since the data they return is public.
+ *
+ * `/api/trade/*` (minus exchange-info) deliberately stays matched: those
+ * routes sign requests against a real exchange, and the session check keeps
+ * the deployment from being used as an open proxy by a stranger.
+ */
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/yahoo|api/fred|api/coingecko|api/trade/exchange-info|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

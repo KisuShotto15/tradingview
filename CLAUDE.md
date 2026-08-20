@@ -98,6 +98,8 @@ Note `trading-store` keeps **two** position lists: `positions` (scoped to the ch
 
 Cross-cutting hooks are mounted once in [src/components/providers.tsx](src/components/providers.tsx): `useCloudSync`, `useDrawingsSync`, `useKeyboardShortcuts`, `useTradingSync`, `useBybitSymbols`. `useTradingSync` polls `/api/trade/*` every 2s **while the tab is visible** — every route it hits is a real Node.js Vercel Function (Fluid compute bills these), so it pauses entirely on `visibilitychange`/`document.hidden` and resumes with an immediate refresh on foreground, rather than polling a backgrounded tab all day.
 
+**`useTradingSync` is the only account poll in the app — keep it that way.** `PositionsPanel`, `TradeScreen` and `OrderPanel` all read `balance`/`orders`/`allPositions` straight off the store and render whatever the global poll last wrote. Each of those components used to run its *own* 5s interval over the same three endpoints, which silently multiplied the billed invocations (and, unlike `useTradingSync`, kept firing in a backgrounded tab). A panel needing fresher data is not a reason to add an interval — change `POLL_MS`, or trigger a one-shot `fetch*` after a user action the way `placeOrder`/`closePosition` already do.
+
 ### Undo/redo (unified history)
 
 `src/lib/history/index.ts` defines a single `UnifiedHistoryStack` (`unifiedHistory`) recording three op kinds: `drawing`, `chartState` (indicator/config/visual changes), and `viewport`. Mutations that should be undoable go through it. Guard against re-recording during replay with `withoutHistory()` / `isApplyingHistory`. Note `src/lib/drawings/history.ts` also exists (drawing-specific); `src/lib/history/` is the newer unified layer.
@@ -165,6 +167,8 @@ across an `await`.
 ### Auth & cloud sync
 
 `src/middleware.ts` (Supabase SSR) gates the whole app: unauthenticated users are redirected to `/login` (except `/login` and `/auth/*`). On sign-in, `useCloudSync` + `useDrawingsSync` load the user's chart settings, watchlist, and drawings from Supabase, then debounce-save changes back. Supabase clients: `client.ts` (browser), `server.ts` (route handlers / middleware). Schema + RLS policies in `supabase/schema.sql` and `supabase/migrations/`.
+
+The middleware `matcher` is also a **billing** control, not just an auth one: a matched request runs the middleware as its own invocation *before* the CDN cache is consulted, so a matched path can never be served purely from cache however long its `Cache-Control` is. The public data proxies (`/api/yahoo`, `/api/fred`, `/api/coingecko`, `/api/trade/exchange-info`) are therefore excluded from the matcher — they return identical credential-free market data to everyone and set long `Cache-Control` headers so Vercel's CDN answers repeats with no function run at all. `exchange-info` is the one that really matters: it parses a multi-MB Binance `exchangeInfo` document to pluck a single symbol, easily the most CPU-expensive thing in the API surface. Signed `/api/trade/*` routes stay matched on purpose — the session check is what stops the deployment being used as an open exchange proxy. Adding a new public, cacheable proxy route means adding it to the matcher exclusion too, or the cache headers do nothing.
 
 ### Responsive shell
 

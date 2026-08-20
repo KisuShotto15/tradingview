@@ -121,7 +121,17 @@ export async function GET(req: Request) {
         isFinal: true,
       });
     }
-    return NextResponse.json({ candles });
+    // Public market data, identical for every viewer — let the CDN answer
+    // repeat polls (the client re-polls this every 5s) instead of invoking
+    // the function each time. Matches the 15s upstream revalidate above.
+    return NextResponse.json(
+      { candles },
+      {
+        headers: {
+          "Cache-Control": "public, max-age=5, s-maxage=15, stale-while-revalidate=60",
+        },
+      },
+    );
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "fetch failed" },

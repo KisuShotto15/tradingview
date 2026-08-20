@@ -78,7 +78,15 @@ export async function GET(req: Request) {
         isFinal: true,
       });
     }
-    return NextResponse.json({ candles });
+    // FRED publishes at most daily — let the CDN serve repeat hits.
+    return NextResponse.json(
+      { candles },
+      {
+        headers: {
+          "Cache-Control": "public, max-age=3600, s-maxage=43200, stale-while-revalidate=86400",
+        },
+      },
+    );
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "fetch failed" },

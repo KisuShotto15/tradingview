@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Maximize2, Minimize2, Pencil, X } from "lucide-react";
 import { useTradingStore } from "@/lib/store/trading-store";
 import { useChartStore } from "@/lib/store/chart-store";
@@ -28,25 +28,15 @@ export function PositionsPanel() {
   const positions = useTradingStore((s) => s.allPositions);
   const orders = useTradingStore((s) => s.orders);
   const balance = useTradingStore((s) => s.balance);
-  const fetchBalance = useTradingStore((s) => s.fetchBalance);
-  const fetchOrders = useTradingStore((s) => s.fetchOrders);
   const symbol = useChartStore((s) => s.symbol);
 
   const [collapsed, setCollapsed] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const [tab, setTab] = useState<Tab>("positions");
 
-  // Periodic refresh while expanded so the orders table stays accurate.
-  useEffect(() => {
-    if (collapsed || !apiKey || !apiSecret) return;
-    void fetchBalance(symbol);
-    void fetchOrders(symbol);
-    const t = setInterval(() => {
-      void fetchBalance(symbol);
-      void fetchOrders(symbol);
-    }, 5000);
-    return () => clearInterval(t);
-  }, [collapsed, apiKey, apiSecret, symbol, fetchBalance, fetchOrders]);
+  // No poll of its own: `useTradingSync` already refreshes balance / orders /
+  // positions globally (and pauses on a hidden tab). A second interval here
+  // just doubled the `/api/trade/*` invocations for the exact same data.
 
   const totalEquity = useMemo(() => {
     return balance.reduce((acc, b) => acc + b.free + b.locked, 0);
