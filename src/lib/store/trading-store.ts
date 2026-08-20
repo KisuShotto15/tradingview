@@ -348,7 +348,11 @@ export const useTradingStore = create<TradingState>()(
         const positions = get().allPositions.filter((p) => p.symbol === sym);
         set({ positions });
         const pos = positions.find((p) => p.positionAmt !== 0);
-        if (pos && pos.leverage) {
+        // Only write when the value actually changed. This runs on every poll
+        // tick, and an unconditional `set` would hand out a fresh `form`
+        // object each time — re-rendering the whole order panel every 2s and
+        // stomping on the leverage field while the user is editing it.
+        if (pos && pos.leverage && get().form.leverage !== pos.leverage) {
           set((s) => ({ form: { ...s.form, leverage: pos.leverage } }));
         }
       },

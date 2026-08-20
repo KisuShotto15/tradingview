@@ -197,6 +197,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
   // the truncated slice while replay is active).
   const replayFullRef = useRef<Candle[]>([]);
   const savedPaneHeightsRef = useRef<number[]>([]);
+  /** Previous `subPanesHidden`, so the collapse effect can tell a real
+   *  transition from a re-run caused by an indicator being toggled. */
+  const prevSubPanesHiddenRef = useRef(false);
   const firstPointRef = useRef<{ time: number; price: number } | null>(null);
   const placementPointsRef = useRef<Array<{ time: number; price: number }>>([]);
   // Last unconstrained cursor (time/price) — lets Shift snap the preview the
@@ -1078,10 +1081,27 @@ export function PriceChart({ symbol, timeframe }: Props) {
             }
           }
         }
-        // Shift+dblclick on empty background → toggle sub-pane visibility.
-        // Gated on Shift so an ordinary dblclick (e.g. while trying to
-        // deselect) doesn't silently hide every RSI/MACD/etc. pane.
-        if (e.shiftKey) state.toggleSubPanesHidden();
+        // Double-click on empty background → collapse/restore the indicator
+        // sub-panes, the way TradingView maximizes the price pane.
+        //
+        // Only when nothing is selected and no placement is in flight: a
+        // dblclick that lands while a drawing is selected (or mid-draw) is
+        // someone deselecting or finishing a shape, and silently hiding every
+        // RSI/MACD pane there would feel like a glitch. The drawing layer
+        // clears the selection on its own click, so by the time a *second*
+        // click arrives on empty background the selection is already null —
+        // hence reading it here rather than trusting the first click.
+        //
+        // Restricted to the plot area: lightweight-charts owns double-click on
+        // the price scale (it resets autoscale there), and hijacking it to
+        // collapse every pane instead would be the wrong response entirely.
+        const plotWidth = chartRef.current?.timeScale().width() ?? rect.width;
+        if (e.clientX - rect.left > plotWidth) return;
+
+        const d = useDrawingsStore.getState();
+        if (d.selectedId === null && d.placement.draft === null) {
+          state.toggleSubPanesHidden();
+        }
         return;
       }
 
@@ -1121,25 +1141,46 @@ export function PriceChart({ symbol, timeframe }: Props) {
     return () => el.removeEventListener("dblclick", onDblClick);
   }, []);
 
-  // Collapse/expand sub-pane heights on dblclick toggle.
-  // Collapse/expand sub-panes.
+  // Collapse/expand sub-panes (dblclick on empty chart background).
   // setHeight() is clamped to MIN_PANE_HEIGHT=30 inside lightweight-charts.
   // setStretchFactor(0) bypasses that limit → pane renders at the 2px layout minimum.
   // The main pane auto-expands to fill the freed space. No container resize needed.
+  //
+  // Also re-runs when `indicators` changes, because adding a study while
+  // collapsed creates a fresh pane at its default stretch factor — without
+  // this it would pop open on its own, contradicting the collapsed state.
   useEffect(() => {
     if (!chartRef.current) return;
     const panes = chartRef.current.panes();
+    const wasHidden = prevSubPanesHiddenRef.current;
+    prevSubPanesHiddenRef.current = subPanesHidden;
+
     if (subPanesHidden) {
-      savedPaneHeightsRef.current = panes.map((p) => p.getStretchFactor());
-      panes.forEach((p, i) => { if (i > 0) p.setStretchFactor(0); });
-    } else {
       panes.forEach((p, i) => {
-        const saved = savedPaneHeightsRef.current[i];
-        if (i > 0 && saved !== undefined && saved > 0) p.setStretchFactor(saved);
+        if (i === 0) return;
+        // Capture only real heights: re-running this while already collapsed
+        // would otherwise overwrite every saved factor with 0 and lose them.
+        const factor = p.getStretchFactor();
+        if (factor > 0) savedPaneHeightsRef.current[i] = factor;
+        p.setStretchFactor(0);
       });
+    } else if (wasHidden) {
+      // Restore only on the collapsed→expanded transition: doing it on every
+      // `indicators` change would reset pane heights the user had dragged.
+      panes.forEach((p, i) => {
+        if (i === 0) return;
+        const saved = savedPaneHeightsRef.current[i];
+        // Fall back to 1 — the factor the pane-creation code assigns a fresh
+        // sub-pane. A pane with nothing saved (collapsed state restored from
+        // localStorage, or the study added while collapsed) would otherwise
+        // stay at 0 forever: permanently invisible, with no way back.
+        p.setStretchFactor(saved && saved > 0 ? saved : 1);
+      });
+    } else {
+      return; // Expanded and staying expanded — leave pane heights alone.
     }
     requestAnimationFrame(() => recomputePaneOffsets());
-  }, [subPanesHidden]);
+  }, [subPanesHidden, indicators]);
 
   // Manage volume — overlay at the bottom of the main pane
   useEffect(() => {
@@ -3379,8 +3420,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
       </div>
 
       {/* ── Sub-pane indicator pills with drag-to-overlay ─────────────────── */}
-      {/* Drop zones — always in the DOM. Visible/active only while dragging. */}
-      {ownedSubPanes.map((p) => {
+      {/* Drop zones — always in the DOM. Visible/active only while dragging.
+          Skipped entirely while collapsed: a hidden pane is still ~2px tall,
+          so its zone would sit as an invisible sliver over the price pane and
+          swallow drops meant for the chart. */}
+      {!subPanesHidden && ownedSubPanes.map((p) => {
         const offset = paneOffsets[p.paneIdx];
         if (!offset) return null;
         const isSource = !!dragKey && (dragKey === p.key || indicatorOverlays[dragKey] === p.key);
@@ -3406,8 +3450,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
         );
       })}
 
-      {/* Pills for each owned pane */}
-      {!pillsCollapsed && ownedSubPanes.map((p) => {
+      {/* Pills for each owned pane. Collapsed sub-panes are ~2px tall, so
+          their pills would otherwise pile up as orphaned labels floating over
+          the price pane instead of disappearing with the pane they name. */}
+      {!pillsCollapsed && !subPanesHidden && ownedSubPanes.map((p) => {
         const offset = paneOffsets[p.paneIdx];
         if (!offset) return null;
         const guests = subPaneEntries.filter(
