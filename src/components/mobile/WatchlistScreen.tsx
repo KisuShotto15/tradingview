@@ -32,6 +32,7 @@ import { useTradingStore } from "@/lib/store/trading-store";
 import type { Position } from "@/lib/binance/trading-types";
 import { formatPrice, formatPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useBatchedTicks } from "@/hooks/useBatchedTicks";
 import { CoinIcon, getBaseAsset } from "@/components/watchlist/CoinIcon";
 import { MobileSheet } from "./MobileSheet";
 
@@ -102,6 +103,7 @@ export function WatchlistScreen() {
 
   const [rows, setRows] = useState<Record<string, Row>>({});
   const [flash, setFlash] = useState<Record<string, "up" | "down" | null>>({});
+  const applyTick = useBatchedTicks(setRows, setFlash);
   const [manageOpen, setManageOpen] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
@@ -134,22 +136,6 @@ export function WatchlistScreen() {
     }
     if (binanceSyms.length > 0) fetchTickers24h(binanceSyms).then(seed).catch(console.error);
     if (bybitSyms.length > 0) fetchBybitTickers24h(bybitSyms).then(seed).catch(console.error);
-
-    function applyTick(tick: { symbol: string; close: number; pct: number }) {
-      setRows((prev) => {
-        const prevRow = prev[tick.symbol];
-        if (prevRow) {
-          if (tick.close > prevRow.price) {
-            setFlash((f) => ({ ...f, [tick.symbol]: "up" }));
-            setTimeout(() => setFlash((f) => ({ ...f, [tick.symbol]: null })), 300);
-          } else if (tick.close < prevRow.price) {
-            setFlash((f) => ({ ...f, [tick.symbol]: "down" }));
-            setTimeout(() => setFlash((f) => ({ ...f, [tick.symbol]: null })), 300);
-          }
-        }
-        return { ...prev, [tick.symbol]: { symbol: tick.symbol, price: tick.close, pct: tick.pct } };
-      });
-    }
 
     const unsubs: (() => void)[] = [];
     if (binanceSyms.length > 0) unsubs.push(getBinanceWS().subscribeMiniTickers(binanceSyms, applyTick));
