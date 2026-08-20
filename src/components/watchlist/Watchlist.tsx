@@ -514,7 +514,11 @@ export function Watchlist() {
           </button>
         </div>
       )}
-      <ScrollArea className="flex-1">
+      {/* `min-h-0` is load-bearing: a flex item defaults to `min-height:auto`,
+          which resolves to its content height, so without it the scroll root
+          grows past the sidebar instead of shrinking — the rows below the fold
+          get clipped by the sidebar's `overflow-hidden` and never scroll. */}
+      <ScrollArea className="min-h-0 flex-1">
         <div
           className="flex flex-col"
           onContextMenu={(e) => openContextMenu(e, null)}
