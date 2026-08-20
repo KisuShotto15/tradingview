@@ -105,6 +105,14 @@ interface TradingState {
    *  `allPositions` instead of issuing a second network request — used by the
    *  polling loop, which already fetches the whole account every tick. */
   syncPositionsFromAll: (symbol: string) => void;
+  /**
+   * Refresh balance + orders + positions in a **single** request to
+   * `/api/trade/sync`, then derive the symbol-scoped `positions` locally.
+   * This is what the polling loop uses: one Vercel Function invocation per
+   * tick instead of three (plus three middleware runs). The per-resource
+   * `fetch*` actions above remain for one-off post-action refreshes.
+   */
+  syncAccount: (symbol: string) => Promise<void>;
 
   placeOrder: (
     symbol: string,
@@ -156,6 +164,39 @@ function defaultForm(): OrderForm {
     reduceOnly: false,
     leverage: 10,
   };
+}
+
+/**
+ * Normalize the raw open-orders payload. Binance returns its own shape with
+ * numeric fields as strings; the Bybit mapper already emits the same field
+ * names with real numbers — `parseFloat` is a no-op on those, so one mapper
+ * covers both. Shared by `fetchOrders` and `syncAccount`.
+ */
+function mapRawOrders(data: unknown, perp: boolean): Order[] {
+  if (!Array.isArray(data)) return [];
+  return (data as Array<Record<string, unknown>>).map((o) => ({
+    orderId: o.orderId as number,
+    clientOrderId: o.clientOrderId as string,
+    symbol: o.symbol as string,
+    side: o.side as Order["side"],
+    type: o.type as Order["type"],
+    status: o.status as Order["status"],
+    price: parseFloat(o.price as string),
+    origQty: parseFloat(o.origQty as string),
+    executedQty: parseFloat(o.executedQty as string),
+    stopPrice: o.stopPrice ? parseFloat(o.stopPrice as string) : undefined,
+    timeInForce: o.timeInForce as Order["timeInForce"],
+    time: o.time as number,
+    updateTime: o.updateTime as number,
+    reduceOnly: (o.reduceOnly as boolean) ?? false,
+    isPerp: perp,
+  }));
+}
+
+/** Shape returned by `/api/trade/sync` for each of its three reads. */
+interface SyncSlot<T> {
+  data: T | null;
+  error: unknown | null;
 }
 
 export const useTradingStore = create<TradingState>()(
@@ -246,25 +287,7 @@ export const useTradingStore = create<TradingState>()(
           const res = await fetch(`/api/trade/orders?${params}`);
           if (!res.ok) return;
           const data = await res.json();
-          set({
-            orders: (data as Array<Record<string, unknown>>).map((o) => ({
-              orderId: o.orderId as number,
-              clientOrderId: o.clientOrderId as string,
-              symbol: o.symbol as string,
-              side: o.side as Order["side"],
-              type: o.type as Order["type"],
-              status: o.status as Order["status"],
-              price: parseFloat(o.price as string),
-              origQty: parseFloat(o.origQty as string),
-              executedQty: parseFloat(o.executedQty as string),
-              stopPrice: o.stopPrice ? parseFloat(o.stopPrice as string) : undefined,
-              timeInForce: o.timeInForce as Order["timeInForce"],
-              time: o.time as number,
-              updateTime: o.updateTime as number,
-              reduceOnly: (o.reduceOnly as boolean) ?? false,
-              isPerp: perp,
-            })),
-          });
+          set({ orders: mapRawOrders(data, perp) });
         } catch {
           // silently fail
         }
@@ -327,6 +350,42 @@ export const useTradingStore = create<TradingState>()(
         const pos = positions.find((p) => p.positionAmt !== 0);
         if (pos && pos.leverage) {
           set((s) => ({ form: { ...s.form, leverage: pos.leverage } }));
+        }
+      },
+
+      syncAccount: async (symbol) => {
+        const { apiKey, apiSecret, testnet, exchange } = get();
+        if (!apiKey || !apiSecret) return;
+        const perp = isPerp(symbol);
+        const params = new URLSearchParams({
+          apiKey,
+          apiSecret,
+          testnet: String(testnet),
+          isPerp: String(perp),
+          symbol: cleanSym(symbol),
+          exchange,
+        });
+        try {
+          const res = await fetch(`/api/trade/sync?${params}`);
+          if (!res.ok) {
+            set({ isConnected: false });
+            return;
+          }
+          const data = (await res.json()) as {
+            balance: SyncSlot<AssetBalance[]>;
+            orders: SyncSlot<unknown>;
+            positions: SyncSlot<Position[]>;
+          };
+          // Each slot is applied only if that read succeeded — a single failing
+          // endpoint shouldn't blank the panels fed by the other two.
+          if (data.balance?.data) set({ balance: data.balance.data, isConnected: true });
+          if (data.orders?.data) set({ orders: mapRawOrders(data.orders.data, perp) });
+          if (data.positions?.data) {
+            set({ allPositions: data.positions.data });
+            get().syncPositionsFromAll(symbol);
+          }
+        } catch {
+          set({ isConnected: false });
         }
       },
 
@@ -442,8 +501,7 @@ export const useTradingStore = create<TradingState>()(
           }
 
           set({ isLoading: false });
-          void get().fetchOrders(symbol);
-          void get().fetchPositions(symbol);
+          void get().syncAccount(symbol);
           return { ok: true };
         } catch (e) {
           set({ isLoading: false, lastError: String(e) });
@@ -461,7 +519,7 @@ export const useTradingStore = create<TradingState>()(
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ apiKey, apiSecret, testnet, exchange, symbol: sym, isPerp: perp, orderId }),
         });
-        void get().fetchOrders(symbol);
+        void get().syncAccount(symbol);
       },
 
       modifyOrder: async (symbol, order, patch) => {
@@ -520,7 +578,7 @@ export const useTradingStore = create<TradingState>()(
             set({ lastError: data.msg ?? "replace failed" });
             return { ok: false, error: data.msg ?? "replace failed" };
           }
-          void get().fetchOrders(symbol);
+          void get().syncAccount(symbol);
           return { ok: true };
         } catch (e) {
           set({ modifyingOrderId: null, lastError: String(e) });
@@ -554,9 +612,7 @@ export const useTradingStore = create<TradingState>()(
             set({ lastError: data.msg ?? "close failed" });
             return { ok: false, error: data.msg ?? "close failed" };
           }
-          void get().fetchOrders(symbol);
-          void get().fetchPositions(symbol);
-          void get().fetchBalance(symbol);
+          void get().syncAccount(symbol);
           return { ok: true };
         } catch (e) {
           set({ lastError: String(e) });
@@ -589,7 +645,7 @@ export const useTradingStore = create<TradingState>()(
               set({ lastError: data.msg ?? "tp/sl failed" });
               return { ok: false, error: data.msg ?? "tp/sl failed" };
             }
-            void get().fetchPositions(symbol);
+            void get().syncAccount(symbol);
             return { ok: true };
           } catch (e) {
             set({ lastError: String(e) });
@@ -641,7 +697,7 @@ export const useTradingStore = create<TradingState>()(
             await cancelExisting((t) => t === "STOP_MARKET" || t === "STOP" || t === "STOP_LIMIT");
             if (sl !== null && sl > 0) await place("STOP_MARKET", sl);
           }
-          void get().fetchOrders(symbol);
+          void get().syncAccount(symbol);
           return { ok: true };
         } catch (e) {
           set({ lastError: String(e) });

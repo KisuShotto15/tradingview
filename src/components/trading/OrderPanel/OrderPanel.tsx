@@ -132,9 +132,7 @@ export function OrderPanel() {
   const setLeverage = useTradingStore((s) => s.setLeverage);
   const isLoading = useTradingStore((s) => s.isLoading);
   const lastError = useTradingStore((s) => s.lastError);
-  const fetchBalance = useTradingStore((s) => s.fetchBalance);
-  const fetchOrders = useTradingStore((s) => s.fetchOrders);
-  const fetchPositions = useTradingStore((s) => s.fetchPositions);
+  const syncAccount = useTradingStore((s) => s.syncAccount);
   const editingPosition = useTradingStore((s) => s.editingPosition);
 
   // Lifted to trading-store so mobile screens can open it too.
@@ -146,13 +144,12 @@ export function OrderPanel() {
   const perp = isPerp(symbol);
   const baseAsset = getBaseAsset(symbol);
 
-  // Refresh on mount + symbol change
+  // Refresh on mount + symbol change. One batched request rather than three
+  // separate ones — `useTradingSync` keeps this fresh afterwards.
   useEffect(() => {
     if (!apiKey || !apiSecret) return;
-    void fetchBalance(symbol);
-    void fetchOrders(symbol);
-    if (perp) void fetchPositions(symbol);
-  }, [apiKey, apiSecret, symbol, perp, fetchBalance, fetchOrders, fetchPositions]);
+    void syncAccount(symbol);
+  }, [apiKey, apiSecret, symbol, syncAccount]);
 
   // Quote balance (USDT free)
   const balanceUsd = useMemo(() => {

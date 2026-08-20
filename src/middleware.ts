@@ -25,13 +25,24 @@ export async function middleware(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // `getClaims()` verifies the session JWT locally (falling back to a network
+  // call only when it genuinely can't, e.g. an expired token that needs a
+  // refresh), whereas `getUser()` always round-trips to Supabase's auth
+  // server. At one middleware run per request that round trip dominated the
+  // wall-clock — and therefore the billed compute — of every single request.
+  // Any unexpected failure is treated as "not authenticated", so the worst
+  // case is a redirect to /login rather than an open door.
+  let authenticated = false;
+  try {
+    const { data, error } = await supabase.auth.getClaims();
+    authenticated = !error && !!data?.claims?.sub;
+  } catch {
+    authenticated = false;
+  }
 
   // Redirigir a /login si no está autenticado y no está en /login ni en /auth/*
   if (
-    !user &&
+    !authenticated &&
     !request.nextUrl.pathname.startsWith("/login") &&
     !request.nextUrl.pathname.startsWith("/auth")
   ) {

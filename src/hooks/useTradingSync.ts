@@ -16,18 +16,29 @@ import type { Position } from "@/lib/binance/trading-types";
  * chart's current symbol) fresh, so the watchlist can badge any row with an
  * open trade, and raises a toast when a position opens, is added to, or closes.
  *
- * The per-panel effects still run when their panels are visible; this hook just
- * guarantees a baseline refresh so the chart overlay is never stale.
+ * This is the **only** account poll in the app: `PositionsPanel`, `TradeScreen`
+ * and `OrderPanel` render whatever this last wrote. Don't add a second
+ * interval elsewhere — that was exactly the bug that multiplied the bill.
  *
  * Each tick fires signed requests to `/api/trade/*` — real Vercel Function
- * invocations. To keep that cheap: `positions` (the chart-scoped list) is
- * derived from `allPositions` client-side (`syncPositionsFromAll`) instead of
- * a second `/api/trade/positions` call, and the whole loop pauses while the
- * tab is in the background (Page Visibility API), resuming with an immediate
- * refresh when it's foregrounded again.
+ * invocations billed against Fluid Active CPU. Three things keep that cheap:
+ *
+ *  1. One batched request to `/api/trade/sync` per tick (balance + orders +
+ *     positions in a single invocation) instead of three separate routes,
+ *     each of which would also drag the auth middleware along with it.
+ *  2. The loop pauses entirely while the tab is in the background (Page
+ *     Visibility API), resuming with an immediate refresh on foreground.
+ *  3. The interval adapts: a flat account with no working orders has nothing
+ *     that can change without the user acting, so it polls slowly. Any open
+ *     position or resting order snaps it back to the fast rate.
  */
-// Fast enough that a fill shows up on the chart almost immediately.
-const POLL_MS = 2000;
+
+/** Fast enough that a fill shows up on the chart almost immediately. Used
+ *  whenever the account has something live to watch. */
+const POLL_FAST_MS = 2000;
+/** Flat and no resting orders: nothing can change on its own, so the only
+ *  thing this catches is a fill from another device. */
+const POLL_IDLE_MS = 15000;
 
 /** Hedge-mode accounts can hold both directions on one symbol. */
 function positionKey(p: Position): string {
@@ -55,45 +66,78 @@ export function useTradingSync() {
   useEffect(() => {
     if (!apiKey || !apiSecret) return;
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let currentDelay = 0;
+
+    /** Anything the exchange can change on its own: an open position (P&L,
+     *  liquidation, a TP/SL firing) or a resting order that could fill. */
+    function hasLiveActivity(): boolean {
+      const s = useTradingStore.getState();
+      if (s.allPositions.some((p) => p.positionAmt !== 0)) return true;
+      return s.orders.some((o) => o.status === "NEW" || o.status === "PARTIALLY_FILLED");
+    }
 
     async function refresh() {
-      const s = useTradingStore.getState();
-      void s.fetchBalance(symbol);
-      void s.fetchOrders(symbol);
-      await s.fetchAllPositions();
-      s.syncPositionsFromAll(symbol);
+      await useTradingStore.getState().syncAccount(symbol);
       if (!cancelled) seededRef.current = true;
     }
 
-    void refresh();
-    // Background tabs don't need live account data — pausing here is the
-    // single biggest lever on invocation volume, since a trading dashboard is
-    // routinely left open (and backgrounded) for hours.
-    let t: ReturnType<typeof setInterval> | null = null;
-    function startInterval() {
-      if (t !== null) return;
-      t = setInterval(() => void refresh(), POLL_MS);
+    // A self-rescheduling timeout rather than setInterval: the delay is
+    // re-evaluated after every tick, so opening a position speeds the loop up
+    // immediately and closing the last one lets it fall back to idle.
+    function schedule() {
+      if (cancelled || document.hidden) return;
+      const delay = hasLiveActivity() ? POLL_FAST_MS : POLL_IDLE_MS;
+      currentDelay = delay;
+      timer = setTimeout(async () => {
+        // Clear the handle *before* awaiting: the store writes that `refresh`
+        // performs wake the re-arm subscription below, and a non-null `timer`
+        // would let it schedule a second timeout that this one then orphans,
+        // silently doubling the poll rate.
+        timer = null;
+        await refresh();
+        schedule();
+      }, delay);
     }
-    function stopInterval() {
-      if (t === null) return;
-      clearInterval(t);
-      t = null;
-    }
-    function onVisibilityChange() {
-      if (document.hidden) {
-        stopInterval();
-      } else {
-        void refresh();
-        startInterval();
+
+    function stop() {
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
       }
     }
 
-    if (!document.hidden) startInterval();
+    // Background tabs don't need live account data — pausing here is the
+    // single biggest lever on invocation volume, since a trading dashboard is
+    // routinely left open (and backgrounded) for hours.
+    function onVisibilityChange() {
+      if (document.hidden) {
+        stop();
+      } else {
+        stop();
+        void refresh().then(schedule);
+      }
+    }
+
+    void refresh().then(schedule);
     document.addEventListener("visibilitychange", onVisibilityChange);
+
+    // Re-arm early when the account goes from idle to active between ticks
+    // (e.g. an order placed from this tab), so the first fill isn't waited
+    // out at the slow rate.
+    const unsubActivity = useTradingStore.subscribe((state, prev) => {
+      if (cancelled || document.hidden || timer === null) return;
+      if (state.allPositions === prev.allPositions && state.orders === prev.orders) return;
+      if (currentDelay === POLL_IDLE_MS && hasLiveActivity()) {
+        stop();
+        schedule();
+      }
+    });
 
     return () => {
       cancelled = true;
-      stopInterval();
+      stop();
+      unsubActivity();
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [apiKey, apiSecret, exchange, testnet, symbol]);
