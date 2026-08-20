@@ -75,7 +75,9 @@ When adding a data source: extend `ResolvedSource`, `SourceKind`, and the `switc
 
 ### Live data
 
-Binance uses one multiplexed WebSocket (`src/lib/binance/ws.ts`) carrying `@kline_<interval>`, `@miniTicker` and `@bookTicker`. Bybit has its own (`src/lib/bybit/ws.ts`) exposing a deliberately **matching `subscribeKline` / `subscribeMiniTickers` shape**, so consumers pick a socket by source kind and otherwise treat them alike. Bybit requires a 20s heartbeat ping and sends ticker *deltas* (only changed fields), so its client retains last price/percent between frames. Both reconnect with exponential backoff. Non-crypto sources are REST-poll only.
+Binance uses one multiplexed WebSocket (`src/lib/binance/ws.ts`) carrying `@kline_<interval>`, `@miniTicker` and `@bookTicker`. Bybit has its own (`src/lib/bybit/ws.ts`) exposing a deliberately **matching `subscribeKline` / `subscribeMiniTickers` shape**, so consumers pick a socket by source kind and otherwise treat them alike. Bybit requires a 20s heartbeat ping and sends ticker *deltas* (only changed fields), so its client retains last price/percent per topic, shared across every subscriber to that symbol. Both reconnect with exponential backoff. Non-crypto sources are REST-poll only.
+
+`BybitWS.tickerSubs` fans a topic out to a **Set of listeners**, not a single callback — Bybit has no separate book-ticker stream, so `BuySellOverlay` reuses `subscribeMiniTickers` for its bid/ask quote on the currently-charted symbol, on top of whatever the watchlist already subscribed for that same symbol (Binance doesn't hit this: its `BuySellOverlay` quote uses `subscribeBookTicker`, a disjoint map). A single-entry map here silently drops whichever subscriber loses the race and orphans the topic when the other one unmounts — the watchlist row for the charted symbol goes stale until something forces a full resubscribe. Keep this fan-out shape if you touch this file; don't collapse it back to one listener per topic.
 
 ### Indicators
 

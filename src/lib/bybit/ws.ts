@@ -49,13 +49,16 @@ class BybitWS {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private subs = new Map<string, KlineSubscription>(); // topic -> sub
-  // topic -> { handler, ticker, last }. `last` retains price/pct across delta
-  // frames (Bybit ticker deltas only carry changed fields); `ticker` echoes the
-  // caller's exact symbol (e.g. `BYBIT:SOLUSDT.P`) so watchlist rows match.
-  private tickerSubs = new Map<
-    string,
-    { onTick: (t: MiniTick) => void; ticker: string; last: { price: number; pct: number } }
-  >();
+  // topic -> listeners. Several independent components can watch the same
+  // symbol at once (a watchlist row *and* BuySellOverlay's quote for the
+  // currently-charted symbol, since Bybit has no separate book-ticker stream
+  // to fall back to) — a single-entry map here silently drops whichever
+  // subscriber isn't "last in", and unsubscribing one would delete the topic
+  // out from under the other. Fan out to a Set of listeners per topic instead.
+  private tickerSubs = new Map<string, Set<{ onTick: (t: MiniTick) => void; ticker: string }>>();
+  // `last` retains price/pct across delta frames (Bybit ticker deltas only
+  // carry changed fields), shared by every listener on a topic.
+  private tickerLast = new Map<string, { price: number; pct: number }>();
   private connected = false;
   private closing = false;
 
@@ -127,16 +130,18 @@ class BybitWS {
   }
 
   private dispatchTicker(msg: BybitTickerMsg) {
-    const entry = this.tickerSubs.get(msg.topic);
-    if (!entry) return;
-    if (msg.data.lastPrice !== undefined) entry.last.price = parseFloat(msg.data.lastPrice);
-    if (msg.data.price24hPcnt !== undefined) entry.last.pct = parseFloat(msg.data.price24hPcnt) * 100;
-    entry.onTick({
-      symbol: entry.ticker,
-      close: entry.last.price,
-      open: 0,
-      pct: entry.last.pct,
-    });
+    const listeners = this.tickerSubs.get(msg.topic);
+    if (!listeners) return;
+    let last = this.tickerLast.get(msg.topic);
+    if (!last) {
+      last = { price: 0, pct: 0 };
+      this.tickerLast.set(msg.topic, last);
+    }
+    if (msg.data.lastPrice !== undefined) last.price = parseFloat(msg.data.lastPrice);
+    if (msg.data.price24hPcnt !== undefined) last.pct = parseFloat(msg.data.price24hPcnt) * 100;
+    for (const { onTick, ticker } of listeners) {
+      onTick({ symbol: ticker, close: last.price, open: 0, pct: last.pct });
+    }
   }
 
   subscribeKline(sub: KlineSubscription): () => void {
@@ -151,17 +156,39 @@ class BybitWS {
   }
 
   /** Subscribe to live 24h ticker updates. Symbols may carry `BYBIT:`/`.P`; the
-   *  emitted tick echoes the exact input symbol so callers can key rows by it. */
+   *  emitted tick echoes the exact input symbol so callers can key rows by it.
+   *  Multiple independent callers can watch the same underlying symbol; each
+   *  gets its own listener entry rather than clobbering another caller's. */
   subscribeMiniTickers(symbols: string[], onTick: (t: MiniTick) => void): () => void {
     const topics = symbols.map((s) => `tickers.${bybitSymbol(s)}`);
-    topics.forEach((topic, i) =>
-      this.tickerSubs.set(topic, { onTick, ticker: symbols[i], last: { price: 0, pct: 0 } }),
-    );
-    if (this.connected) this.send({ op: "subscribe", args: topics });
+    const listeners = topics.map((_, i) => ({ onTick, ticker: symbols[i] }));
+    const newTopics: string[] = [];
+    topics.forEach((topic, i) => {
+      let set = this.tickerSubs.get(topic);
+      if (!set) {
+        set = new Set();
+        this.tickerSubs.set(topic, set);
+        newTopics.push(topic);
+      }
+      set.add(listeners[i]);
+      // Deliver the cached price immediately so a subscriber that joins an
+      // already-live topic doesn't sit stale until the next delta frame.
+      const last = this.tickerLast.get(topic);
+      if (last) onTick({ symbol: symbols[i], close: last.price, open: 0, pct: last.pct });
+    });
+    if (this.connected && newTopics.length > 0) this.send({ op: "subscribe", args: newTopics });
     else if (!this.ws) this.connect();
     return () => {
-      topics.forEach((topic) => this.tickerSubs.delete(topic));
-      if (this.connected) this.send({ op: "unsubscribe", args: topics });
+      topics.forEach((topic, i) => {
+        const set = this.tickerSubs.get(topic);
+        if (!set) return;
+        set.delete(listeners[i]);
+        if (set.size === 0) {
+          this.tickerSubs.delete(topic);
+          this.tickerLast.delete(topic);
+          if (this.connected) this.send({ op: "unsubscribe", args: [topic] });
+        }
+      });
     };
   }
 
