@@ -22,9 +22,11 @@ import type { SymbolInfo } from "@/lib/binance/types";
 import {
   CATALOG,
   getDynamicEntries,
+  type Category,
   type SourceKind,
   type SymbolEntry,
 } from "@/lib/symbols/catalog";
+import { SymbolIcon } from "@/components/symbols/SymbolIcon";
 
 /** A row in the search list, tagged with the venue its data comes from. */
 interface SearchRow {
@@ -34,7 +36,15 @@ interface SearchRow {
   quoteAsset: string;
   /** Display label + filter key for the exchange/data source. */
   exchange: string;
-  description?: string;
+  /** Raw source kind — drives the venue mark on the row's icon. */
+  source: SourceKind;
+  category?: Category;
+  /**
+   * Long-form name shown under the ticker ("Apple Inc.", "SOL / USDT
+   * Perpetual · Bybit"). Always present so every row has a subtitle, and it
+   * is matched by the search box too — typing "APPLE" finds AAPL.
+   */
+  description: string;
 }
 
 /** Display label for each data source. Doubles as the filter chip label. */
@@ -59,17 +69,26 @@ function entryToRow(e: SymbolEntry): SearchRow {
     // The exchange badge already says "Bybit", so the quote stays generic.
     quoteAsset: isBybit ? "USDT (Perp)" : e.category,
     exchange: SOURCE_LABEL[e.source],
+    source: e.source,
+    category: e.category,
     description: e.description,
   };
 }
 
 /** Binance's own exchangeInfo feed has no source tag — everything is Binance. */
 function binanceToRow(s: SymbolInfo): SearchRow {
+  // The feed already marks perps by appending "(Perp)" to the quote asset;
+  // spell that out in the subtitle instead of repeating the decoration.
+  const perp = s.quoteAsset.includes("(Perp)");
+  const quote = s.quoteAsset.replace(" (Perp)", "");
   return {
     symbol: s.symbol,
     baseAsset: s.baseAsset,
     quoteAsset: s.quoteAsset,
     exchange: "Binance",
+    source: "binance",
+    category: "Crypto",
+    description: `${s.baseAsset} / ${quote} ${perp ? "Perpetual" : "Spot"} · Binance`,
   };
 }
 
@@ -151,7 +170,10 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
         (s) =>
           s.symbol.includes(trimmed) ||
           s.baseAsset.includes(trimmed) ||
-          s.quoteAsset.includes(trimmed),
+          s.quoteAsset.includes(trimmed) ||
+          // The long name is searchable too, so "APPLE" finds AAPL and
+          // "DOMINANCE" finds the .D series.
+          s.description.toUpperCase().includes(trimmed),
       )
       .slice(0, 100);
   }, [trimmed, allSymbols, isExpression, exchangeFilter]);
@@ -292,11 +314,25 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
                     }}
                     className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
                   >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="font-semibold text-tv-text">
-                        {s.baseAsset}
-                      </span>
-                      <span className="truncate text-tv-text-muted">/ {s.quoteAsset}</span>
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <SymbolIcon
+                        symbol={s.symbol}
+                        source={s.source}
+                        category={s.category}
+                      />
+                      <div className="flex min-w-0 flex-col">
+                        <div className="flex min-w-0 items-baseline gap-1.5">
+                          <span className="font-semibold text-tv-text">
+                            {s.baseAsset}
+                          </span>
+                          <span className="truncate text-tv-text-muted">
+                            / {s.quoteAsset}
+                          </span>
+                        </div>
+                        <span className="truncate text-[10px] text-tv-text-dim">
+                          {s.description}
+                        </span>
+                      </div>
                     </div>
                     <span className="shrink-0 rounded bg-tv-bg px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-tv-text-dim">
                       {s.exchange}

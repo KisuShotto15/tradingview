@@ -328,6 +328,8 @@ interface ChartState {
   subPanesHidden: boolean;
   /** Persistent OHLC snap — same effect as holding Ctrl/Cmd while dragging */
   magnetMode: boolean;
+  /** Show the countdown to the current bar's close on the price axis. */
+  showBarCountdown: boolean;
   /**
    * Maps an indicator to the indicator whose pane it shares ("own" = its own
    * pane). E.g. { adx: "squeeze" } overlays ADX on the Squeeze pane.
@@ -435,6 +437,7 @@ interface ChartState {
   setSubPanesHidden: (v: boolean) => void;
   toggleSubPanesHidden: () => void;
   toggleMagnetMode: () => void;
+  setShowBarCountdown: (v: boolean) => void;
   setIndicatorOverlay: (key: IndicatorKey, target: IndicatorKey | "own") => void;
   setPaneZOrder: (host: IndicatorKey, order: IndicatorKey[]) => void;
   setMainPaneOrder: (order: string[]) => void;
@@ -449,6 +452,8 @@ interface ChartState {
     kind: string,
     patch: { color?: string; lineWidth?: number; lineStyle?: 0 | 1 | 2; [key: string]: unknown },
   ) => void;
+  /** Drop a kind's saved defaults so new drawings fall back to the built-ins. */
+  clearToolDefault: (kind: string) => void;
   saveDrawingTemplate: (kind: string, name: string, style: DrawingTemplate["style"]) => void;
   deleteDrawingTemplate: (kind: string, templateId: string) => void;
   createWatchlist: (name: string) => string;
@@ -549,6 +554,7 @@ export const useChartStore = create<ChartState>()(
       pillsCollapsed: false,
       subPanesHidden: false,
       magnetMode: false,
+      showBarCountdown: true,
       indicatorOverlays: {},
       paneZOrder: {},
       mainPaneOrder: [],
@@ -801,6 +807,7 @@ export const useChartStore = create<ChartState>()(
       setSubPanesHidden: (subPanesHidden) => set({ subPanesHidden }),
       toggleSubPanesHidden: () => set((s) => ({ subPanesHidden: !s.subPanesHidden })),
       toggleMagnetMode: () => set((s) => ({ magnetMode: !s.magnetMode })),
+      setShowBarCountdown: (showBarCountdown) => set({ showBarCountdown }),
 
       setIndicatorOverlay: (key, target) => {
         if (!isApplyingHistory) {
@@ -853,6 +860,12 @@ export const useChartStore = create<ChartState>()(
             [kind]: { ...(s.toolDefaults[kind] as Record<string, unknown> ?? {}), ...patch },
           },
         })),
+      clearToolDefault: (kind) =>
+        set((s) => {
+          const next = { ...s.toolDefaults };
+          delete next[kind];
+          return { toolDefaults: next };
+        }),
       saveDrawingTemplate: (kind, name, style) =>
         set((s) => ({
           drawingTemplates: {
@@ -1163,6 +1176,7 @@ export const useChartStore = create<ChartState>()(
         pillsCollapsed: s.pillsCollapsed,
         subPanesHidden: s.subPanesHidden,
         magnetMode: s.magnetMode,
+        showBarCountdown: s.showBarCountdown,
         indicatorOverlays: s.indicatorOverlays,
         paneZOrder: s.paneZOrder,
         mainPaneOrder: s.mainPaneOrder,

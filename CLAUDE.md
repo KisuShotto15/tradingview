@@ -71,7 +71,9 @@ Consequence worth remembering: two different chart symbols (`SOLUSDT.P` and `BYB
 
 The symbol **catalog** ([src/lib/symbols/catalog.ts](src/lib/symbols/catalog.ts)) has a static half (curated stocks/indices/macro) and a **dynamic registry** populated at runtime: `useBybitSymbols` fetches Bybit's whole perp universe on app load and calls `registerDynamicEntries()` so those tickers resolve and appear in search. `resolveSource` also honours an explicit `BYBIT:` prefix *before* consulting the catalog, so a persisted Bybit symbol charts correctly right after a reload, before the registry has loaded.
 
-When adding a data source: extend `ResolvedSource`, `SourceKind`, and the `switch` in both `resolveSource` and `fetchCandles`.
+When adding a data source: extend `ResolvedSource`, `SourceKind`, and the `switch` in both `resolveSource` and `fetchCandles`. Also give it a mark in `ExchangeLogo`'s `MARKS` map, or its search results fall back to Binance's badge.
+
+Search results (`SymbolSelector.tsx`) render a `SymbolIcon` — the asset's coin icon with the venue's mark pinned to its corner — plus a long-form subtitle. Every `SearchRow` therefore carries a non-optional `description`: catalog entries use theirs, Binance rows get one composed from base/quote/contract type, and the string is matched by the search box too (typing "APPLE" finds AAPL). `CoinIcon`'s `remote` prop must be `false` for anything that isn't a coin — otherwise every stock/macro row fires a 404 at the crypto icon CDN before falling back to its letter avatar.
 
 ### Live data
 
@@ -119,6 +121,10 @@ All chart drawings (trendlines, fibs, rays, channels, long/short positions, hori
 
 The data model is a **discriminated union** by `kind`. All operations (render, hit-test, drag, serialize) `switch (drawing.kind)`. Coordinate ↔ price/time conversion helpers live in `src/lib/chart/coords.ts` and `snap.ts`; shared drag logic in `use-drag-point.ts` / `use-drag-shape.ts`.
 
+**Magnet.** The snap is two modules on purpose. [src/lib/chart/snap.ts](src/lib/chart/snap.ts) is pure and tested: `snapToOHLC` (nearest candle level) plus `drawingPriceLevels`/`snapToLevels`, which also expose what *other* drawings offer at a given time — fib ladders expanded to prices, a channel's two rails, a trend line interpolated to that bar, a long/short's entry/stop/target. [src/lib/chart/magnet.ts](src/lib/chart/magnet.ts) is the thin store-aware wrapper every UI path actually calls (`magnetSnap`, or `magnetSnapDragging` from a drag handler). Two rules when touching it: filter the store's drawings to the charted symbol (`drawings-store` holds every symbol's), and pass the dragged drawing's id as `excludeId` — a shape that can snap to its own levels sticks to where it started and never moves. New snap call sites go through `magnet.ts`, never `snapToOHLC` directly.
+
+**Style defaults vs templates.** `toolDefaults[kind]` is the single "last style used", applied silently to new drawings; `drawingTemplates[kind]` are named presets applied on demand. Editing a style from `FloatingContextToolbar` merges the touched field into `toolDefaults` as a side effect, which only ever captures that one field — the toolbar's pin button (`SaveAsDefaultButton`) copies the drawing's whole style at once via `styleOf()`, and `clearToolDefault(kind)` (in the templates menu) drops it. `styleOf`'s `STYLE_FIELDS` list is the single definition of "what counts as style"; fib `levels` are in it deliberately, since carrying a customised ladder to the next fib is the point.
+
 ### Alerts
 
 Two independent mechanisms feed one evaluator:
@@ -150,6 +156,12 @@ Per-symbol tick/lot precision (`pricePrecision`, `stepSize`, `minNotional`, …)
 Chart-side trading UI is in `src/components/trading/`. `OrderLinesLayer.tsx` draws entry/TP/SL/liquidation as an SVG overlay **plus** native lightweight-charts price lines — the native ones give the colored price-scale label and span the full pane (so a line continues past the SVG chip toolbar), and they're kept in sync with any in-progress drag so a dragged level doesn't leave a duplicate behind. Position TP/SL edits are two-step: drag → `pending` → explicit Confirm/Discard on the entry line before anything is sent. Right-clicking a position's TP/SL line opens a small menu ("Modify order…" / "Remove") instead — Modify calls `trading-store`'s `openPositionEdit()`, which stashes the position in `editingPosition` and switches the right sidebar / mobile shell to the Trade tab; `OrderPanel` renders `PositionEditPanel` (a typed price + ticks form) in place of the normal order form whenever that's set, so a price can be typed instead of dragged.
 
 A working order's price/quantity can be edited either from the chart (drag its line) or from the Orders table ([src/components/layout/PositionsPanel.tsx](src/components/layout/PositionsPanel.tsx)'s edit popover) — both go through `modifyOrder()`, which cancels and re-posts with the given overrides since neither exchange supports an in-place amend. Leverage lives on the symbol/account, not the order, so editing it from that same popover calls `setLeverage()` separately and affects any future fill on that symbol, not just the order being edited.
+
+### Bar close countdown
+
+The chip counting down to the current bar's close sits on the price axis, under the last-price label — lightweight-charts has no API for annotating the price scale, so `BarCountdown.tsx` is an absolutely-positioned overlay that derives its own geometry the way every other overlay here does: `timeScale().width()` for where the plot ends and the axis begins, `priceToCoordinate(lastPrice)` for the label's y. It reads the last bar off the shared `candlesRef` (WS ticks mutate that array in place, so a 1s re-read always sees the live bar) and is gated on `showBarCountdown`, so the interval isn't paid for when the chip is off.
+
+The close time itself is [src/lib/chart/countdown.ts](src/lib/chart/countdown.ts). `barCloseTime` special-cases `"1M"` with real UTC calendar arithmetic: `timeframeToSeconds("1M")` is a 30-day approximation that's fine for pixel math but would drift the clock by up to a day and a half.
 
 ### Chart snapshots
 

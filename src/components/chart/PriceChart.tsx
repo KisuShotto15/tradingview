@@ -50,6 +50,7 @@ import { PlacementPreview, MagnetIndicator } from "./PlacementPreview";
 import { OrderLinesLayer } from "@/components/trading/OrderLinesLayer";
 import { BuySellOverlay } from "@/components/trading/BuySellOverlay";
 import { FloatingContextToolbar } from "./FloatingContextToolbar";
+import { BarCountdown } from "./BarCountdown";
 import { KeyLevelsOverlay } from "./KeyLevelsOverlay";
 import { computeKeyLevels } from "@/lib/indicators/keylevels";
 import type { SqueezePoint } from "@/lib/indicators/squeeze";
@@ -58,7 +59,7 @@ import { getTvColors } from "@/lib/chart/theme";
 import { useReplayStore } from "@/lib/replay/replay-store";
 import { ReplayToolbar } from "./ReplayToolbar";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
-import { snapToOHLC } from "@/lib/chart/snap";
+import { magnetSnap } from "@/lib/chart/magnet";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { unifiedHistory, registerViewportApplier, isApplyingHistory } from "@/lib/history";
@@ -229,6 +230,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const mainPriceScaleInverted = useChartStore((s) => s.mainPriceScaleInverted);
   const pillsCollapsed = useChartStore((s) => s.pillsCollapsed);
   const subPanesHidden = useChartStore((s) => s.subPanesHidden);
+  const showBarCountdown = useChartStore((s) => s.showBarCountdown);
   const keyLevelsCfg = useChartStore((s) => s.keyLevels);
   const chartColors = useChartStore((s) => s.chartColors);
   chartColorsRef.current = chartColors;
@@ -444,12 +446,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
       }
 
       // Magnet: Ctrl held, or the persistent magnet-mode toggle → snap price
-      // to nearest OHLC of the closest candle
+      // to the nearest candle OHLC or other drawing's level
       if (
         (param.sourceEvent?.ctrlKey || useChartStore.getState().magnetMode) &&
         resolvedTime !== null
       ) {
-        const snapped = snapToOHLC(price, resolvedTime, candlesRef.current);
+        const snapped = magnetSnap(price, resolvedTime, candlesRef.current);
         if (snapped !== null) price = snapped;
       }
 
@@ -833,7 +835,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         cursorPrice !== null;
       const magnetActive = param.sourceEvent?.ctrlKey || useChartStore.getState().magnetMode;
       if (magnetActive && tracksMagnet) {
-        const snapped = snapToOHLC(cursorPrice!, cursorTime!, candlesRef.current);
+        const snapped = magnetSnap(cursorPrice!, cursorTime!, candlesRef.current);
         setMagnetTarget({ time: cursorTime!, price: snapped ?? cursorPrice! });
       } else {
         setMagnetTarget((prev) => (prev === null ? prev : null));
@@ -859,7 +861,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         // Apply snap to preview cursor if Ctrl held
         let pc: { time: number; price: number } = { time: cursorTime, price: cursorPrice };
         if (magnetActive) {
-          const snapped = snapToOHLC(cursorPrice, cursorTime, candlesRef.current);
+          const snapped = magnetSnap(cursorPrice, cursorTime, candlesRef.current);
           if (snapped !== null) pc = { time: cursorTime, price: snapped };
         }
         // Shift held → constrain the preview to horizontal/vertical for line tools.
@@ -2024,7 +2026,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       let price = rawPrice as number;
       const time = t;
       if (e.ctrlKey || e.metaKey || useChartStore.getState().magnetMode) {
-        const snapped = snapToOHLC(price, time, candlesRef.current);
+        const snapped = magnetSnap(price, time, candlesRef.current);
         if (snapped !== null) price = snapped;
         setMagnetTarget({ time, price });
       }
@@ -3202,6 +3204,18 @@ export function PriceChart({ symbol, timeframe }: Props) {
         />
       )}
       {measureRender}
+
+      {showBarCountdown && !replayActive && (
+        <BarCountdown
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          timeframe={timeframe}
+          lastPrice={lastPrice?.value ?? null}
+          containerWidth={containerSize.width}
+          mainPaneHeight={paneOffsets[0]?.height ?? containerSize.height}
+          renderTick={renderTick}
+        />
+      )}
 
       <FloatingContextToolbar
         containerSize={containerSize}

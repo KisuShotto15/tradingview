@@ -20,6 +20,8 @@ export function ChartSettingsDialog() {
   const setOpen = useChartStore((s) => s.setChartSettingsOpen);
   const chartColors = useChartStore((s) => s.chartColors);
   const setChartColors = useChartStore((s) => s.setChartColors);
+  const showBarCountdown = useChartStore((s) => s.showBarCountdown);
+  const setShowBarCountdown = useChartStore((s) => s.setShowBarCountdown);
 
   const [draft, setDraft] = useState<ChartColors>(chartColors);
 
@@ -82,6 +84,17 @@ export function ChartSettingsDialog() {
               onDown={(v) => setDraft((d) => ({ ...d, wickDown: v }))}
             />
           </Section>
+
+          <Section label="Price scale">
+            {/* Applied immediately rather than on Apply: it's a visibility
+                toggle with no draft state to reconcile, and seeing the chip
+                appear on the axis is the whole point of flipping it. */}
+            <ToggleRow
+              label="Countdown to bar close"
+              checked={showBarCountdown}
+              onChange={setShowBarCountdown}
+            />
+          </Section>
         </div>
 
         <div className="mt-2 flex items-center justify-between">
@@ -110,6 +123,28 @@ function Section({ label, children }: { label: string; children: React.ReactNode
       </span>
       <div className="flex flex-col gap-2">{children}</div>
     </div>
+  );
+}
+
+function ToggleRow({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center justify-between gap-3">
+      <span className="text-xs text-tv-text">{label}</span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-3.5 w-3.5 accent-tv-blue"
+      />
+    </label>
   );
 }
 

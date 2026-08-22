@@ -6,7 +6,7 @@ import { useChartStore } from "@/lib/store/chart-store";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
-import { snapToOHLC } from "@/lib/chart/snap";
+import { magnetSnapDragging } from "@/lib/chart/magnet";
 
 /** True if the currently-selected drawing is locked (no drag allowed). */
 function selectedIsLocked(): boolean {
@@ -72,7 +72,7 @@ export function useDragShape<T>(
         let p = rawP as number;
         // Magnet snap: held Ctrl/Cmd, or the persistent magnet-mode toggle
         if (ev.ctrlKey || ev.metaKey || useChartStore.getState().magnetMode) {
-          const snapped = snapToOHLC(p, t, globalCandlesRef.current);
+          const snapped = magnetSnapDragging(p, t, globalCandlesRef.current);
           if (snapped !== null) p = snapped;
         }
         const dt = t - startTime!;

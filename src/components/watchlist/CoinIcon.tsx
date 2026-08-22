@@ -25,15 +25,21 @@ function hashColor(str: string): string {
 interface Props {
   symbol: string;
   size?: number;
+  /**
+   * Try the crypto icon CDN first. Pass false for anything that is not a coin
+   * (stocks, indices, macro series): the lookup would 404 on every row and
+   * land on the letter avatar anyway, so skipping it saves the request.
+   */
+  remote?: boolean;
 }
 
-export function CoinIcon({ symbol, size = 18 }: Props) {
+export function CoinIcon({ symbol, size = 18, remote = true }: Props) {
   const base = getBaseAsset(symbol);
   const slug = base.toLowerCase();
   const [errored, setErrored] = useState(false);
   const iconUrl = `https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.18.1/svg/color/${slug}.svg`;
 
-  if (!errored) {
+  if (remote && !errored) {
     return (
       <img
         src={iconUrl}

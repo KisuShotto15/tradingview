@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Bookmark, BookmarkPlus, Copy, Eye, EyeOff, Lock, Settings2, Trash2, TrendingUp, Unlock, X } from "lucide-react";
+import { Bookmark, BookmarkPlus, Check, Copy, Eye, EyeOff, Lock, Pin, RotateCcw, Settings2, Trash2, TrendingUp, Unlock, X } from "lucide-react";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useChartStore, type DrawingTool } from "@/lib/store/chart-store";
@@ -178,6 +178,7 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
         <Btn title="Duplicate (Ctrl+D)" onClick={() => void duplicate(drawing.id)}>
           <Copy className="h-3.5 w-3.5" />
         </Btn>
+        <SaveAsDefaultButton drawing={drawing} />
         <TemplatesButton drawing={drawing} onApply={patch} />
         <Btn title="Delete" danger onClick={() => {
           void remove(drawing.id);
@@ -279,15 +280,81 @@ function SwatchPicker({ value, onChange }: { value: string; onChange: (v: string
   );
 }
 
-/** The subset of style fields worth saving/restoring in a template. */
+/**
+ * The subset of fields worth saving/restoring as a template or a tool default:
+ * everything that describes how the drawing *looks*, and nothing that
+ * describes where it sits. Fib ratios count as style here — copying a
+ * customized ladder onto the next fib is the whole point of saving it.
+ */
+const STYLE_FIELDS = [
+  "color",
+  "lineWidth",
+  "lineStyle",
+  "stopColor",
+  "targetColor",
+  "textColor",
+  "showLabels",
+  "fillColor",
+  "fillOpacity",
+  "fontSize",
+  "levels",
+] as const;
+
 function styleOf(d: Drawing): Record<string, unknown> {
+  const src = d as unknown as Record<string, unknown>;
   const style: Record<string, unknown> = {};
-  if (d.color !== undefined) style.color = d.color;
-  if (d.lineWidth !== undefined) style.lineWidth = d.lineWidth;
-  if (d.lineStyle !== undefined) style.lineStyle = d.lineStyle;
-  if ("stopColor" in d && d.stopColor !== undefined) style.stopColor = d.stopColor;
-  if ("targetColor" in d && d.targetColor !== undefined) style.targetColor = d.targetColor;
+  for (const f of STYLE_FIELDS) {
+    if (src[f] !== undefined) style[f] = src[f];
+  }
   return style;
+}
+
+/**
+ * One-click "make this the default for the tool".
+ *
+ * Editing a style from this toolbar already writes `toolDefaults` field by
+ * field, but that only ever captures the field just touched — a drawing whose
+ * look was built up earlier (or imported, or restored from a template) has a
+ * style the defaults have never seen. This copies the whole thing in a single
+ * click, with none of the naming prompt a template needs; the matching
+ * "Reset default style" lives in the templates menu, where an undo belongs.
+ */
+function SaveAsDefaultButton({ drawing }: { drawing: Drawing }) {
+  const setToolDefault = useChartStore((s) => s.setToolDefault);
+  const [saved, setSaved] = useState(false);
+
+  // Reset the confirmation when the selection moves to another drawing, so a
+  // stale check mark never suggests the new one was saved too.
+  useEffect(() => {
+    setSaved(false);
+  }, [drawing.id]);
+
+  useEffect(() => {
+    if (!saved) return;
+    const t = setTimeout(() => setSaved(false), 1200);
+    return () => clearTimeout(t);
+  }, [saved]);
+
+  return (
+    <button
+      title={saved ? "Saved as default" : "Save as default style for this tool"}
+      onClick={() => {
+        setToolDefault(
+          drawing.kind,
+          styleOf(drawing) as Parameters<typeof setToolDefault>[1],
+        );
+        setSaved(true);
+      }}
+      className={cn(
+        "flex h-5 w-5 items-center justify-center rounded transition-colors",
+        saved
+          ? "text-tv-green"
+          : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
+      )}
+    >
+      {saved ? <Check className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+    </button>
+  );
 }
 
 /**
@@ -306,6 +373,7 @@ function TemplatesButton({
   const templates = useChartStore((s) => s.drawingTemplates[drawing.kind] ?? NO_TEMPLATES);
   const saveDrawingTemplate = useChartStore((s) => s.saveDrawingTemplate);
   const deleteDrawingTemplate = useChartStore((s) => s.deleteDrawingTemplate);
+  const clearToolDefault = useChartStore((s) => s.clearToolDefault);
 
   function saveTemplate() {
     const name = window.prompt("Template name:");
@@ -326,6 +394,13 @@ function TemplatesButton({
         <DropdownMenuItem onClick={saveTemplate} className="text-xs">
           <BookmarkPlus className="h-3.5 w-3.5" />
           <span>Save as template…</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => clearToolDefault(drawing.kind)}
+          className="text-xs"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          <span>Reset default style</span>
         </DropdownMenuItem>
         {templates.length > 0 && <DropdownMenuSeparator />}
         {templates.map((t) => (

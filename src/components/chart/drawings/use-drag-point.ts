@@ -7,7 +7,7 @@ import { useChartStore } from "@/lib/store/chart-store";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
-import { snapToOHLC } from "@/lib/chart/snap";
+import { magnetSnapDragging } from "@/lib/chart/magnet";
 
 /** True if the currently-selected drawing is locked. */
 function selectedIsLocked(): boolean {
@@ -58,7 +58,7 @@ export function useDragPoint(
         if (time === null) return null;
         let price = rawPrice as number;
         if (snap) {
-          const snapped = snapToOHLC(price, time, globalCandlesRef.current);
+          const snapped = magnetSnapDragging(price, time, globalCandlesRef.current);
           if (snapped !== null) price = snapped;
         }
         return { time, price };
