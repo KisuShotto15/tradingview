@@ -614,8 +614,10 @@ export function Watchlist() {
                   e.stopPropagation();
                   openContextMenu(e, item.id);
                 }}
+                // No drag handle: `draggable` is on the row itself, so a
+                // grip column would only take space from the ticker.
                 className={cn(
-                  "group relative grid cursor-pointer grid-cols-[12px_auto_1fr_auto_auto] items-center gap-1 py-1.5 pr-1 text-xs transition-colors",
+                  "group relative grid cursor-pointer grid-cols-[12px_1fr_auto_auto] items-center gap-1 py-1.5 pr-1 text-xs transition-colors",
                   "hover:bg-tv-panel-hover",
                   isActive && !isMultiSelected && "bg-tv-panel-hover",
                   isMultiSelected && "bg-tv-blue/15",
@@ -691,7 +693,6 @@ export function Watchlist() {
                     </div>
                   )}
                 </div>
-                <GripVertical className="h-3 w-3 shrink-0 cursor-grab text-tv-text-dim opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing" />
                 <div className="flex min-w-0 items-center gap-1.5">
                   <CoinIcon symbol={displaySymbol} size={16} />
                   <span className="truncate font-medium text-tv-text">
