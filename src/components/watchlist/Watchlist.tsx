@@ -615,7 +615,7 @@ export function Watchlist() {
                   openContextMenu(e, item.id);
                 }}
                 className={cn(
-                  "group relative grid cursor-pointer grid-cols-[14px_auto_1fr_auto_auto] items-center gap-1 py-1.5 pr-1 text-xs transition-colors",
+                  "group relative grid cursor-pointer grid-cols-[12px_auto_1fr_auto_auto] items-center gap-1 py-1.5 pr-1 text-xs transition-colors",
                   "hover:bg-tv-panel-hover",
                   isActive && !isMultiSelected && "bg-tv-panel-hover",
                   isMultiSelected && "bg-tv-blue/15",
@@ -648,7 +648,9 @@ export function Watchlist() {
                     }
                     aria-label={item.flagColor ? "Remove flag" : "Add flag"}
                     className={cn(
-                      "flex h-full w-full items-center justify-center transition-opacity",
+                      // Flush left: the tag reads as part of the panel edge,
+                      // the way TradingView marks a flagged row.
+                      "flex h-full w-full items-center justify-start transition-opacity",
                       // An unflagged row only shows the hollow outline on hover,
                       // so the column stays quiet but the target is findable.
                       item.flagColor

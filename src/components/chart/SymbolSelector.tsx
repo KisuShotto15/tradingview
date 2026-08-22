@@ -56,8 +56,12 @@ const SOURCE_LABEL: Record<SourceKind, string> = {
   coingecko: "CoinGecko",
 };
 
-/** Chip order — venues the app actually trades on come first. */
-const EXCHANGE_ORDER = ["Binance", "Bybit", "Yahoo", "FRED", "CoinGecko"];
+/**
+ * Venues that get a filter chip, in display order. Yahoo and CoinGecko are
+ * deliberately absent: their symbols stay searchable and pickable under "All",
+ * they just don't earn a chip in a row this narrow.
+ */
+const EXCHANGE_ORDER = ["Binance", "Bybit", "FRED"];
 
 function entryToRow(e: SymbolEntry): SearchRow {
   // Bybit perps carry the ".P" ticker + coin base so search-by-coin works;
@@ -224,7 +228,9 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
           <ChevronDown className="h-3.5 w-3.5 text-tv-text-muted" />
         </DialogTrigger>
       )}
-      <DialogContent className="max-w-lg gap-0 bg-tv-panel p-0">
+      {/* `overflow-hidden` keeps every row inside the rounded panel — the
+          popup is a CSS grid, so nothing clips by default. */}
+      <DialogContent className="gap-0 overflow-hidden bg-tv-panel p-0 sm:max-w-lg">
         <DialogHeader className="border-b border-tv-border px-4 py-3">
           <DialogTitle className="text-sm font-medium">Search symbol</DialogTitle>
         </DialogHeader>
@@ -267,7 +273,13 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
             </div>
           )}
         </div>
-        <ScrollArea className="h-[400px]">
+        {/* `min-w-0` is load-bearing: as a grid item this defaults to
+            `min-width: auto`, i.e. its min-content width — and a row's
+            `truncate`d description is `white-space: nowrap`, so that min-content
+            is the full untruncated string. The column track then grows past the
+            dialog and the exchange badge + star spill onto the chart behind it.
+            With min-width 0 the track stays put and the text truncates. */}
+        <ScrollArea className="h-[400px] min-w-0">
           <div className="flex flex-col">
             {isExpression && (
               <button
@@ -302,7 +314,7 @@ export function SymbolSelector({ noTrigger = false }: { noTrigger?: boolean } = 
                 <div
                   key={s.symbol}
                   className={cn(
-                    "group flex items-center justify-between gap-2 border-b border-tv-border px-4 py-2 text-xs hover:bg-tv-panel-hover",
+                    "group flex min-w-0 items-center justify-between gap-2 border-b border-tv-border px-4 py-2 text-xs hover:bg-tv-panel-hover",
                     s.symbol === symbol && "bg-tv-panel-hover",
                   )}
                 >

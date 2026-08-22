@@ -333,7 +333,7 @@ export function WatchlistScreen() {
               className="flex h-8 w-8 items-center justify-center rounded text-tv-text-muted active:bg-tv-panel-hover"
               aria-label="Set flag color"
             >
-              <FlagPennant color={null} height={16} />
+              <FlagPennant color={null} height={17} />
             </button>
             {batchFlagOpen && (
               <FlagSwatches
@@ -710,10 +710,10 @@ function SymbolRow({
       )}
 
       {item.flagColor ? (
-        <FlagPennant color={item.flagColor} height={14} />
+        <FlagPennant color={item.flagColor} height={16} />
       ) : (
-        // Same footprint as the pennant, so flagged and unflagged rows align.
-        <span className="w-[10px] shrink-0" />
+        // Same footprint as the tag, so flagged and unflagged rows align.
+        <span className="w-[9px] shrink-0" />
       )}
 
       <div className="flex min-w-0 items-center gap-1.5">
