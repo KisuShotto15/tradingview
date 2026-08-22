@@ -5,7 +5,6 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
-  Flag,
   FolderInput,
   GripVertical,
   ListPlus,
@@ -34,6 +33,8 @@ import { formatPrice, formatPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useBatchedTicks } from "@/hooks/useBatchedTicks";
 import { CoinIcon, getBaseAsset } from "@/components/watchlist/CoinIcon";
+import { FlagPennant } from "@/components/watchlist/FlagPennant";
+import { FLAG_COLORS } from "@/lib/watchlist/flags";
 import { MobileSheet } from "./MobileSheet";
 
 interface Row {
@@ -42,7 +43,6 @@ interface Row {
   pct: number;
 }
 
-const FLAG_COLORS = ["#ef5350", "#2962ff", "#26a69a", "#ffb74d", "#ab47bc", "#00bcd4", "#f06292"];
 const LONG_PRESS_MS = 450;
 const LONG_PRESS_SLOP = 10;
 
@@ -333,7 +333,7 @@ export function WatchlistScreen() {
               className="flex h-8 w-8 items-center justify-center rounded text-tv-text-muted active:bg-tv-panel-hover"
               aria-label="Set flag color"
             >
-              <Flag className="h-4 w-4" />
+              <FlagPennant color={null} height={16} />
             </button>
             {batchFlagOpen && (
               <FlagSwatches
@@ -710,12 +710,10 @@ function SymbolRow({
       )}
 
       {item.flagColor ? (
-        <span
-          className="h-2 w-2 shrink-0 rounded-full"
-          style={{ backgroundColor: item.flagColor }}
-        />
+        <FlagPennant color={item.flagColor} height={14} />
       ) : (
-        <span className="w-2 shrink-0" />
+        // Same footprint as the pennant, so flagged and unflagged rows align.
+        <span className="w-[10px] shrink-0" />
       )}
 
       <div className="flex min-w-0 items-center gap-1.5">

@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Timeframe } from "@/lib/binance/types";
+import { DEFAULT_FLAG_COLOR } from "@/lib/watchlist/flags";
 import { unifiedHistory, isApplyingHistory, withoutHistory } from "@/lib/history";
 import type { ChartStateSnapshot } from "@/lib/history";
 import type { WatchSort } from "@/lib/watchlist/sort";
@@ -391,6 +392,12 @@ interface ChartState {
   watchlistSort: WatchSort;
   /** Ids of collapsed watchlist section labels (persisted so it survives reload) */
   watchlistCollapsedLabels: string[];
+  /**
+   * Last flag colour the user picked. A plain click on a row's flag strip
+   * reuses it, so flagging a run of symbols the same colour is one click each
+   * instead of a trip through the picker every time.
+   */
+  lastFlagColor: string;
 
   /** Chart color customization */
   chartColors: ChartColors;
@@ -468,6 +475,7 @@ interface ChartState {
   setWatchlistItemsFlag: (watchlistId: string, itemIds: string[], color: string | null) => void;
   addLabelToWatchlist: (watchlistId: string, label: string, beforeId?: string) => void;
   removeWatchlistItem: (watchlistId: string, itemId: string) => void;
+  setLastFlagColor: (color: string) => void;
   setWatchlistItemFlag: (watchlistId: string, itemId: string, color: string | null) => void;
   reorderWatchlistItems: (watchlistId: string, fromId: string, toId: string) => void;
   renameWatchlistItem: (watchlistId: string, itemId: string, value: string) => void;
@@ -568,6 +576,7 @@ export const useChartStore = create<ChartState>()(
       ...initialWatchlists(),
       watchlistSort: { key: "manual", dir: "desc" },
       watchlistCollapsedLabels: [],
+      lastFlagColor: DEFAULT_FLAG_COLOR,
       chartColors: { ...DEFAULT_CHART_COLORS },
       tool: "cursor",
       symbolDialogOpen: false,
@@ -1040,6 +1049,7 @@ export const useChartStore = create<ChartState>()(
             }),
           };
         }),
+      setLastFlagColor: (lastFlagColor) => set({ lastFlagColor }),
       setWatchlistItemFlag: (watchlistId, itemId, color) =>
         set((state) => ({
           watchlists: state.watchlists.map((w) =>
@@ -1191,6 +1201,7 @@ export const useChartStore = create<ChartState>()(
         activeWatchlistId: s.activeWatchlistId,
         watchlistSort: s.watchlistSort,
         watchlistCollapsedLabels: s.watchlistCollapsedLabels,
+        lastFlagColor: s.lastFlagColor,
         chartColors: s.chartColors,
       }),
     },
