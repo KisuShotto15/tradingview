@@ -113,6 +113,26 @@ export function qtyToSizings(
   };
 }
 
+/**
+ * P&L in quote currency (USD) if the position exits at `exit`. Signed: a
+ * positive result is a gain, whichever way the position points.
+ *
+ * The direction matters and can't be shortcut with `Math.abs` plus a fixed
+ * sign per bracket kind. A stop trailed past the entry — above it on a long,
+ * below it on a short — no longer caps a loss, it locks in a gain, and the
+ * number has to say so. The same holds the other way for a take-profit dragged
+ * to the wrong side of the entry.
+ */
+export function pnlAtExit(
+  entry: number,
+  exit: number,
+  qty: number,
+  side: "BUY" | "SELL",
+): number {
+  if (!isFinite(entry) || !isFinite(exit) || !isFinite(qty)) return 0;
+  return (exit - entry) * qty * (side === "BUY" ? 1 : -1);
+}
+
 /** Reward-to-risk for the current entry / sl / tp triplet. Returns 0 if
  *  either side is missing or risk is zero. */
 export function rrRatio(

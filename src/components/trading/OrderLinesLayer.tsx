@@ -9,6 +9,7 @@ import { isPerp, cleanSym } from "@/lib/binance/rest";
 import { resolveSource } from "@/lib/symbols/source";
 import { formatPrice } from "@/lib/format";
 import { useSymbolInfo } from "@/lib/trading/symbol-info";
+import { pnlAtExit } from "@/lib/trading/sizing";
 import type { Order, Position } from "@/lib/binance/trading-types";
 
 /** Bybit-style colors. Limit is always blue regardless of side. */
@@ -35,7 +36,12 @@ interface LineSpec {
   price: number;
   /** Quantity in base asset shown on the pill. */
   qty: number;
-  /** Side of the parent order — drives the +/- sign of P&L on TP/SL. */
+  /**
+   * Side of the POSITION this line belongs to (BUY = long), not of the
+   * reduceOnly order that implements it — that one points the other way, and
+   * would invert the sign of every TP/SL P&L. Only meaningful alongside
+   * `entryPrice`; lines without one show a price instead of a P&L.
+   */
   side: "BUY" | "SELL";
   /** Optional anchor entry price used to compute USD P&L for TP/SL pills. */
   entryPrice?: number;
@@ -114,15 +120,16 @@ function pillText(line: LineSpec): { left: string; right: string } {
     };
   }
   if (line.entryPrice && line.qty > 0) {
-    const pnl =
-      line.kind === "TP"
-        ? Math.abs(line.price - line.entryPrice) * line.qty
-        : Math.abs(line.entryPrice - line.price) * line.qty;
-    const sign = line.kind === "TP" ? "+" : "−";
+    // Signed by direction, not by which bracket this is: a stop moved past the
+    // entry (above it on a long, below it on a short) locks in a gain, so it
+    // has to read positive. Hardcoding "−" for SL made that case say the
+    // opposite of what the trade would actually pay out.
+    const pnl = pnlAtExit(line.entryPrice, line.price, line.qty, line.side);
+    const sign = pnl >= 0 ? "+" : "−";
     // Only the USD amount on TP/SL pills — the size lives on the entry toolbar.
     return {
       left: "",
-      right: `${sign}${pnl.toFixed(2)} USD`,
+      right: `${sign}${Math.abs(pnl).toFixed(2)} USD`,
     };
   }
   return {

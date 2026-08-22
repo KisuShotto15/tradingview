@@ -11,6 +11,7 @@ import {
   riskUsdFromQty,
   qtyFromRiskUsd,
   rrRatio,
+  pnlAtExit,
   modeRequiresSl,
   sizingToQty,
   slInputToPrice,
@@ -78,6 +79,35 @@ describe("risk USD <-> qty", () => {
     const noSl = { ...ctx, sl: null };
     expect(riskUsdFromQty(1, noSl)).toBe(0);
     expect(Number.isNaN(qtyFromRiskUsd(10, noSl))).toBe(true);
+  });
+});
+
+describe("pnlAtExit", () => {
+  it("is positive when a long exits above its entry", () => {
+    expect(pnlAtExit(100, 110, 2, "BUY")).toBeCloseTo(20, 6);
+  });
+
+  it("is negative when a long exits below its entry", () => {
+    expect(pnlAtExit(100, 90, 2, "BUY")).toBeCloseTo(-20, 6);
+  });
+
+  it("mirrors for a short", () => {
+    expect(pnlAtExit(100, 90, 2, "SELL")).toBeCloseTo(20, 6);
+    expect(pnlAtExit(100, 110, 2, "SELL")).toBeCloseTo(-20, 6);
+  });
+
+  // The bug this exists for: a stop trailed past the entry stops being a loss.
+  it("reports a profit-locking stop as a gain", () => {
+    // Long at 100 with the stop pulled up to 105 — worst case is +5/unit.
+    expect(pnlAtExit(100, 105, 3, "BUY")).toBeCloseTo(15, 6);
+    // Short at 100 with the stop pulled down to 95.
+    expect(pnlAtExit(100, 95, 3, "SELL")).toBeCloseTo(15, 6);
+  });
+
+  it("is zero at the entry, and on non-finite inputs", () => {
+    expect(pnlAtExit(100, 100, 5, "BUY")).toBe(0);
+    expect(pnlAtExit(100, NaN, 5, "BUY")).toBe(0);
+    expect(pnlAtExit(NaN, 110, 5, "BUY")).toBe(0);
   });
 });
 

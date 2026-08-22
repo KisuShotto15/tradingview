@@ -13,6 +13,7 @@ import {
   rrRatio,
   modeRequiresSl,
   ticksBetween,
+  pnlAtExit,
   slInputToPrice,
   slPriceToInput,
   type SizingCtx,
@@ -726,11 +727,14 @@ function ExitsSection({
   const slDerived = slPriceToInput(form.slMode, slPrice, slCtx);
   const slValue = slDraft ?? (slDerived > 0 ? trimNum(slDerived, form.slMode === "PRICE" ? pricePrecision : 2) : "");
 
+  // Signed by direction, so a stop placed past the entry (which locks in a
+  // gain rather than capping a loss) reads as the profit it is, and a target
+  // on the wrong side of the entry reads as the loss it is.
   const tpUsd = form.tpEnabled && form.tp && qtyNum > 0
-    ? Math.abs(parseFloat(form.tp) - referencePrice) * qtyNum
+    ? pnlAtExit(referencePrice, parseFloat(form.tp), qtyNum, form.side)
     : 0;
   const slUsd = form.slEnabled && form.sl && qtyNum > 0
-    ? Math.abs(referencePrice - parseFloat(form.sl)) * qtyNum
+    ? pnlAtExit(referencePrice, parseFloat(form.sl), qtyNum, form.side)
     : 0;
   const tpTicks = form.tp ? ticksBetween(referencePrice, parseFloat(form.tp), tickSize) : 0;
 
@@ -770,8 +774,10 @@ function ExitsSection({
                 </span>
               </div>
             )}
-            {form.tpEnabled && tpUsd > 0 && (
-              <div className="text-right text-[10px] text-tv-green">+{tpUsd.toFixed(2)} USD</div>
+            {form.tpEnabled && tpUsd !== 0 && (
+              <div className={cn("text-right text-[10px]", tpUsd > 0 ? "text-tv-green" : "text-tv-red")}>
+                {tpUsd > 0 ? "+" : "−"}{Math.abs(tpUsd).toFixed(2)} USD
+              </div>
             )}
           </div>
 
@@ -839,8 +845,15 @@ function ExitsSection({
                     {SL_MODE_UNITS[form.slMode]}
                   </span>
                 </div>
-                <span className="self-center text-[10px] text-tv-text-muted">
-                  {slUsd > 0 ? `${slUsd.toFixed(2)} USD` : ""}
+                <span
+                  className={cn(
+                    "self-center text-[10px]",
+                    slUsd > 0 ? "text-tv-green" : "text-tv-text-muted",
+                  )}
+                >
+                  {slUsd !== 0
+                    ? `${slUsd > 0 ? "+" : "−"}${Math.abs(slUsd).toFixed(2)} USD`
+                    : ""}
                 </span>
               </div>
             )}
