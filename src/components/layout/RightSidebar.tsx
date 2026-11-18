@@ -1,11 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { BarChart2, Bell, Layers, List } from "lucide-react";
+import { BarChart2, Bell, Layers, List, Shield } from "lucide-react";
 import { Watchlist } from "@/components/watchlist/Watchlist";
 import { OrderPanel } from "@/components/trading/OrderPanel/OrderPanel";
 import { ObjectTreePanel } from "@/components/chart/ObjectTreePanel";
 import { AlertsPanel } from "@/components/alerts/AlertsPanel";
+import { JournalPanel } from "@/components/journal/JournalPanel";
 import { useAlertsStore } from "@/lib/store/alerts-store";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { useChartStore } from "@/lib/store/chart-store";
@@ -103,6 +104,19 @@ export function RightSidebar() {
           Trade
         </button>
         <button
+          onClick={() => setTab("journal")}
+          title="Trade journal guardian (read-only)"
+          className={cn(
+            "flex flex-1 items-center justify-center gap-1.5 py-2 text-[11px] font-medium transition-colors",
+            tab === "journal"
+              ? "border-b-2 border-tv-blue text-tv-blue"
+              : "text-tv-text-muted hover:text-tv-text",
+          )}
+        >
+          <Shield className="h-3.5 w-3.5" />
+          Journal
+        </button>
+        <button
           onClick={() => setTab("alerts")}
           className={cn(
             "flex flex-1 items-center justify-center gap-1.5 py-2 text-[11px] font-medium transition-colors",
@@ -130,6 +144,9 @@ export function RightSidebar() {
       </div>
       <div className={cn("flex-1 overflow-hidden", tab !== "trade" && "hidden")}>
         <OrderPanel />
+      </div>
+      <div className={cn("flex-1 overflow-hidden", tab !== "journal" && "hidden")}>
+        <JournalPanel />
       </div>
       <div className={cn("flex-1 overflow-hidden", tab !== "alerts" && "hidden")}>
         <AlertsPanel />

@@ -283,7 +283,12 @@ export interface Watchlist {
 }
 
 /** Tabs available in the right sidebar. */
-export type RightSidebarTab = "watchlist" | "objects" | "trade" | "alerts";
+export type RightSidebarTab =
+  | "watchlist"
+  | "objects"
+  | "trade"
+  | "alerts"
+  | "journal";
 
 /** Tagged settings target — either a builtin indicator key or an EMA instance id. */
 export type SettingsTarget = IndicatorKey | { kind: "ema"; id: string };

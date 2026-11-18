@@ -214,6 +214,20 @@ across an `await`.
 
 The `matcher` is also a **billing** control, not just an auth one: a matched request runs the proxy as its own invocation *before* the CDN cache is consulted, so a matched path can never be served purely from cache however long its `Cache-Control` is. The public data proxy routes (`/api/yahoo`, `/api/fred`, `/api/coingecko`) are therefore excluded — they return identical credential-free market data to everyone and set long `Cache-Control` headers so Vercel's CDN answers repeats with no function run at all. All of `/api/trade/` is excluded too, including `exchange-info`, which is the one that really matters for CPU: it parses a multi-MB Binance `exchangeInfo` document to pluck a single symbol. The signed routes under that prefix are protected by `requireSession()` instead (see "Route auth" above), *not* by being unprotected. Adding a new public, cacheable proxy route means adding it to the matcher exclusion too, or the cache headers do nothing.
 
+### Trade journal integration
+
+The **trade journal** (`trade-journal/` + `workers/trade-journal-worker/` in the `kisushotto-site` repo) is a separate app on Cloudflare Workers that owns the trading rules, the ledger, the sealed API-key vault and a cron **guardian** that closes or flags positions breaking the rules. Its `risk.js` states the invariant this integration has to respect: *"el servidor es el que dice si una orden sale o no; nada del navegador es confiable."*
+
+**Stage 1 — read-only — is what exists today.** `JournalPanel` (the right sidebar's Journal tab) polls the gateway's `GET /exec/status` through [src/hooks/useJournalStatus.ts](src/hooks/useJournalStatus.ts) and renders the verdict the gateway already reached. It cannot place, move or cancel anything. Execution still goes through this app's own `/api/trade/*`.
+
+Three things to know before extending it:
+
+- **The request goes browser → Worker, never through a Next.js route.** The Worker sets `Access-Control-Allow-Origin: *` and accepts `Authorization`, so proxying it here would add a Vercel Function invocation per poll and buy nothing. This is also why the poll is free: it never touches Vercel.
+- **Auth is the journal's own JWT** (`tj_jwt`). `charts.kisushotto.com` is a different origin from the journal, so localStorage does not carry over and the panel asks for the token to be pasted. A 401/403 latches the poll off rather than hammering the Worker.
+- **Rule verdicts are read, never recomputed.** [src/lib/journal/gates.ts](src/lib/journal/gates.ts) flattens whatever `status.gates` contains without naming individual rules, so a rule added in the journal appears here with no change on this side. Do not port the rules engine over: two copies drift, and the browser copy is the one `risk.js` says not to trust.
+
+**Stage 2, when it happens, must delete `/api/trade/*` in the same commit that starts calling `/exec/order`.** While both paths exist there are two doors to the exchange and only one has the guardian behind it — and a guardian with a known bypass is not a guardian. The gateway's `POST /exec/preview` is the same `order()` with `dry = true`, so the order panel can show the server's verdict live before anything is sent.
+
 ### Responsive shell
 
 `src/app/page.tsx` branches on `useIsMobile()`: desktop renders the full sidebar/panel layout; mobile renders `MobileShell` (bottom-tab screens in `src/components/mobile/`). The dialog components are shared across both.
