@@ -17,15 +17,17 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TradingView Free — Open source crypto charts",
+  // Resolves relative URLs in any future og:image / canonical tag.
+  metadataBase: new URL("https://charts.kisushotto.com"),
+  title: "Kisu Charts — Live crypto charts",
   description:
-    "Live crypto charting platform. A free alternative to TradingView. Powered by Binance + lightweight-charts.",
+    "Live crypto charting and trading. Binance and Bybit market data, client-side indicators, drawing tools.",
   manifest: "/manifest.webmanifest",
-  applicationName: "TV Free",
+  applicationName: "Kisu Charts",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "TV Free",
+    title: "Kisu Charts",
   },
   icons: {
     icon: [{ url: "/logo.svg", type: "image/svg+xml" }],

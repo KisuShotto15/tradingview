@@ -1,4 +1,4 @@
--- Schema para TradingView Gratis
+-- Schema para Kisu Charts
 -- Corré esto en el SQL Editor de tu proyecto Supabase
 
 -- Habilitar extensión para UUIDs

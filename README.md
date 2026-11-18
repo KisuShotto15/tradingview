@@ -1,116 +1,72 @@
-# TradingView Gratis 📈
+# Kisu Charts 📈
 
-Regla numero 1: Nunca jamas me hables con tono, acento ni modismos argentinos. Siempre utiliza un castellano neutro. Nada de vos, ni acentos argentinos en absoluto
+> Plataforma de charts y trading de cripto en tiempo real.
+> [charts.kisushotto.com](https://charts.kisushotto.com)
 
-> **Una alternativa open-source y 100% gratis a TradingView Pro, pensada para LATAM.**
-> Velas en vivo, indicadores propios, watchlist, multi-timeframe — sin pagar USD, sin login, sin ads.
-
-Plataforma de charts crypto construida sobre los datos públicos de **Binance** (WebSocket) y la misma librería de render que usa TradingView ([`lightweight-charts`](https://github.com/tradingview/lightweight-charts)).
+Datos de mercado públicos de **Binance** y **Bybit** (REST + WebSocket), más acciones,
+índices y series macro vía Yahoo Finance, FRED y CoinGecko. Render con
+[`lightweight-charts`](https://github.com/tradingview/lightweight-charts) v5.
 
 ---
 
-## ✨ Features
+## ✨ Qué incluye
 
-- 📊 **Velas en vivo** vía WebSocket de Binance (sin API key)
-- 🔍 **Búsqueda de símbolo** sobre todos los pares USDT del exchange
-- ⏱️ **Multi-timeframe**: 1m / 5m / 15m / 1h / 4h / 1d / 1w
-- 📐 **Indicadores client-side**: EMA 20/50/200, RSI 14, MACD 12/26/9, Volumen
-- 👁️ **Watchlist** con precios y cambio 24h actualizándose en tiempo real
-- 🎨 **Visual idéntica a TradingView** (paleta, fuentes, layout)
-- 💾 **Persistencia** en localStorage (símbolo, timeframe, indicadores)
-- 🔌 **Reconexión robusta** del WebSocket con backoff exponencial
-- 🌐 100% client-side — deploy estático en Vercel/Cloudflare
+- 📊 **Velas en vivo** por WebSocket de Binance y Bybit, con reconexión y backoff exponencial
+- 🔍 **Búsqueda de símbolos** sobre todo el universo spot y perpetuos USDT de ambos exchanges
+- 🌐 **Multi-fuente**: acciones, índices, futuros, macro (FRED) y dominancia (CoinGecko)
+- 🧮 **Expresiones sintéticas**: spreads y ratios entre símbolos (`BTCUSDT/ETHUSDT`)
+- ⏱️ **Multi-timeframe**: de 1m a 1M
+- 📐 **Indicadores client-side**: EMA, RSI, MACD, OBV, ADX, Squeeze Momentum, VuManChu, key levels
+- ✏️ **Herramientas de dibujo** persistidas por usuario: tendencias, Fibonacci, canales,
+  pitchfork, XABCD, posiciones long/short, texto y anotaciones
+- 💹 **Trading real** contra Binance y Bybit: órdenes, TP/SL arrastrables sobre el chart,
+  apalancamiento, modo hedge
+- 👁️ **Watchlists** con banderas de color, secciones y precios en vivo
+- 🔔 **Alertas** por nivel y por dibujo
+- ⏪ **Replay** barra por barra
+- 📸 **Snapshots** del chart con las anotaciones compuestas, subidos a Supabase Storage
+- 📱 **Shell móvil** dedicado
 
 ## 🚀 Empezar
 
 ```bash
 npm install
+cp .env.example .env.local   # completa las credenciales de Supabase
 npm run dev
 ```
 
-Abrí [http://localhost:3000](http://localhost:3000).
+Abre [http://localhost:3000](http://localhost:3000).
+
+Los datos de mercado no necesitan claves. El trading privado usa las claves de API que
+cada usuario introduce en la interfaz: se envían por petición y **no** se guardan en el
+servidor. Supabase sí es obligatorio — sin él fallan la autenticación y la sincronización.
 
 ## 🛠️ Stack
 
 | Capa | Tech |
 |---|---|
-| Framework | Next.js 16 (App Router) |
+| Framework | Next.js 16 (App Router), React 19 |
 | Lenguaje | TypeScript |
-| Estilos | Tailwind CSS 4 + shadcn/ui |
+| Estilos | Tailwind CSS 4 + shadcn/ui (primitivos Base UI) |
 | Charts | [lightweight-charts](https://github.com/tradingview/lightweight-charts) v5 |
 | Estado | Zustand (con persistencia) |
-| Iconos | lucide-react |
-| Datos | Binance Public REST + WebSocket |
+| Backend | Supabase (auth, Postgres con RLS, Storage) |
+| Datos | Binance, Bybit, Yahoo Finance, FRED, CoinGecko |
 
-## 📐 Arquitectura
+La arquitectura, las convenciones y las trampas conocidas están documentadas en
+[CLAUDE.md](CLAUDE.md), que es la referencia viva del proyecto.
 
-```
-src/
-├── app/
-│   ├── layout.tsx          # Root, fuente Inter, TooltipProvider, dark
-│   ├── page.tsx            # Dashboard armando el layout
-│   └── globals.css         # Paleta TradingView
-├── components/
-│   ├── chart/
-│   │   ├── PriceChart.tsx     # Chart core (lightweight-charts + panes)
-│   │   ├── SymbolSelector.tsx # Búsqueda de pares USDT
-│   │   ├── TimeframeSelector.tsx
-│   │   └── IndicatorMenu.tsx  # Toggle EMA/RSI/MACD/Volume
-│   ├── layout/
-│   │   ├── Header.tsx
-│   │   ├── LeftSidebar.tsx    # Iconos drawing tools (visual)
-│   │   ├── RightSidebar.tsx
-│   │   └── BottomPanel.tsx    # Stats 24h
-│   ├── watchlist/
-│   │   └── Watchlist.tsx      # Precios live multi-símbolo
-│   └── ui/                    # shadcn primitives
-└── lib/
-    ├── binance/
-    │   ├── rest.ts            # klines / ticker / exchangeInfo
-    │   ├── ws.ts              # WS multiplex + auto-reconnect
-    │   └── types.ts
-    ├── indicators/
-    │   └── index.ts           # SMA, EMA, RSI (Wilder), MACD
-    ├── store/
-    │   └── chart-store.ts     # Zustand global state
-    └── format.ts              # formatPrice / formatPct / formatVolume
-```
+## 🌐 Deploy
 
-## 🌐 Deploy a Vercel
+Conecta el repositorio en [vercel.com/new](https://vercel.com/new). Hacen falta
+`NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY` como variables de entorno,
+y el dominio de producción debe estar en la lista de *Redirect URLs* de Supabase
+(Authentication → URL Configuration) o los enlaces mágicos de acceso no vuelven.
 
-```bash
-npm i -g vercel
-vercel
-```
+## ⚖️ Atribución
 
-O conectá el repo en [vercel.com/new](https://vercel.com/new) y deploy automático. No hay variables de entorno — todo es cliente.
+`lightweight-charts` es Apache 2.0 y exige mantener la atribución a TradingView, Inc.
+La librería la dibuja por su cuenta en una esquina del chart (opción `attributionLogo`,
+activada por defecto). **No la quites**: es un requisito de la licencia.
 
-## 🧠 Cómo funciona
-
-### Datos históricos
-Al abrir un símbolo se hace un `GET /api/v3/klines` (REST) que trae las últimas **1000 velas** del par + timeframe activo. Se renderizan instantáneamente.
-
-### Datos en vivo
-Una única conexión WebSocket multiplexada (`stream.binance.com`) recibe:
-- `<symbol>@kline_<interval>` → updates de la vela actual + cierre de velas
-- `<symbol>@miniTicker` → tickers del watchlist
-
-Al reconectarse (Binance corta el WS cada 24h) se vuelven a suscribir todos los streams activos con backoff exponencial.
-
-### Indicadores
-Se calculan **client-side** sobre el array de velas en cada update. Implementaciones puras de TypeScript:
-- `EMA`: seeded con SMA del primer período, luego `close * k + prev * (1-k)`
-- `RSI`: Wilder (suavizado exponencial sobre ganancias/pérdidas, período 14)
-- `MACD`: EMA(12) − EMA(26), signal = EMA(9) sobre MACD line
-
-Para 1000 velas y panes múltiples el costo es despreciable.
-
-## ⚠️ Qué NO incluye (todavía)
-
-- ❌ Pine Script (propietario de TradingView, no se puede clonar)
-- ❌ Drawing tools persistentes (Fibo, trend lines arrastrables)
-- ❌ Replay bar-by-bar
-- ❌ Alertas server-side (siguiente video de la serie)
-- ❌ Trading real (bot con API privada — video 4)
-
-`lightweight-charts` es Apache 2.0 con atribución a TradingView — la atribución vive en el footer/UI por requerimiento de la licencia.
+Este proyecto no está afiliado a TradingView, Inc. ni a ningún exchange.

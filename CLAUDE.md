@@ -35,7 +35,16 @@ node --import ./test/register.mjs --disable-warning=MODULE_TYPELESS_PACKAGE_JSON
 
 Requires `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in `.env.local` (see `.env.example`). Without them, middleware auth and cloud sync fail. Market data needs no keys; private trading uses per-user keys entered in the UI.
 
-**Note:** The `README.md` predates auth, drawings, and trading — treat this file and the code as the source of truth, not the README.
+## Branding
+
+The product is **Kisu Charts**, served from `charts.kisushotto.com`. It was previously called "TradingView Free" / "TradingView Gratis", which got the Supabase project flagged as phishing — a credential form carrying another company's name, logo and exact palette is the textbook signature. Keep that from coming back:
+
+- No user-visible string, page title, manifest field or asset may carry another product's name or mark. The brand surface is `src/app/layout.tsx`, `src/app/login/page.tsx`, `public/manifest.webmanifest`, `public/sw.js`, `public/logo.svg` and `README.md`.
+- `/login` matters most: middleware redirects every unauthenticated request there, so it is what a crawler or abuse scanner sees. It must render in the app's own `tv-*` tokens, never a hardcoded foreign palette (it used to hardcode `#131722` / `#2962ff` / `#d1d4dc` / `#787b86`).
+- Comments like "matching TradingView's convention" are fine and worth keeping — they record where a design decision came from. So are the `tv-*` CSS tokens, which are internal class names nothing external reads. The name in a *comment* is not the problem; the name on the *page* is.
+- The small TradingView mark `lightweight-charts` draws in the chart corner (`attributionLogo`, on by default) is required by its Apache-2.0 licence. Leave it alone — attribution is not impersonation.
+
+**Note:** `README.md` was rewritten with the rebrand and is current as of then, but this file stays the source of truth on architecture.
 
 ## Language
 

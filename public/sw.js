@@ -1,4 +1,4 @@
-/* TradingView Free — minimal offline shell service worker.
+/* Kisu Charts — minimal offline shell service worker.
  *
  * Strategy:
  *  - On install, pre-cache the app shell (`/`, manifest, logo).
@@ -8,7 +8,10 @@
  *      • Never cache API routes (they need fresh data).
  *  - Skip caching POST/non-GET requests and cross-origin requests.
  */
-const CACHE = "tvf-shell-v1";
+// Bumped with the rebrand: the old "tvf-shell-v1" entry holds a pre-cached
+// shell carrying the previous name and logo, and `activate` only evicts keys
+// that don't match this one — so the rename has to change the key to land.
+const CACHE = "kisu-charts-shell-v1";
 const SHELL = ["/", "/manifest.webmanifest", "/logo.svg"];
 
 self.addEventListener("install", (event) => {
