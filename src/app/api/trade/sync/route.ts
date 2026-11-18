@@ -6,6 +6,7 @@ import {
   readAccountParams,
   type Result,
 } from "@/lib/exchanges/account";
+import { requireSession } from "@/lib/supabase/require-session";
 
 /**
  * GET /api/trade/sync — batched account snapshot.
@@ -30,6 +31,9 @@ function unwrap<T>(r: Result<T>): { data: T | null; error: unknown | null } {
 }
 
 export async function GET(req: Request) {
+  const denied = await requireSession();
+  if (denied) return denied;
+
   try {
     const { creds, isPerp, symbol } = readAccountParams(req);
 

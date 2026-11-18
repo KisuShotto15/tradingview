@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { bybitSetLeverage, BybitError } from "@/lib/exchanges/bybit";
 import type { Exchange } from "@/lib/binance/trading-types";
+import { requireSession } from "@/lib/supabase/require-session";
 
 const PERP_PROD = "https://fapi.binance.com/fapi/v1";
 const PERP_TEST = "https://testnet.binancefuture.com/fapi/v1";
@@ -29,6 +30,9 @@ interface SetLeverageBody {
 }
 
 export async function POST(req: Request) {
+  const denied = await requireSession();
+  if (denied) return denied;
+
   try {
     const body = (await req.json()) as SetLeverageBody;
     const { apiKey, apiSecret, testnet, symbol, leverage, exchange } = body;

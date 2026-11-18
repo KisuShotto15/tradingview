@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getBalance, readAccountParams } from "@/lib/exchanges/account";
+import { requireSession } from "@/lib/supabase/require-session";
 
 /**
  * GET /api/trade/balance — single-resource read.
@@ -10,6 +11,9 @@ import { getBalance, readAccountParams } from "@/lib/exchanges/account";
  * so both paths return identical shapes.
  */
 export async function GET(req: Request) {
+  const denied = await requireSession();
+  if (denied) return denied;
+
   try {
     const { creds, isPerp } = readAccountParams(req);
     if (!creds.apiKey || !creds.apiSecret) {

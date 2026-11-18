@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPositions, readAccountParams } from "@/lib/exchanges/account";
+import { requireSession } from "@/lib/supabase/require-session";
 
 /**
  * GET /api/trade/positions — single-resource read. Omitting `symbol` returns
@@ -11,6 +12,9 @@ import { getPositions, readAccountParams } from "@/lib/exchanges/account";
  * identical shapes.
  */
 export async function GET(req: Request) {
+  const denied = await requireSession();
+  if (denied) return denied;
+
   try {
     const { creds, symbol } = readAccountParams(req);
     if (!creds.apiKey || !creds.apiSecret) {

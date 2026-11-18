@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { bybitSetTradingStop, BybitError } from "@/lib/exchanges/bybit";
+import { requireSession } from "@/lib/supabase/require-session";
 
 /**
  * POST /api/trade/trading-stop
@@ -19,6 +20,9 @@ interface Body {
 }
 
 export async function POST(req: Request) {
+  const denied = await requireSession();
+  if (denied) return denied;
+
   try {
     const { apiKey, apiSecret, testnet, symbol, tp, sl, positionIdx } =
       (await req.json()) as Body;

@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { bybitIsHedgeMode, BybitError } from "@/lib/exchanges/bybit";
+import { requireSession } from "@/lib/supabase/require-session";
 
 /** Whether the given symbol is in Bybit hedge mode. Binance isn't handled by
  *  this app's trading UI, so it always reports one-way. */
 export async function GET(req: Request) {
+  const denied = await requireSession();
+  if (denied) return denied;
+
   try {
     const url = new URL(req.url);
     const apiKey = url.searchParams.get("apiKey") ?? "";

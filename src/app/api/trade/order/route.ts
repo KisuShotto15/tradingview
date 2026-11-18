@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import type { PlaceOrderParams, CancelOrderParams } from "@/lib/binance/trading-types";
 import { bybitPlaceOrder, bybitCancelOrder, BybitError } from "@/lib/exchanges/bybit";
+import { requireSession } from "@/lib/supabase/require-session";
 
 const SPOT_PROD = "https://api.binance.com/api/v3";
 const SPOT_TEST = "https://testnet.binance.vision/api/v3";
@@ -18,6 +19,9 @@ function sign(data: string, secret: string) {
 }
 
 export async function POST(req: Request) {
+  const denied = await requireSession();
+  if (denied) return denied;
+
   try {
     const body = (await req.json()) as PlaceOrderParams;
     const { apiKey, apiSecret, testnet, isPerp, exchange, ...rest } = body;
@@ -85,6 +89,9 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  const denied = await requireSession();
+  if (denied) return denied;
+
   try {
     const body = (await req.json()) as CancelOrderParams;
     const { apiKey, apiSecret, testnet, isPerp, symbol, orderId, exchange } = body;

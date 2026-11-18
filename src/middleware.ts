@@ -65,12 +65,19 @@ export async function middleware(request: NextRequest) {
  * actually makes that work; gating them behind auth bought nothing anyway,
  * since the data they return is public.
  *
- * `/api/trade/*` (minus exchange-info) deliberately stays matched: those
- * routes sign requests against a real exchange, and the session check keeps
- * the deployment from being used as an open proxy by a stranger.
+ * `/api/trade/*` is excluded too, but it is NOT unprotected: those routes sign
+ * requests against a real exchange, so each one now calls `requireSession()`
+ * (src/lib/supabase/require-session.ts)
+ * as its first statement instead. Same JWT check, same locked door — but one
+ * Function invocation per request rather than two, which on the 2s account
+ * poll is the difference that matters. Any new route under that prefix has to
+ * carry the guard itself; the matcher no longer covers it.
+ *
+ * What stays matched is page navigation, which is what the /login redirect is
+ * actually for.
  */
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/yahoo|api/fred|api/coingecko|api/trade/exchange-info|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/yahoo|api/fred|api/coingecko|api/trade/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
