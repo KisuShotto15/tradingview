@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -28,7 +28,7 @@ export async function middleware(request: NextRequest) {
   // `getClaims()` verifies the session JWT locally (falling back to a network
   // call only when it genuinely can't, e.g. an expired token that needs a
   // refresh), whereas `getUser()` always round-trips to Supabase's auth
-  // server. At one middleware run per request that round trip dominated the
+  // server. At one proxy run per request that round trip dominated the
   // wall-clock — and therefore the billed compute — of every single request.
   // Any unexpected failure is treated as "not authenticated", so the worst
   // case is a redirect to /login rather than an open door.
@@ -55,15 +55,15 @@ export async function middleware(request: NextRequest) {
 }
 
 /**
- * Every matched request runs this middleware as its own serverless invocation,
+ * Every matched request runs this proxy as its own serverless invocation,
  * *before* Vercel's CDN cache is consulted — so a matched path can never be
  * served purely from cache, no matter what `Cache-Control` its route sets.
  *
- * The public data proxies below serve identical, credential-free market data
- * to everyone and set long `Cache-Control` headers precisely so the CDN can
- * answer repeat hits without running any function. Excluding them here is what
- * actually makes that work; gating them behind auth bought nothing anyway,
- * since the data they return is public.
+ * The public data proxy routes below serve identical, credential-free market
+ * data to everyone and set long `Cache-Control` headers precisely so the CDN
+ * can answer repeat hits without running any function. Excluding them here is
+ * what actually makes that work; gating them behind auth bought nothing
+ * anyway, since the data they return is public.
  *
  * `/api/trade/*` is excluded too, but it is NOT unprotected: those routes sign
  * requests against a real exchange, so each one now calls `requireSession()`
