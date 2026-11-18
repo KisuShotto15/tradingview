@@ -4,6 +4,7 @@ import type {
   IndicatorConfig,
   AdxStyle,
   SqueezeStyle,
+  VwapStyle,
   UserEMA,
 } from "@/lib/store/chart-store";
 
@@ -21,6 +22,7 @@ export interface ChartStateSnapshot {
   userEMAs?: UserEMA[];
   adxStyle?: AdxStyle;
   squeezeStyle?: SqueezeStyle;
+  vwapStyle?: VwapStyle;
   logScale?: boolean;
   indicatorLogScale?: Partial<Record<IndicatorKey, boolean>>;
   mainPriceScaleMode?: "normal" | "percentage" | "indexed100";

@@ -40,6 +40,7 @@ const ENTRIES: Entry[] = [
     label: () => "VuManChu Cipher B + Div",
   },
   { key: "obv", group: "Volume", label: () => "On-Balance Volume (OBV)" },
+  { key: "vwap", group: "Volume", label: () => "VWAP + bands (1σ, 2σ, 3σ)" },
   { key: "keylevels", group: "Levels", label: () => "Key Levels (W,M,Q,Y)" },
 ];
 

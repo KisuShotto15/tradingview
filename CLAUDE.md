@@ -136,6 +136,17 @@ The data model is a **discriminated union** by `kind`. All operations (render, h
 
 **Style defaults vs templates.** `toolDefaults[kind]` is the single "last style used", applied silently to new drawings; `drawingTemplates[kind]` are named presets applied on demand. Editing a style from `FloatingContextToolbar` merges the touched field into `toolDefaults` as a side effect, which only ever captures that one field — the toolbar's pin button (`SaveAsDefaultButton`) copies the drawing's whole style at once via `styleOf()`, and `clearToolDefault(kind)` (in the templates menu) drops it. `styleOf`'s `STYLE_FIELDS` list is the single definition of "what counts as style"; fib `levels` are in it deliberately, since carrying a customised ladder to the next fib is the point.
 
+### Anchored VWAP
+
+`src/lib/indicators/vwap.ts` is a **port of the trade journal's VWAP** (`workers/trade-journal-worker/src/indicators.js` in the `kisushotto-site` repo), kept numerically identical on purpose so the same symbol reads the same in both apps — including the journal's palette (`#3b6cf6` mean; `#2fa84f` / `#e3c430` / `#e5484d` for 1σ / 2σ / 3σ). If the journal's formula changes, change it here too.
+
+Two things about it are deliberate and easy to "fix" by mistake:
+
+- **The NY anchor resets twice a day.** `anchorKeyFor("ny")` gives pre-market bars their own segment, so a session breaks at local midnight *and* again at 09:30. That is the journal's behaviour (`minutes >= 570 ? date : date-pre`), replicated rather than corrected.
+- **Session joins are drawn transparent.** A line point's colour paints the segment running to the *next* point, so the last bar before a reset gets `color: "transparent"`. Without it the chart draws a diagonal from where one session ended to where the next begins, which reads as a real price move.
+
+The timezone lookup is cached per UTC hour. The journal calls `Intl.formatToParts` once per candle, which is fine for a ticket chart's handful of bars; here the same code runs over up to 2000 candles on every WebSocket tick, where it would be far too slow. DST is still followed exactly — a fixed offset would not be.
+
 ### Alerts
 
 Two independent mechanisms feed one evaluator:

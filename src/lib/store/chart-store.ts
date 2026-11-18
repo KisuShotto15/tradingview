@@ -16,7 +16,8 @@ export type IndicatorKey =
   | "squeeze"
   | "vumanchu"
   | "obv"
-  | "keylevels";
+  | "keylevels"
+  | "vwap";
 
 export type DrawingTool =
   | "cursor"
@@ -122,6 +123,30 @@ export interface AdxStyle {
   keyLevelLineWidth: 1 | 2 | 3 | 4;
 }
 
+/**
+ * Anchored VWAP styling. Defaults are the trade journal's exact palette, so a
+ * symbol looks the same in both apps: blue mean, then green / yellow / red as
+ * the bands widen.
+ */
+export interface VwapStyle {
+  /** Where each session restarts. See `anchorKeyFor` in indicators/vwap.ts. */
+  anchor: "utc" | "ny";
+  color: string;
+  /** 1σ, 2σ and 3σ, in that order. */
+  bandColors: [string, string, string];
+  /** Per-band visibility, same order. */
+  showBands: [boolean, boolean, boolean];
+  lineWidth: 1 | 2 | 3 | 4;
+}
+
+export const DEFAULT_VWAP_STYLE: VwapStyle = {
+  anchor: "utc",
+  color: "#3b6cf6",
+  bandColors: ["#2fa84f", "#e3c430", "#e5484d"],
+  showBands: [true, true, true],
+  lineWidth: 1,
+};
+
 export const DEFAULT_ADX_STYLE: AdxStyle = {
   adxColor: "#787b86",
   plusDiColor: "#26a69a",
@@ -145,6 +170,7 @@ export const INDICATOR_COLORS: Record<IndicatorKey, string> = {
   vumanchu: "#4994ec",
   obv: "#ffb74d",
   keylevels: "#08bcd4",
+  vwap: DEFAULT_VWAP_STYLE.color,
 };
 
 /** A user-added EMA instance. Multiple can coexist. */
@@ -313,6 +339,8 @@ interface ChartState {
   keyLevels: KeyLevelsConfig;
   /** Squeeze indicator style overrides */
   squeezeStyle: SqueezeStyle;
+  /** Anchored VWAP style overrides */
+  vwapStyle: VwapStyle;
   /** Logarithmic price scale (main pane only) */
   logScale: boolean;
   /** Per-indicator log scale toggle (sub-panes) */
@@ -435,6 +463,7 @@ interface ChartState {
   setAdxStyle: (patch: Partial<AdxStyle>) => void;
   setKeyLevels: (patch: Partial<KeyLevelsConfig>) => void;
   setSqueezeStyle: (patch: Partial<SqueezeStyle>) => void;
+  setVwapStyle: (patch: Partial<VwapStyle>) => void;
   setLogScale: (v: boolean) => void;
   setIndicatorLogScale: (key: IndicatorKey, v: boolean) => void;
   setMainPriceScaleMode: (mode: "normal" | "percentage" | "indexed100") => void;
@@ -535,6 +564,7 @@ export const useChartStore = create<ChartState>()(
         vumanchu: false,
         obv: false,
         keylevels: false,
+        vwap: false,
       },
       hidden: {
         rsi: false,
@@ -545,6 +575,7 @@ export const useChartStore = create<ChartState>()(
         vumanchu: false,
         obv: false,
         keylevels: false,
+        vwap: false,
       },
       config: { ...DEFAULT_CONFIG },
       userEMAs: [
@@ -554,6 +585,7 @@ export const useChartStore = create<ChartState>()(
       adxStyle: { ...DEFAULT_ADX_STYLE },
       keyLevels: { ...DEFAULT_KEY_LEVELS },
       squeezeStyle: { ...DEFAULT_SQUEEZE_STYLE },
+      vwapStyle: { ...DEFAULT_VWAP_STYLE },
       logScale: false,
       mainPriceScaleMode: "normal",
       mainPriceScaleInverted: false,
@@ -756,6 +788,20 @@ export const useChartStore = create<ChartState>()(
         }
       },
 
+      setVwapStyle: (patch) => {
+        if (!isApplyingHistory) {
+          const before: ChartStateSnapshot = { vwapStyle: { ...get().vwapStyle } };
+          set((st) => ({ vwapStyle: { ...st.vwapStyle, ...patch } }));
+          unifiedHistory.push({
+            kind: "chartState",
+            before,
+            after: { vwapStyle: { ...get().vwapStyle } },
+          });
+        } else {
+          set((st) => ({ vwapStyle: { ...st.vwapStyle, ...patch } }));
+        }
+      },
+
       setLogScale: (logScale) => {
         // Log and percentage/indexed-to-100 are mutually exclusive price-scale
         // modes in lightweight-charts, so enabling one clears the other.
@@ -856,6 +902,7 @@ export const useChartStore = create<ChartState>()(
           if (snap.userEMAs !== undefined) patch.userEMAs = snap.userEMAs;
           if (snap.adxStyle !== undefined) patch.adxStyle = snap.adxStyle;
           if (snap.squeezeStyle !== undefined) patch.squeezeStyle = snap.squeezeStyle;
+          if (snap.vwapStyle !== undefined) patch.vwapStyle = snap.vwapStyle;
           if (snap.logScale !== undefined) patch.logScale = snap.logScale;
           if (snap.indicatorLogScale !== undefined) patch.indicatorLogScale = snap.indicatorLogScale;
           if (snap.indicatorOverlays !== undefined) patch.indicatorOverlays = snap.indicatorOverlays;
@@ -1178,6 +1225,7 @@ export const useChartStore = create<ChartState>()(
         adxStyle: s.adxStyle,
         keyLevels: s.keyLevels,
         squeezeStyle: s.squeezeStyle,
+        vwapStyle: s.vwapStyle,
         logScale: s.logScale,
         indicatorLogScale: s.indicatorLogScale,
         mainPriceScaleMode: s.mainPriceScaleMode,

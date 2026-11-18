@@ -32,6 +32,7 @@ import { getSymbolInfo } from "@/lib/trading/symbol-info";
 import { ema, rsi, macd, obv } from "@/lib/indicators";
 import { adx as adxCalc } from "@/lib/indicators/adx";
 import { squeezeMomentum } from "@/lib/indicators/squeeze";
+import { vwapBands } from "@/lib/indicators/vwap";
 import { SqueezeOverlay } from "./SqueezeOverlay";
 import { vumanchu as vumanchuCalc } from "@/lib/indicators/vumanchu";
 import type { Candle, Timeframe } from "@/lib/binance/types";
@@ -189,6 +190,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const vmcMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   // OBV pane
   const obvRef = useRef<ISeriesApi<"Line"> | null>(null);
+  /** Anchored VWAP: the mean line, plus an [upper, lower] pair per sigma band. */
+  const vwapRef = useRef<{
+    mean: ISeriesApi<"Line">;
+    bands: [ISeriesApi<"Line">, ISeriesApi<"Line">][];
+  } | null>(null);
   const candlesRef = useRef<Candle[]>([]);
   // Shape of the current view (bar span + offset from the last bar), kept fresh
   // as the user pans/zooms so it survives a symbol change and can be reapplied
@@ -231,6 +237,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const pillsCollapsed = useChartStore((s) => s.pillsCollapsed);
   const subPanesHidden = useChartStore((s) => s.subPanesHidden);
   const showBarCountdown = useChartStore((s) => s.showBarCountdown);
+  const vwapStyle = useChartStore((s) => s.vwapStyle);
   const keyLevelsCfg = useChartStore((s) => s.keyLevels);
   const chartColors = useChartStore((s) => s.chartColors);
   chartColorsRef.current = chartColors;
@@ -1019,6 +1026,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
       areaSeriesRef.current = null;
       volumeSeriesRef.current = null;
       emaSeriesMapRef.current.clear();
+      // The chart owns these series; dropping the handles keeps a remount from
+      // reusing ones that belong to a chart that no longer exists.
+      vwapRef.current = null;
       rsiRef.current = null;
       rsi30Ref.current = null;
       rsi70Ref.current = null;
@@ -1787,6 +1797,65 @@ export function PriceChart({ symbol, timeframe }: Props) {
     updateEMAs();
   }, [userEMAs]);
 
+  // Anchored VWAP: create or drop the seven main-pane lines, keep their style
+  // in sync, then refill. Series live only while the study is on, so a chart
+  // without it pays nothing.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    if (!indicators.vwap) {
+      if (vwapRef.current) {
+        const { mean, bands } = vwapRef.current;
+        for (const sx of [mean, ...bands.flat()]) {
+          try {
+            chart.removeSeries(sx);
+          } catch {}
+        }
+        vwapRef.current = null;
+      }
+      return;
+    }
+
+    if (!vwapRef.current) {
+      const mk = (color: string) =>
+        chart.addSeries(LineSeries, {
+          color,
+          lineWidth: vwapStyle.lineWidth,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        });
+      vwapRef.current = {
+        mean: mk(vwapStyle.color),
+        bands: [0, 1, 2].map((i) => [
+          mk(vwapStyle.bandColors[i]),
+          mk(vwapStyle.bandColors[i]),
+        ]) as [ISeriesApi<"Line">, ISeriesApi<"Line">][],
+      };
+    }
+
+    const v = vwapRef.current;
+    const visible = !hidden.vwap;
+    v.mean.applyOptions({
+      color: vwapStyle.color,
+      lineWidth: vwapStyle.lineWidth,
+      visible,
+    });
+    v.bands.forEach(([up, dn], i) => {
+      const opts = {
+        color: vwapStyle.bandColors[i],
+        lineWidth: vwapStyle.lineWidth,
+        visible: visible && vwapStyle.showBands[i],
+      };
+      up.applyOptions(opts);
+      dn.applyOptions(opts);
+    });
+    updateVWAP();
+    // `updateVWAP` reads everything it needs off refs and the store.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indicators.vwap, hidden.vwap, vwapStyle]);
+
   useEffect(() => {
     updateRSI();
   }, [config.rsi]);
@@ -2069,6 +2138,37 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
     const lastVol = c.at(-1)?.volume;
     setLastValues((prev) => ({ ...prev, volume: lastVol }));
+  }
+
+  function updateVWAP() {
+    const c = candlesRef.current;
+    const v = vwapRef.current;
+    if (!v || c.length === 0) return;
+    const st = useChartStore.getState().vwapStyle;
+    const pts = vwapBands(c, st.anchor);
+
+    // A point's colour paints the segment running to the *next* point, so the
+    // last bar of a session is drawn transparent. Without this the chart draws
+    // a long diagonal from where one session ended to where the next one
+    // starts — the reset would read as a real price move.
+    const line = (value: (p: (typeof pts)[number]) => number) =>
+      pts.map((p, i) => {
+        const d: { time: UTCTimestamp; value: number; color?: string } = {
+          time: p.time as UTCTimestamp,
+          value: value(p),
+        };
+        if (i + 1 < pts.length && pts[i + 1].anchor !== p.anchor) {
+          d.color = "transparent";
+        }
+        return d;
+      });
+
+    v.mean.setData(line((p) => p.vwap));
+    v.bands.forEach(([up, dn], j) => {
+      const n = j + 1;
+      up.setData(line((p) => p.vwap + n * p.sd));
+      dn.setData(line((p) => p.vwap - n * p.sd));
+    });
   }
 
   function updateOBV() {
@@ -2393,6 +2493,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           );
         }
         updateEMAs();
+        updateVWAP();
         updateRSI();
         updateMACD();
         updateADX();
@@ -2470,6 +2571,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
                 );
               }
               updateEMAs();
+              updateVWAP();
               updateRSI();
               updateMACD();
               updateADX();
@@ -2558,6 +2660,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
                   });
                 }
                 updateEMAs();
+                updateVWAP();
                 updateRSI();
                 updateMACD();
                 updateADX();
@@ -2613,6 +2716,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
               });
             }
             updateEMAs();
+            updateVWAP();
             updateRSI();
             updateMACD();
             updateADX();
@@ -2665,6 +2769,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       );
     }
     updateEMAs();
+    updateVWAP();
     updateRSI();
     updateMACD();
     updateADX();
@@ -2859,6 +2964,23 @@ export function PriceChart({ symbol, timeframe }: Props) {
                 onToggleHide={() => toggleHidden("volume")}
                 onSettings={() => setSettingsTarget("volume")}
                 onRemove={() => removeIndicator("volume")}
+              />
+            ),
+          },
+        ]
+      : []),
+    ...(indicators.vwap
+      ? [
+          {
+            key: "vwap",
+            node: (
+              <IndicatorPill
+                name={`VWAP ${vwapStyle.anchor.toUpperCase()}`}
+                color={vwapStyle.color}
+                hidden={hidden.vwap}
+                onToggleHide={() => toggleHidden("vwap")}
+                onSettings={() => setSettingsTarget("vwap")}
+                onRemove={() => removeIndicator("vwap")}
               />
             ),
           },

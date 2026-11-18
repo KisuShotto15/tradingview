@@ -10,12 +10,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ColorPicker } from "@/components/ui/color-picker";
+import { cn } from "@/lib/utils";
 import {
   useChartStore,
   DEFAULT_CONFIG,
   DEFAULT_ADX_STYLE,
   DEFAULT_SQUEEZE_STYLE,
   DEFAULT_KEY_LEVELS,
+  DEFAULT_VWAP_STYLE,
   type IndicatorKey,
   type IndicatorConfig,
   type AdxStyle,
@@ -337,6 +339,7 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
           OBV uses cumulative volume signed by close direction. No parameters.
         </p>
       )}
+      {target === "vwap" && <VwapSettings />}
       {target === "keylevels" && <KeyLevelsSettings />}
 
       <div className="mt-2 flex items-center justify-between">
@@ -708,6 +711,104 @@ function KLGroup({
         <ColorPicker value={color} onChange={onColor} />
       </div>
       <div className="grid grid-cols-2 gap-x-2 gap-y-1">{children}</div>
+    </div>
+  );
+}
+
+function VwapSettings() {
+  const st = useChartStore((s) => s.vwapStyle);
+  const set = useChartStore((s) => s.setVwapStyle);
+
+  const SIGMA = ["1σ", "2σ", "3σ"];
+
+  return (
+    <div className="flex flex-col gap-3">
+      <label className="flex flex-col gap-1">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-tv-text-muted">
+          Anchor
+        </span>
+        <div className="flex gap-1">
+          {(
+            [
+              ["utc", "UTC day", "Resets at 00:00 UTC — the usual crypto session"],
+              ["ny", "NY open", "Resets at 09:30 New York, with pre-market as its own segment"],
+            ] as const
+          ).map(([value, label, hint]) => (
+            <button
+              key={value}
+              title={hint}
+              onClick={() => set({ anchor: value })}
+              className={cn(
+                "flex-1 rounded px-2 py-1.5 text-[11px] font-medium transition-colors",
+                st.anchor === value
+                  ? "bg-tv-blue/20 text-tv-blue"
+                  : "bg-tv-bg text-tv-text-muted hover:text-tv-text",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </label>
+
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs text-tv-text">VWAP line</span>
+        <ColorPicker value={st.color} onChange={(c) => set({ color: c })} />
+      </div>
+
+      {SIGMA.map((label, i) => (
+        <div key={label} className="flex items-center justify-between gap-3">
+          <label className="flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={st.showBands[i]}
+              onChange={(e) => {
+                const next = [...st.showBands] as [boolean, boolean, boolean];
+                next[i] = e.target.checked;
+                set({ showBands: next });
+              }}
+              className="h-3.5 w-3.5 accent-tv-blue"
+            />
+            <span className="text-xs text-tv-text">Band {label}</span>
+          </label>
+          <ColorPicker
+            value={st.bandColors[i]}
+            onChange={(c) => {
+              const next = [...st.bandColors] as [string, string, string];
+              next[i] = c;
+              set({ bandColors: next });
+            }}
+          />
+        </div>
+      ))}
+
+      <label className="flex items-center justify-between gap-3">
+        <span className="text-xs text-tv-text">Line width</span>
+        <div className="flex gap-1">
+          {([1, 2, 3, 4] as const).map((w) => (
+            <button
+              key={w}
+              onClick={() => set({ lineWidth: w })}
+              className={cn(
+                "flex h-6 w-6 items-center justify-center rounded text-[10px] font-bold transition-colors",
+                st.lineWidth === w
+                  ? "bg-tv-blue/20 text-tv-blue"
+                  : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
+              )}
+            >
+              {w}
+            </button>
+          ))}
+        </div>
+      </label>
+
+      <button
+        type="button"
+        onClick={() => set(DEFAULT_VWAP_STYLE)}
+        className="mt-1 self-end text-[10px] text-tv-text-muted underline hover:text-tv-text"
+      >
+        Reset to defaults
+      </button>
     </div>
   );
 }
