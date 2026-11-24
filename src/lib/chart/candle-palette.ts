@@ -37,41 +37,31 @@ export const DEFAULT_CANDLE_PALETTE: CandlePalette = {
 };
 
 /**
- * The teal/red palette that was the default before the purple one.
+ * Bumped whenever `DEFAULT_CANDLE_PALETTE` changes in a way that should reach
+ * users who already have colours stored.
  *
- * Kept so the migration can tell "never touched the colours" apart from
- * "deliberately chose teal and red", which are indistinguishable in the
- * stored state otherwise — both are just six strings.
+ * This is what makes the migration run **once** rather than on every load.
+ * It has to exist on both sides: localStorage has the `persist` version to
+ * key off, but the Supabase copy carries no version of its own, and the cloud
+ * load runs *after* rehydration — so without a marker travelling with the
+ * cloud payload, every sign-in would restore the pre-migration colours (or,
+ * if the migration were unconditional there, would stomp any colour the user
+ * had since chosen and make the pickers useless).
  */
-export const LEGACY_CANDLE_PALETTE: CandlePalette = {
-  bodyUp: "#26a69a",
-  bodyDown: "#ef5350",
-  borderUp: "#26a69a",
-  borderDown: "#ef5350",
-  wickUp: "#26a69a",
-  wickDown: "#ef5350",
-};
-
-const KEYS = Object.keys(LEGACY_CANDLE_PALETTE) as (keyof CandlePalette)[];
-
-/** True when every one of the six candle colours is still the old default. */
-export function isLegacyCandlePalette(colors: Partial<CandlePalette> | null | undefined): boolean {
-  if (!colors) return false;
-  return KEYS.every(
-    (k) => colors[k]?.toLowerCase() === LEGACY_CANDLE_PALETTE[k],
-  );
-}
+export const CANDLE_PALETTE_VERSION = 1;
 
 /**
- * Move a stored colour set onto the new palette, but only if it is untouched.
+ * Put the current palette onto a stored colour set, keeping everything else
+ * (background, grid lines) exactly as it is.
  *
- * Changing `DEFAULT_CHART_COLORS` alone would have changed nothing for anyone
- * who had already used the app: `chartColors` is persisted to localStorage
- * *and* mirrored to Supabase, so an existing user keeps seeing the old colours
- * on every device. Both load paths run this, and a partial match (someone who
- * recoloured only the wicks, say) is left exactly as it is.
+ * Deliberately unconditional. An earlier version only rewrote a set that
+ * still matched the old teal/red default, on the theory that a customised
+ * palette should be left alone — but that meant a requested palette change
+ * reached nobody who had ever touched the colour pickers, which is the one
+ * person most likely to have asked for it. Changing the palette is a product
+ * decision; the pickers are still there to override it afterwards, and the
+ * version marker keeps this from running a second time.
  */
-export function migrateCandlePalette<T extends Partial<CandlePalette>>(colors: T): T {
-  if (!isLegacyCandlePalette(colors)) return colors;
+export function applyCandlePalette<T extends Partial<CandlePalette>>(colors: T): T {
   return { ...colors, ...DEFAULT_CANDLE_PALETTE };
 }

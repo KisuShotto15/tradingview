@@ -13,7 +13,10 @@ import {
   saveWatchlistItems,
 } from "./user-data";
 import { useAuth } from "./auth-context";
-import { migrateCandlePalette } from "@/lib/chart/candle-palette";
+import {
+  applyCandlePalette,
+  CANDLE_PALETTE_VERSION,
+} from "@/lib/chart/candle-palette";
 
 const DEBOUNCE_MS = 1500;
 
@@ -69,8 +72,15 @@ export function useCloudSync() {
           useChartStore.setState({
             // Migrated here too: this runs after the persisted state has been
             // rehydrated, so an unmigrated cloud copy would put the old palette
-            // straight back on every sign-in.
-            ...(vs.chartColors   && { chartColors:   migrateCandlePalette(vs.chartColors) }),
+            // straight back on every sign-in. Keyed on the stored marker, not
+            // applied unconditionally — otherwise every sign-in would also
+            // stomp whatever colours the user picked after the migration.
+            ...(vs.chartColors && {
+              chartColors:
+                (vs.candlePaletteVersion ?? 0) < CANDLE_PALETTE_VERSION
+                  ? applyCandlePalette(vs.chartColors)
+                  : vs.chartColors,
+            }),
             ...(vs.adxStyle      && { adxStyle:      vs.adxStyle }),
             ...(vs.squeezeStyle  && { squeezeStyle:  vs.squeezeStyle }),
             ...(vs.keyLevels     && { keyLevels:     vs.keyLevels }),
@@ -134,6 +144,7 @@ export function useCloudSync() {
         config,
         visual_settings: {
           chartColors,
+          candlePaletteVersion: CANDLE_PALETTE_VERSION,
           adxStyle,
           squeezeStyle,
           keyLevels,

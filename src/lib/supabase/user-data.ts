@@ -15,6 +15,10 @@ import type { Timeframe } from "@/lib/binance/types";
 
 export interface VisualSettings {
   chartColors?: ChartColors;
+  /** `CANDLE_PALETTE_VERSION` the stored `chartColors` were last brought up
+   *  to. Absent on rows written before the marker existed, which is exactly
+   *  the case the migration has to catch. */
+  candlePaletteVersion?: number;
   adxStyle?: AdxStyle;
   squeezeStyle?: SqueezeStyle;
   keyLevels?: KeyLevelsConfig;

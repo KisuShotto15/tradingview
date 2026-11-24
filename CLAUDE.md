@@ -107,6 +107,10 @@ Pure TypeScript, computed client-side over the candle array on every update (`sr
 ### State (Zustand stores, `src/lib/store/`)
 
 - `chart-store.ts` — symbol, timeframe, indicators + config, colors/visual settings, watchlists, chart type, right-sidebar tab/width. `persist`ed to localStorage.
+
+**Changing a default that is persisted changes nothing on its own.** `chartColors` is written to localStorage *and* mirrored to Supabase, so editing `DEFAULT_CHART_COLORS` only reaches someone who has never run the app. A palette change needs a migration on **both** paths, and the cloud one is the subtle half: there is no version column on the row, and the cloud load runs *after* rehydration, so an unmigrated cloud copy restores the old colours on every sign-in. [src/lib/chart/candle-palette.ts](src/lib/chart/candle-palette.ts) therefore carries `CANDLE_PALETTE_VERSION`, which the cloud payload stamps into `visual_settings.candlePaletteVersion` and the loader compares against — making it one-shot. Unconditional there would be just as wrong in the other direction: it would overwrite whatever the user picked afterwards, every sign-in, and make the colour pickers useless.
+
+The first attempt at this migration only rewrote a palette that still matched the previous default exactly, reasoning that a customised one should be left alone. That is the wrong default for a deliberate palette change: it reaches nobody who has ever opened the colour pickers — the people most likely to have asked for it. `applyCandlePalette` is unconditional, and the version marker is what keeps it from running twice.
 - `drawings-store.ts` — all chart drawings (see below).
 - `trading-store.ts` — exchange choice, API credentials, orders, positions, balance, order form.
 - `alerts-store.ts` — standalone price/RSI/MACD alerts (see "Alerts" below). `persist`ed to localStorage only — unlike drawing-attached alerts, these do **not** sync to Supabase.

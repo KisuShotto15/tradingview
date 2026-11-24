@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
   DEFAULT_CANDLE_PALETTE,
-  migrateCandlePalette,
+  applyCandlePalette,
 } from "@/lib/chart/candle-palette";
 import type { Timeframe } from "@/lib/binance/types";
 import { DEFAULT_FLAG_COLOR } from "@/lib/watchlist/flags";
@@ -1188,7 +1188,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: "tv-gratis-chart-state",
-      version: 6,
+      version: 7,
       migrate: (persisted, fromVersion) => {
         const p = persisted as Record<string, unknown>;
         if (fromVersion < 3 && Array.isArray(p.watchlist)) {
@@ -1217,11 +1217,11 @@ export const useChartStore = create<ChartState>()(
           if (adxStyle && adxStyle.showKeyLevel === undefined) adxStyle.showKeyLevel = true;
           if (adxStyle && adxStyle.keyLevelColor === "#787b86") adxStyle.keyLevelColor = "#ffffff";
         }
-        // v6: the candle palette moved from teal/red to purple. Only rewrite a
-        // stored set that is still the old default in full — someone who chose
-        // their own colours keeps them.
-        if (fromVersion < 6 && p.chartColors) {
-          p.chartColors = migrateCandlePalette(
+        // v7: the candle palette moved to purple. Applied to whatever is
+        // stored, not only to an untouched teal/red set — v6 did the latter
+        // and so reached nobody who had ever opened the colour pickers.
+        if (fromVersion < 7 && p.chartColors) {
+          p.chartColors = applyCandlePalette(
             p.chartColors as Record<string, string>,
           );
         }
