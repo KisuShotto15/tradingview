@@ -56,3 +56,43 @@ export class FeedStatusEmitter {
     };
   }
 }
+
+/**
+ * When the charted symbol last had a live bar update applied.
+ *
+ * Separate from the sockets' own `lastMsgAt`, and that separation is the
+ * point. A Binance connection is shared: the chart's `@kline_<tf>` and the
+ * watchlist's `@miniTicker` streams ride the same socket, so any watchlist
+ * row ticking keeps `lastMsgAt` fresh. The socket watchdog therefore cannot
+ * see the case where the socket is healthy but *this symbol's subscription*
+ * is delivering nothing — and the status badge goes on claiming "Live" while
+ * the chart sits still, which is the worst of both worlds.
+ *
+ * A plain mutable box rather than store state: it is written on every tick,
+ * which at several a second would be a render per tick for a value only two
+ * places poll.
+ */
+export const chartTick = { at: 0 };
+
+export function markChartTick(): void {
+  chartTick.at = Date.now();
+}
+
+/** Infinity until the first tick, so "never arrived" reads as stale. */
+export function chartTickAgeMs(): number {
+  return chartTick.at === 0 ? Infinity : Date.now() - chartTick.at;
+}
+
+/** Reset on symbol/timeframe change, so the previous symbol's last tick is
+ *  not mistaken for this one's. */
+export function resetChartTick(): void {
+  chartTick.at = 0;
+}
+
+/**
+ * How long the charted symbol may go without a tick before the feed is
+ * reported as stale and the subscription is rebuilt. Binance pushes kline
+ * updates roughly once a second per stream, so 20s of nothing is not a quiet
+ * market.
+ */
+export const CHART_TICK_STALE_MS = 20_000;

@@ -118,8 +118,10 @@ export function BottomPanel() {
             "inline-flex h-1.5 w-1.5 rounded-full",
             !feed.streaming
               ? "bg-tv-text-dim"
-              : feed.status === "live"
-                ? "animate-pulse bg-tv-green"
+              : feed.stale
+                ? "bg-tv-yellow"
+                : feed.status === "live"
+                  ? "animate-pulse bg-tv-green"
                 : feed.status === "connecting"
                   ? "animate-pulse bg-tv-yellow"
                   : "bg-tv-red",
@@ -129,8 +131,10 @@ export function BottomPanel() {
           {feed.source} ·{" "}
           {!feed.streaming
             ? "Delayed"
-            : feed.status === "live"
-              ? "Live"
+            : feed.stale
+              ? "No ticks"
+              : feed.status === "live"
+                ? "Live"
               : feed.status === "connecting"
                 ? "Reconnecting"
                 : "Offline"}

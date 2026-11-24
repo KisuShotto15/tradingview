@@ -33,6 +33,12 @@ import { getSymbolInfo } from "@/lib/trading/symbol-info";
 import { ema, rsi, macd, obv } from "@/lib/indicators";
 import { stochRsi } from "@/lib/indicators/stochrsi";
 import { barCloseTime } from "@/lib/chart/countdown";
+import {
+  markChartTick,
+  resetChartTick,
+  chartTickAgeMs,
+  CHART_TICK_STALE_MS,
+} from "@/lib/feed-status";
 import { adx as adxCalc } from "@/lib/indicators/adx";
 import { squeezeMomentum } from "@/lib/indicators/squeeze";
 import { vwapBands } from "@/lib/indicators/vwap";
@@ -174,6 +180,10 @@ interface LastValues {
  */
 const STALE_BAR_GRACE_SEC = 30;
 const STALE_BAR_CHECK_MS = 15_000;
+/** Floor between forced resubscriptions, so a stream that stays quiet for a
+ *  real reason (a genuinely dead market, a blocked host) can't turn into a
+ *  reconnect loop. */
+const RESUBSCRIBE_MIN_GAP_MS = 60_000;
 
 const RSI_LINE_COLOR = "#ffffff";
 const RSI_MA_COLOR = "#e3a33d";
@@ -371,6 +381,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
   // off internally with no public change event to subscribe to.
   const [autoScaleOn, setAutoScaleOn] = useState<Record<string, boolean>>({});
   const [measure, setMeasure] = useState<MeasureState>(INITIAL_MEASURE);
+  /** Bumping this tears down and rebuilds the live subscription. Used when
+   *  the socket looks healthy but this symbol's stream has gone quiet. */
+  const [feedNonce, setFeedNonce] = useState(0);
+  const lastResubAtRef = useRef(0);
   const [dragKey, setDragKey] = useState<IndicatorKey | null>(null);
   const pointerDragRef = useRef<{ key: IndicatorKey } | null>(null);
   const [renderTick, setRenderTick] = useState(0);
@@ -1408,6 +1422,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
           lineWidth: 2,
           priceLineVisible: false,
           lastValueVisible: false,
+          // No dot under the crosshair: with two lines plus three fills in one
+          // short pane, the markers sit on top of the levels being read.
+          crosshairMarkerVisible: false,
         },
         paneIndex,
       );
@@ -1418,6 +1435,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           lineWidth: 1,
           priceLineVisible: false,
           lastValueVisible: false,
+          crosshairMarkerVisible: false,
         },
         paneIndex,
       );
@@ -2915,6 +2933,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
               interval: timeframe,
               onCandle: (k) => {
                 if (useReplayStore.getState().active) return; // frozen during replay
+                markChartTick();
                 lastBySym.set(s, k);
                 if (lastBySym.size !== symbols.length) return;
                 const synth = evaluateCandleAt(symbol, lastBySym);
@@ -2979,6 +2998,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           interval: timeframe,
           onCandle: (k) => {
             if (useReplayStore.getState().active) return; // frozen during replay
+            markChartTick();
             if (!candleSeriesRef.current) return;
             const arr = candlesRef.current;
             const lastCandle = arr[arr.length - 1];
@@ -3035,7 +3055,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
       cancelled = true;
       if (unsub) unsub();
     };
-  }, [symbol, timeframe]);
+    // `feedNonce` is not data — bumping it rebuilds the subscription when the
+    // socket looks healthy but this symbol's stream has gone quiet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, timeframe, feedNonce]);
 
   // ── Bar replay ─────────────────────────────────────────────────────────────
   // Push a candle slice through every series + indicator. Indicators read
@@ -3077,6 +3100,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
   }
 
+  // A new symbol or timeframe starts with no tick of its own.
+  useEffect(() => {
+    resetChartTick();
+  }, [symbol, timeframe]);
+
   // Repair stale data, whatever caused it.
   //
   // The socket watchdog in the WS clients catches a feed that has gone silent,
@@ -3110,7 +3138,26 @@ export function PriceChart({ symbol, timeframe }: Props) {
     const repair = async () => {
       if (cancelled || inFlight || document.hidden) return;
       if (useReplayStore.getState().active) return;
-      if (!isStale()) return;
+
+      // Two different silences, with two different repairs.
+      //
+      // A quiet *stream* means this symbol stopped delivering while the socket
+      // is otherwise fine — the shared Binance connection also carries the
+      // watchlist's miniTickers, so it keeps looking alive and its own
+      // watchdog never fires. Refetching would paper over that until the next
+      // bar; what it needs is the subscription rebuilt.
+      const streamQuiet = chartTickAgeMs() > CHART_TICK_STALE_MS;
+      const barsStale = isStale();
+      if (!streamQuiet && !barsStale) return;
+
+      if (streamQuiet && Date.now() - lastResubAtRef.current > RESUBSCRIBE_MIN_GAP_MS) {
+        lastResubAtRef.current = Date.now();
+        setFeedNonce((n) => n + 1);
+        // The rebuild refetches on its own; don't also pull here.
+        return;
+      }
+
+      if (!barsStale) return;
       inFlight = true;
       try {
         const fresh = await fetchCandles(symbol, timeframe, 1000);
