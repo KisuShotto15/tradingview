@@ -1,4 +1,4 @@
-import type { Candle, Timeframe } from "@/lib/binance/types";
+import type { Candle, Ticker24h, Timeframe } from "@/lib/binance/types";
 import { stripExchangePrefix } from "@/lib/symbols/prefix";
 
 /**
@@ -130,6 +130,56 @@ export async function fetchBybitTickers24h(symbols: string[]): Promise<BybitTick
       lastPrice: parseFloat(t.lastPrice),
       priceChangePercent: parseFloat(t.price24hPcnt) * 100,
     }));
+}
+
+interface FullTickersResp {
+  retCode: number;
+  retMsg: string;
+  result: {
+    list: {
+      symbol: string;
+      lastPrice: string;
+      prevPrice24h: string;
+      price24hPcnt: string;
+      highPrice24h: string;
+      lowPrice24h: string;
+      volume24h: string;
+      turnover24h: string;
+    }[];
+  };
+}
+
+/**
+ * Full 24h snapshot for a single Bybit perp, normalized to the shared
+ * `Ticker24h` shape so a consumer can read either venue through one type.
+ *
+ * Separate from `fetchBybitTickers24h` on purpose: that one pulls the whole
+ * linear list to cover a watchlist of any size, which is a multi-hundred-KB
+ * document — far too much to re-fetch every few seconds for one symbol.
+ */
+export async function fetchBybitTicker24h(symbol: string): Promise<Ticker24h> {
+  const bare = bybitSymbol(symbol);
+  const res = await fetch(
+    `${BASE}/v5/market/tickers?category=linear&symbol=${bare}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) throw new Error(`bybit ticker ${res.status}`);
+  const data = (await res.json()) as FullTickersResp;
+  if (data.retCode !== 0) throw new Error(data.retMsg || "bybit ticker error");
+  const t = data.result.list?.[0];
+  if (!t) throw new Error(`bybit ticker ${bare} not found`);
+  const last = parseFloat(t.lastPrice);
+  const prev = parseFloat(t.prevPrice24h);
+  return {
+    symbol,
+    lastPrice: last,
+    priceChange: last - prev,
+    priceChangePercent: parseFloat(t.price24hPcnt) * 100,
+    highPrice: parseFloat(t.highPrice24h),
+    lowPrice: parseFloat(t.lowPrice24h),
+    volume: parseFloat(t.volume24h),
+    quoteVolume: parseFloat(t.turnover24h),
+  };
 }
 
 let cachedPerps: BybitPerpSymbol[] | null = null;

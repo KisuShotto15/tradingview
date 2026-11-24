@@ -2784,6 +2784,49 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
   }
 
+  // Recover the bars missed while the socket was gone.
+  //
+  // A kline stream only sends updates from the moment of subscription, so a
+  // reconnect resumes the live bar but leaves a hole where every bar that
+  // closed during the outage should be: the chart looks current while the last
+  // few minutes are quietly missing, and the bar-close countdown counts down
+  // against a stale bar. Refetching on the way back up is the only way to
+  // close that gap.
+  useEffect(() => {
+    const src = resolveSource(symbol);
+    if (src.kind !== "binance" && src.kind !== "bybit") return;
+    const emitter =
+      src.kind === "bybit" ? getBybitWS().status : getBinanceWS().statusFor(symbol);
+
+    // Read before subscribing: `subscribe` replays the current value, and an
+    // already-live feed must not be mistaken for a recovery.
+    let wasLive = emitter.get() === "live";
+    let cancelled = false;
+    const unsub = emitter.subscribe((st) => {
+      const live = st === "live";
+      const recovered = live && !wasLive;
+      wasLive = live;
+      // Only on the way back up, and never before the initial fetch has put
+      // something on the chart — that path already loads fresh data itself.
+      if (!recovered || candlesRef.current.length === 0) return;
+      if (useReplayStore.getState().active) return;
+      void (async () => {
+        try {
+          const fresh = await fetchCandles(symbol, timeframe, 1000);
+          if (cancelled || useReplayStore.getState().active || fresh.length === 0) return;
+          applyReplayCandles(fresh);
+        } catch (e) {
+          console.error("Reconnect refetch failed:", e);
+        }
+      })();
+    });
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, timeframe]);
+
   // Enter: snapshot the full array. Exit: refetch fresh (also catches bars that
   // closed while replay was frozen) and let the live WS resume.
   useEffect(() => {

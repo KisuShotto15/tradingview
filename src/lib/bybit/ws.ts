@@ -1,5 +1,10 @@
 import type { Candle, Timeframe } from "@/lib/binance/types";
 import { bybitInterval, bybitSymbol } from "./public";
+import {
+  FeedStatusEmitter,
+  STALE_MS,
+  WATCHDOG_MS,
+} from "@/lib/feed-status";
 
 /**
  * Bybit public linear WS (kline stream) with the same `subscribeKline` shape as
@@ -61,24 +66,70 @@ class BybitWS {
   private tickerLast = new Map<string, { price: number; pct: number }>();
   private connected = false;
   private closing = false;
+  /** When the last frame arrived. Drives the staleness watchdog below. */
+  private lastMsgAt = 0;
+  private watchdog: ReturnType<typeof setInterval> | null = null;
+  readonly status = new FeedStatusEmitter();
 
   private topicOf(sub: KlineSubscription): string {
     return `kline.${bybitInterval(sub.interval)}.${bybitSymbol(sub.symbol)}`;
   }
 
+  private subCount(): number {
+    return this.subs.size + this.tickerSubs.size;
+  }
+
+  /**
+   * Force a reconnect when the socket has gone silent.
+   *
+   * The 20s heartbeat below only proves *we* are still sending. Bybit answers
+   * each ping with a pong, so a live socket can never be silent for three
+   * beats — but nothing was checking that the pongs still arrive. A half-open
+   * socket (laptop sleep, a network switch, a VPN dropping) keeps
+   * `readyState` at OPEN forever and the chart freezes with nothing logged
+   * anywhere. Closing it here routes the failure back into the normal
+   * `onclose` -> `scheduleReconnect` path.
+   */
+  private startWatchdog() {
+    if (this.watchdog) return;
+    this.watchdog = setInterval(() => {
+      if (this.closing || !this.connected || this.subCount() === 0) return;
+      if (Date.now() - this.lastMsgAt < STALE_MS.bybit) return;
+      this.status.set("connecting");
+      try {
+        this.ws?.close();
+      } catch {
+        // Already gone; onclose has fired or will fire shortly.
+      }
+    }, WATCHDOG_MS);
+  }
+
+  private stopWatchdog() {
+    if (this.watchdog) {
+      clearInterval(this.watchdog);
+      this.watchdog = null;
+    }
+  }
+
   connect() {
     if (this.ws || this.closing) return;
+    this.status.set("connecting");
     this.ws = new WebSocket(WS_URL);
 
     this.ws.onopen = () => {
       this.connected = true;
       this.reconnectAttempts = 0;
+      this.lastMsgAt = Date.now();
+      this.status.set("live");
+      this.startWatchdog();
       const topics = [...this.subs.keys(), ...this.tickerSubs.keys()];
       if (topics.length > 0) this.send({ op: "subscribe", args: topics });
       this.pingTimer = setInterval(() => this.send({ op: "ping" }), 20000);
     };
 
     this.ws.onmessage = (ev) => {
+      // Any frame counts as proof of life, a pong or a subscribe ack included.
+      this.lastMsgAt = Date.now();
       try {
         const msg = JSON.parse(ev.data) as BybitKlineMsg | BybitTickerMsg | { op?: string };
         if (!("topic" in msg) || !msg.topic) return;
@@ -93,6 +144,8 @@ class BybitWS {
       this.connected = false;
       this.ws = null;
       if (this.pingTimer) { clearInterval(this.pingTimer); this.pingTimer = null; }
+      this.stopWatchdog();
+      this.status.set(this.closing ? "down" : "connecting");
       if (!this.closing) this.scheduleReconnect();
     };
 
@@ -196,6 +249,8 @@ class BybitWS {
     this.closing = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.pingTimer) clearInterval(this.pingTimer);
+    this.stopWatchdog();
+    this.status.set("down");
     this.ws?.close();
     this.ws = null;
   }

@@ -1,5 +1,10 @@
 import type { Candle, Timeframe } from "./types";
 import { isPerp, cleanSym } from "./rest";
+import {
+  FeedStatusEmitter,
+  STALE_MS,
+  WATCHDOG_MS,
+} from "@/lib/feed-status";
 
 const SPOT_WS = "wss://stream.binance.com:9443/stream";
 const FUTURES_WS = "wss://fstream.binance.com/stream";
@@ -74,16 +79,57 @@ class BinanceWSConn {
   private bookTickerSubs = new Map<string, (m: { bid: number; ask: number }) => void>();
   private connected = false;
   private closing = false;
+  /** When the last frame arrived. Drives the staleness watchdog below. */
+  private lastMsgAt = 0;
+  private watchdog: ReturnType<typeof setInterval> | null = null;
+  readonly status = new FeedStatusEmitter();
 
   constructor(private url: string, private symbolDecorator: (s: string) => string) {}
 
+  private subCount(): number {
+    return this.klineSubs.size + this.tickerSubs.size + this.bookTickerSubs.size;
+  }
+
+  /**
+   * Force a reconnect when the socket has gone silent.
+   *
+   * `onclose` is not guaranteed: a half-open socket (laptop sleep, a network
+   * switch, a VPN dropping) keeps `readyState` at OPEN forever and the chart
+   * freezes with nothing logged anywhere. Closing it here routes the failure
+   * back into the normal `onclose` -> `scheduleReconnect` path.
+   */
+  private startWatchdog() {
+    if (this.watchdog) return;
+    this.watchdog = setInterval(() => {
+      if (this.closing || !this.connected || this.subCount() === 0) return;
+      if (Date.now() - this.lastMsgAt < STALE_MS.binance) return;
+      this.status.set("connecting");
+      try {
+        this.ws?.close();
+      } catch {
+        // Already gone; onclose has fired or will fire shortly.
+      }
+    }, WATCHDOG_MS);
+  }
+
+  private stopWatchdog() {
+    if (this.watchdog) {
+      clearInterval(this.watchdog);
+      this.watchdog = null;
+    }
+  }
+
   connect() {
     if (this.ws || this.closing) return;
+    this.status.set("connecting");
     this.ws = new WebSocket(this.url);
 
     this.ws.onopen = () => {
       this.connected = true;
       this.reconnectAttempts = 0;
+      this.lastMsgAt = Date.now();
+      this.status.set("live");
+      this.startWatchdog();
       const streams: string[] = [];
       this.klineSubs.forEach((s) => {
         streams.push(`${cleanSym(s.symbol).toLowerCase()}@kline_${s.interval}`);
@@ -96,6 +142,8 @@ class BinanceWSConn {
     };
 
     this.ws.onmessage = (ev) => {
+      // Any frame counts as proof of life, the ack of a SUBSCRIBE included.
+      this.lastMsgAt = Date.now();
       try {
         const msg = JSON.parse(ev.data) as WSMsg | { result: unknown; id: number };
         if ("stream" in msg) this.dispatch(msg);
@@ -107,6 +155,8 @@ class BinanceWSConn {
     this.ws.onclose = () => {
       this.connected = false;
       this.ws = null;
+      this.stopWatchdog();
+      this.status.set(this.closing ? "down" : "connecting");
       if (!this.closing) this.scheduleReconnect();
     };
 
@@ -239,6 +289,14 @@ export class BinanceWS {
 
   connect() {
     // Lazy: connect on first subscription
+  }
+
+  /**
+   * Feed status for one symbol. Spot and futures are separate sockets, so
+   * "is the feed alive?" is only answerable per symbol, not per exchange.
+   */
+  statusFor(symbol: string): FeedStatusEmitter {
+    return isPerp(symbol) ? this.futures.status : this.spot.status;
   }
 
   subscribeKline(sub: KlineSubscription): () => void {
