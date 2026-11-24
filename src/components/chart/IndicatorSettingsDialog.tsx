@@ -28,6 +28,7 @@ import {
 
 const TITLES: Record<IndicatorKey, string> = {
   rsi: "RSI",
+  stochrsi: "Stochastic RSI",
   macd: "MACD",
   volume: "Volume",
   adx: "ADX",
@@ -191,6 +192,10 @@ interface FormProps {
 function SettingsForm({ target, config, onSave, onReset }: FormProps) {
   const [draft, setDraft] = useState({
     rsi: config.rsi,
+    stochRsiLength: config.stochRsiLength,
+    stochRsiStochLength: config.stochRsiStochLength,
+    stochRsiK: config.stochRsiK,
+    stochRsiD: config.stochRsiD,
     macdFast: config.macdFast,
     macdSlow: config.macdSlow,
     macdSignal: config.macdSignal,
@@ -206,6 +211,10 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
   useEffect(() => {
     setDraft({
       rsi: config.rsi,
+      stochRsiLength: config.stochRsiLength,
+      stochRsiStochLength: config.stochRsiStochLength,
+      stochRsiK: config.stochRsiK,
+      stochRsiD: config.stochRsiD,
       macdFast: config.macdFast,
       macdSlow: config.macdSlow,
       macdSignal: config.macdSignal,
@@ -221,6 +230,13 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
 
   function save() {
     if (target === "rsi") onSave({ rsi: clamp(draft.rsi, 2, 100) });
+    else if (target === "stochrsi")
+      onSave({
+        stochRsiLength: clamp(draft.stochRsiLength, 2, 100),
+        stochRsiStochLength: clamp(draft.stochRsiStochLength, 2, 100),
+        stochRsiK: clamp(draft.stochRsiK, 1, 50),
+        stochRsiD: clamp(draft.stochRsiD, 1, 50),
+      });
     else if (target === "macd")
       onSave({
         macdFast: clamp(draft.macdFast, 2, 100),
@@ -253,6 +269,37 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
             onChange={(n) => setDraft((d) => ({ ...d, rsi: n }))}
           />
           <OverlaySection target="rsi" />
+        </>
+      )}
+      {target === "stochrsi" && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <Field
+              label="K"
+              value={draft.stochRsiK}
+              onChange={(n) => setDraft((d) => ({ ...d, stochRsiK: n }))}
+            />
+            <Field
+              label="D"
+              value={draft.stochRsiD}
+              onChange={(n) => setDraft((d) => ({ ...d, stochRsiD: n }))}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Field
+              label="RSI length"
+              value={draft.stochRsiLength}
+              onChange={(n) => setDraft((d) => ({ ...d, stochRsiLength: n }))}
+            />
+            <Field
+              label="Stochastic length"
+              value={draft.stochRsiStochLength}
+              onChange={(n) =>
+                setDraft((d) => ({ ...d, stochRsiStochLength: n }))
+              }
+            />
+          </div>
+          <OverlaySection target="stochrsi" />
         </>
       )}
       {target === "macd" && (
@@ -477,6 +524,7 @@ function Toggle({
 const OVERLAY_OPTIONS: { value: IndicatorKey | "own"; label: string }[] = [
   { value: "own", label: "Own pane" },
   { value: "rsi", label: "RSI pane" },
+  { value: "stochrsi", label: "Stochastic RSI pane" },
   { value: "macd", label: "MACD pane" },
   { value: "adx", label: "ADX pane" },
   { value: "squeeze", label: "Squeeze pane" },

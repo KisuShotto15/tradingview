@@ -30,6 +30,7 @@ import { fetchCandles } from "@/lib/data/fetch";
 import { resolveSource } from "@/lib/symbols/source";
 import { getSymbolInfo } from "@/lib/trading/symbol-info";
 import { ema, rsi, macd, obv } from "@/lib/indicators";
+import { stochRsi } from "@/lib/indicators/stochrsi";
 import { adx as adxCalc } from "@/lib/indicators/adx";
 import { squeezeMomentum } from "@/lib/indicators/squeeze";
 import { vwapBands } from "@/lib/indicators/vwap";
@@ -142,11 +143,27 @@ interface HoverInfo {
 
 interface LastValues {
   rsi?: number;
+  stochRsiK?: number;
+  stochRsiD?: number;
   macd?: number;
   macdSignal?: number;
   macdHist?: number;
   volume?: number;
 }
+
+/**
+ * Stochastic RSI pane constants.
+ *
+ * K/D use TradingView's own built-in colours rather than `INDICATOR_COLORS`,
+ * which holds one colour per indicator and cannot express a two-line study.
+ * The 20/80 rails are the conventional levels for this oscillator — not the
+ * RSI's 30/70, because Stoch RSI spends most of its life pinned at the
+ * extremes and 30/70 would flag almost every bar.
+ */
+const STOCH_RSI_K_COLOR = "#2962ff";
+const STOCH_RSI_D_COLOR = "#ff6d00";
+const STOCH_RSI_OVERSOLD = 20;
+const STOCH_RSI_OVERBOUGHT = 80;
 
 interface PaneOffset {
   top: number;
@@ -164,6 +181,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
   /** Per-user EMA instance: id → series */
   const emaSeriesMapRef = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
   const rsiRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const stochRsiKRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const stochRsiDRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const stochRsi20Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const stochRsi80Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const rsi30Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const rsi70Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const macdRef = useRef<ISeriesApi<"Line"> | null>(null);
@@ -303,8 +324,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const latestCrosshairParamRef = useRef<MouseEventParams<Time> | null>(null);
   const paneOffsetsRef = useRef(paneOffsets);
   paneOffsetsRef.current = paneOffsets;
-  const indicatorPaneIdxRef = useRef<Record<"rsi" | "macd" | "adx" | "squeeze" | "vumanchu", number>>(
-    { rsi: 1, macd: 2, adx: 3, squeeze: 4, vumanchu: 5 },
+  const indicatorPaneIdxRef = useRef<Record<"rsi" | "stochrsi" | "macd" | "adx" | "squeeze" | "vumanchu", number>>(
+    { rsi: 1, stochrsi: 2, macd: 3, adx: 4, squeeze: 5, vumanchu: 6 },
   );
 
   // Drive alerts off the live price tick
@@ -1336,8 +1357,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
    *   1: RSI, 2: MACD, 3: ADX, 4: Squeeze, 5: VuManChu
    * Each indicator falls into the next available index based on which higher-priority ones are enabled.
    */
-  function panelIndexFor(key: "rsi" | "macd" | "adx" | "squeeze" | "vumanchu" | "obv"): number {
-    const order: Array<typeof key> = ["rsi", "macd", "adx", "squeeze", "vumanchu", "obv"];
+  function panelIndexFor(key: "rsi" | "stochrsi" | "macd" | "adx" | "squeeze" | "vumanchu" | "obv"): number {
+    const order: Array<typeof key> = ["rsi", "stochrsi", "macd", "adx", "squeeze", "vumanchu", "obv"];
     const assigned: Record<string, number> = {};
     let idx = 1;
     for (const k of order) {
@@ -1619,6 +1640,54 @@ export function PriceChart({ symbol, timeframe }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [indicators.vumanchu, indicators.rsi, indicators.macd, indicators.adx, indicators.squeeze, indicatorOverlays]);
 
+  // ── Stochastic RSI pane ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!chartRef.current) return;
+    // Teardown first, like the other sub-panes: a change to the overlay target
+    // moves the series to a different pane index, which addSeries cannot do.
+    for (const ref of [stochRsiKRef, stochRsiDRef, stochRsi20Ref, stochRsi80Ref]) {
+      if (ref.current) {
+        try { chartRef.current.removeSeries(ref.current); } catch {}
+        ref.current = null;
+      }
+    }
+    if (indicators.stochrsi) {
+      const paneIndex = panelIndexFor("stochrsi");
+      const scaleId = "stochrsi";
+      const band = {
+        color: TV_COLORS.textMuted,
+        lineWidth: 1 as const,
+        lineStyle: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        priceScaleId: scaleId,
+        // These two deliberately DO feed autoscale (no `autoscaleInfoProvider:
+        // () => null` here, unlike ADX's key level): they are what keeps the
+        // pane showing at least 20..80 when K and D are pinned at an extreme,
+        // which is most of the time for this oscillator.
+      };
+      stochRsiKRef.current = chartRef.current.addSeries(
+        LineSeries,
+        { color: STOCH_RSI_K_COLOR, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, priceScaleId: scaleId },
+        paneIndex,
+      );
+      stochRsiDRef.current = chartRef.current.addSeries(
+        LineSeries,
+        { color: STOCH_RSI_D_COLOR, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, priceScaleId: scaleId },
+        paneIndex,
+      );
+      stochRsi20Ref.current = chartRef.current.addSeries(LineSeries, band, paneIndex);
+      stochRsi80Ref.current = chartRef.current.addSeries(LineSeries, band, paneIndex);
+      try {
+        chartRef.current.panes()[paneIndex]?.setStretchFactor(1);
+        chartRef.current.panes()[0]?.setStretchFactor(3);
+      } catch {}
+      updateStochRsi();
+    }
+    requestAnimationFrame(() => recomputePaneOffsets());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indicators.stochrsi, indicators.rsi, indicators.macd, indicators.adx, indicators.squeeze, indicators.vumanchu, indicatorOverlays]);
+
   // ── OBV pane ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!chartRef.current) return;
@@ -1652,13 +1721,17 @@ export function PriceChart({ symbol, timeframe }: Props) {
   // Sub-pane series are also hidden when subPanesHidden (so their legend headers vanish).
   useEffect(() => {
     const isSubPane = (key: IndicatorKey) =>
-      key === "rsi" || key === "macd" || key === "adx" || key === "squeeze" || key === "vumanchu" || key === "obv";
+      key === "rsi" || key === "stochrsi" || key === "macd" || key === "adx" || key === "squeeze" || key === "vumanchu" || key === "obv";
     const v = (key: IndicatorKey) =>
       indicators[key] && !hidden[key] && !(isSubPane(key) && subPanesHidden);
     // EMAs visibility is driven by per-instance `hidden` flag in the sync effect
     if (rsiRef.current) rsiRef.current.applyOptions({ visible: v("rsi") });
     if (rsi30Ref.current) rsi30Ref.current.applyOptions({ visible: v("rsi") });
     if (rsi70Ref.current) rsi70Ref.current.applyOptions({ visible: v("rsi") });
+    if (stochRsiKRef.current) stochRsiKRef.current.applyOptions({ visible: v("stochrsi") });
+    if (stochRsiDRef.current) stochRsiDRef.current.applyOptions({ visible: v("stochrsi") });
+    if (stochRsi20Ref.current) stochRsi20Ref.current.applyOptions({ visible: v("stochrsi") });
+    if (stochRsi80Ref.current) stochRsi80Ref.current.applyOptions({ visible: v("stochrsi") });
     if (macdRef.current) macdRef.current.applyOptions({ visible: v("macd") });
     if (macdSignalRef.current) macdSignalRef.current.applyOptions({ visible: v("macd") });
     if (macdHistRef.current) macdHistRef.current.applyOptions({ visible: v("macd") });
@@ -2203,6 +2276,43 @@ export function PriceChart({ symbol, timeframe }: Props) {
     setLastValues((prev) => ({ ...prev, rsi: data.at(-1)?.value }));
   }
 
+  function updateStochRsi() {
+    const c = candlesRef.current;
+    if (c.length === 0 || !stochRsiKRef.current || !stochRsiDRef.current) return;
+    const cfg = configRef.current;
+    const pts = stochRsi(
+      c,
+      cfg.stochRsiLength,
+      cfg.stochRsiStochLength,
+      cfg.stochRsiK,
+      cfg.stochRsiD,
+    );
+    stochRsiKRef.current.setData(
+      pts.map((p) => ({ time: p.time as UTCTimestamp, value: p.k })),
+    );
+    stochRsiDRef.current.setData(
+      pts.map((p) => ({ time: p.time as UTCTimestamp, value: p.d })),
+    );
+    if (pts.length > 0) {
+      const first = pts[0].time as UTCTimestamp;
+      const last = pts[pts.length - 1].time as UTCTimestamp;
+      stochRsi20Ref.current?.setData([
+        { time: first, value: STOCH_RSI_OVERSOLD },
+        { time: last, value: STOCH_RSI_OVERSOLD },
+      ]);
+      stochRsi80Ref.current?.setData([
+        { time: first, value: STOCH_RSI_OVERBOUGHT },
+        { time: last, value: STOCH_RSI_OVERBOUGHT },
+      ]);
+    }
+    const last = pts.at(-1);
+    setLastValues((prev) => ({
+      ...prev,
+      stochRsiK: last?.k,
+      stochRsiD: last?.d,
+    }));
+  }
+
   function updateMACD() {
     const c = candlesRef.current;
     if (c.length === 0 || !macdRef.current) return;
@@ -2495,6 +2605,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         updateEMAs();
         updateVWAP();
         updateRSI();
+        updateStochRsi();
         updateMACD();
         updateADX();
         updateSqueeze();
@@ -2573,6 +2684,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
               updateEMAs();
               updateVWAP();
               updateRSI();
+              updateStochRsi();
               updateMACD();
               updateADX();
               updateSqueeze();
@@ -2662,6 +2774,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
                 updateEMAs();
                 updateVWAP();
                 updateRSI();
+                updateStochRsi();
                 updateMACD();
                 updateADX();
                 updateSqueeze();
@@ -2718,6 +2831,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
             updateEMAs();
             updateVWAP();
             updateRSI();
+            updateStochRsi();
             updateMACD();
             updateADX();
             updateSqueeze();
@@ -2771,6 +2885,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     updateEMAs();
     updateVWAP();
     updateRSI();
+    updateStochRsi();
     updateMACD();
     updateADX();
     updateSqueeze();
@@ -2925,11 +3040,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
   // Order: RSI > MACD > ADX > Squeeze > VuManChu. Overlaid indicators reuse
   // the target's index instead of taking their own.
   const indicatorPaneIdx: Record<
-    "rsi" | "macd" | "adx" | "squeeze" | "vumanchu",
+    "rsi" | "stochrsi" | "macd" | "adx" | "squeeze" | "vumanchu",
     number
   > = (() => {
-    const order: Array<"rsi" | "macd" | "adx" | "squeeze" | "vumanchu"> = [
+    const order: Array<"rsi" | "stochrsi" | "macd" | "adx" | "squeeze" | "vumanchu"> = [
       "rsi",
+      "stochrsi",
       "macd",
       "adx",
       "squeeze",
@@ -2947,10 +3063,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
         if (indicators[k]) idx++;
       }
     }
-    return out as Record<"rsi" | "macd" | "adx" | "squeeze" | "vumanchu", number>;
+    return out as Record<"rsi" | "stochrsi" | "macd" | "adx" | "squeeze" | "vumanchu", number>;
   })();
   indicatorPaneIdxRef.current = indicatorPaneIdx;
   const rsiPaneIdx = indicatorPaneIdx.rsi;
+  const stochRsiPaneIdx = indicatorPaneIdx.stochrsi;
   const macdPaneIdx = indicatorPaneIdx.macd;
   const adxPaneIdx = indicatorPaneIdx.adx;
   const squeezePaneIdx = indicatorPaneIdx.squeeze;
@@ -2961,6 +3078,15 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const subPaneEntries: PaneEntry[] = (
     [
       { key: "rsi" as IndicatorKey, paneIdx: rsiPaneIdx, name: `RSI ${config.rsi}`, value: lastValues.rsi !== undefined ? lastValues.rsi.toFixed(2) : undefined },
+      {
+        key: "stochrsi" as IndicatorKey,
+        paneIdx: stochRsiPaneIdx,
+        name: `Stoch RSI ${config.stochRsiK}, ${config.stochRsiD}, ${config.stochRsiStochLength}, ${config.stochRsiLength}`,
+        value:
+          lastValues.stochRsiK !== undefined
+            ? `${lastValues.stochRsiK.toFixed(2)} / ${(lastValues.stochRsiD ?? 0).toFixed(2)}`
+            : undefined,
+      },
       { key: "macd" as IndicatorKey, paneIdx: macdPaneIdx, name: `MACD ${config.macdFast}, ${config.macdSlow}, ${config.macdSignal}`, value: lastValues.macd !== undefined ? `${lastValues.macd.toFixed(2)} / ${(lastValues.macdSignal ?? 0).toFixed(2)}` : undefined },
       { key: "adx" as IndicatorKey, paneIdx: adxPaneIdx, name: `ADX ${config.adx}` },
       { key: "squeeze" as IndicatorKey, paneIdx: squeezePaneIdx, name: "Squeeze Momentum" },

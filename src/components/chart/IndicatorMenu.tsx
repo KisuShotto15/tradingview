@@ -24,6 +24,12 @@ const ENTRIES: Entry[] = [
   { key: "volume", group: "Volume", label: () => "Volume" },
   { key: "rsi", group: "Oscillators", label: (c) => `RSI (${c.rsi})` },
   {
+    key: "stochrsi",
+    group: "Oscillators",
+    label: (c) =>
+      `Stochastic RSI (${c.stochRsiK}, ${c.stochRsiD}, ${c.stochRsiStochLength}, ${c.stochRsiLength})`,
+  },
+  {
     key: "macd",
     group: "Oscillators",
     label: (c) => `MACD (${c.macdFast}, ${c.macdSlow}, ${c.macdSignal})`,

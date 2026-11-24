@@ -14,6 +14,7 @@ import type { WatchSort } from "@/lib/watchlist/sort";
 
 export type IndicatorKey =
   | "rsi"
+  | "stochrsi"
   | "macd"
   | "volume"
   | "adx"
@@ -50,6 +51,11 @@ export type DrawingTool =
 
 export interface IndicatorConfig {
   rsi: number;
+  /** Stochastic RSI: RSI length, stochastic window, then the K and D smoothing. */
+  stochRsiLength: number;
+  stochRsiStochLength: number;
+  stochRsiK: number;
+  stochRsiD: number;
   macdFast: number;
   macdSlow: number;
   macdSignal: number;
@@ -68,6 +74,10 @@ export interface IndicatorConfig {
 
 export const DEFAULT_CONFIG: IndicatorConfig = {
   rsi: 14,
+  stochRsiLength: 14,
+  stochRsiStochLength: 14,
+  stochRsiK: 3,
+  stochRsiD: 3,
   macdFast: 12,
   macdSlow: 26,
   macdSignal: 9,
@@ -167,6 +177,7 @@ export const DEFAULT_ADX_STYLE: AdxStyle = {
 
 export const INDICATOR_COLORS: Record<IndicatorKey, string> = {
   rsi: "#ab47bc",
+  stochrsi: "#2962ff",
   macd: "#2962ff",
   volume: "#787b86",
   adx: "#ffb74d",
@@ -561,6 +572,7 @@ export const useChartStore = create<ChartState>()(
       timeframe: "15m" as Timeframe,
       indicators: {
         rsi: true,
+        stochrsi: false,
         macd: false,
         volume: true,
         adx: false,
@@ -572,6 +584,7 @@ export const useChartStore = create<ChartState>()(
       },
       hidden: {
         rsi: false,
+        stochrsi: false,
         macd: false,
         volume: false,
         adx: false,
