@@ -51,6 +51,11 @@ export type DrawingTool =
 
 export interface IndicatorConfig {
   rsi: number;
+  /** SMA of the RSI series drawn over it (TradingView's "MA Length"). */
+  rsiMaLength: number;
+  /** Where the solid extreme zones start, measured from 100 and from 0. */
+  rsiUpperZone: number;
+  rsiLowerZone: number;
   /** Stochastic RSI: RSI length, stochastic window, then the K and D smoothing. */
   stochRsiLength: number;
   stochRsiStochLength: number;
@@ -74,6 +79,9 @@ export interface IndicatorConfig {
 
 export const DEFAULT_CONFIG: IndicatorConfig = {
   rsi: 14,
+  rsiMaLength: 14,
+  rsiUpperZone: 85,
+  rsiLowerZone: 15,
   stochRsiLength: 14,
   stochRsiStochLength: 14,
   stochRsiK: 3,

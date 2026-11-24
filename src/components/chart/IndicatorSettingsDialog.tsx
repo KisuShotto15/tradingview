@@ -192,6 +192,9 @@ interface FormProps {
 function SettingsForm({ target, config, onSave, onReset }: FormProps) {
   const [draft, setDraft] = useState({
     rsi: config.rsi,
+    rsiMaLength: config.rsiMaLength,
+    rsiUpperZone: config.rsiUpperZone,
+    rsiLowerZone: config.rsiLowerZone,
     stochRsiLength: config.stochRsiLength,
     stochRsiStochLength: config.stochRsiStochLength,
     stochRsiK: config.stochRsiK,
@@ -211,6 +214,9 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
   useEffect(() => {
     setDraft({
       rsi: config.rsi,
+      rsiMaLength: config.rsiMaLength,
+      rsiUpperZone: config.rsiUpperZone,
+      rsiLowerZone: config.rsiLowerZone,
       stochRsiLength: config.stochRsiLength,
       stochRsiStochLength: config.stochRsiStochLength,
       stochRsiK: config.stochRsiK,
@@ -229,7 +235,13 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
   }, [config, target]);
 
   function save() {
-    if (target === "rsi") onSave({ rsi: clamp(draft.rsi, 2, 100) });
+    if (target === "rsi")
+      onSave({
+        rsi: clamp(draft.rsi, 2, 100),
+        rsiMaLength: clamp(draft.rsiMaLength, 1, 100),
+        rsiUpperZone: clamp(draft.rsiUpperZone, 51, 100),
+        rsiLowerZone: clamp(draft.rsiLowerZone, 0, 49),
+      });
     else if (target === "stochrsi")
       onSave({
         stochRsiLength: clamp(draft.stochRsiLength, 2, 100),
@@ -263,11 +275,30 @@ function SettingsForm({ target, config, onSave, onReset }: FormProps) {
     <div className="flex flex-col gap-3">
       {target === "rsi" && (
         <>
-          <Field
-            label="Period"
-            value={draft.rsi}
-            onChange={(n) => setDraft((d) => ({ ...d, rsi: n }))}
-          />
+          <div className="grid grid-cols-2 gap-2">
+            <Field
+              label="Period"
+              value={draft.rsi}
+              onChange={(n) => setDraft((d) => ({ ...d, rsi: n }))}
+            />
+            <Field
+              label="MA length"
+              value={draft.rsiMaLength}
+              onChange={(n) => setDraft((d) => ({ ...d, rsiMaLength: n }))}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Field
+              label="Upper zone"
+              value={draft.rsiUpperZone}
+              onChange={(n) => setDraft((d) => ({ ...d, rsiUpperZone: n }))}
+            />
+            <Field
+              label="Lower zone"
+              value={draft.rsiLowerZone}
+              onChange={(n) => setDraft((d) => ({ ...d, rsiLowerZone: n }))}
+            />
+          </div>
           <OverlaySection target="rsi" />
         </>
       )}

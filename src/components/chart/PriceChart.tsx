@@ -6,6 +6,7 @@ import {
   createChart,
   CandlestickSeries,
   LineSeries,
+  BaselineSeries,
   HistogramSeries,
   AreaSeries,
   CrosshairMode,
@@ -31,6 +32,7 @@ import { resolveSource } from "@/lib/symbols/source";
 import { getSymbolInfo } from "@/lib/trading/symbol-info";
 import { ema, rsi, macd, obv } from "@/lib/indicators";
 import { stochRsi } from "@/lib/indicators/stochrsi";
+import { barCloseTime } from "@/lib/chart/countdown";
 import { adx as adxCalc } from "@/lib/indicators/adx";
 import { squeezeMomentum } from "@/lib/indicators/squeeze";
 import { vwapBands } from "@/lib/indicators/vwap";
@@ -152,6 +154,61 @@ interface LastValues {
 }
 
 /**
+ * RSI pane palette.
+ *
+ * The pane is built entirely out of `BaselineSeries` rather than a custom SVG
+ * overlay: a baseline series fills between its data and a `baseValue` with a
+ * gradient, which is exactly the two things this design needs — a soft fill
+ * where the line pushes past 70/30, and flat rectangles for the static bands
+ * (fed a constant series, so the "fill" is a plain rectangle). Doing it with
+ * series means the library handles pan, zoom and rescale; an overlay would
+ * have to recompute geometry on every one of those.
+ *
+ * Reds and greens are the same ones the VWAP bands use, so the two studies
+ * don't disagree about what "overbought" looks like.
+ */
+/**
+ * How long past a bar's close the chart may go without its successor before
+ * the data is treated as stale. Generous enough not to fire on a slow tick at
+ * a bar boundary; short enough that a frozen chart repairs itself in seconds.
+ */
+const STALE_BAR_GRACE_SEC = 30;
+const STALE_BAR_CHECK_MS = 15_000;
+
+const RSI_LINE_COLOR = "#ffffff";
+const RSI_MA_COLOR = "#e3a33d";
+/** Tint over the 30..70 middle, where the RSI is saying nothing in particular. */
+const RSI_BAND_FILL = "rgba(124, 92, 214, 0.13)";
+/** Flat rectangles for the extreme zones. */
+const RSI_ZONE_UP_FILL = "rgba(229, 72, 77, 0.26)";
+const RSI_ZONE_DOWN_FILL = "rgba(47, 168, 79, 0.26)";
+/** Gradient where the line itself leaves the 30..70 band: strong at the
+ *  excursion's tip, fading to nothing at the level it crossed. */
+const RSI_SPIKE_UP_STRONG = "rgba(229, 72, 77, 0.95)";
+const RSI_SPIKE_UP_FADE = "rgba(229, 72, 77, 0.00)";
+const RSI_SPIKE_DOWN_STRONG = "rgba(47, 168, 79, 0.95)";
+const RSI_SPIKE_DOWN_FADE = "rgba(47, 168, 79, 0.00)";
+/** SMA over an already-computed indicator series. The primitives in
+ *  `@/lib/indicators` all read `.close` off candles, so they can't smooth the
+ *  RSI's own output. */
+function smaOf(
+  src: { time: number; value: number }[],
+  period: number,
+): { time: number; value: number }[] {
+  if (period <= 1) return src;
+  const out: { time: number; value: number }[] = [];
+  let sum = 0;
+  for (let i = 0; i < src.length; i++) {
+    sum += src[i].value;
+    if (i >= period) sum -= src[i - period].value;
+    if (i >= period - 1) out.push({ time: src[i].time, value: sum / period });
+  }
+  return out;
+}
+
+const RSI_RAIL_COLOR = "rgba(180, 176, 200, 0.45)";
+
+/**
  * Stochastic RSI pane constants.
  *
  * K/D use TradingView's own built-in colours rather than `INDICATOR_COLORS`,
@@ -186,7 +243,14 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const stochRsi20Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const stochRsi80Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const rsi30Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const rsi50Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const rsi70Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const rsiMaRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const rsiBandRef = useRef<ISeriesApi<"Baseline"> | null>(null);
+  const rsiZoneUpRef = useRef<ISeriesApi<"Baseline"> | null>(null);
+  const rsiZoneDownRef = useRef<ISeriesApi<"Baseline"> | null>(null);
+  const rsiSpikeUpRef = useRef<ISeriesApi<"Baseline"> | null>(null);
+  const rsiSpikeDownRef = useRef<ISeriesApi<"Baseline"> | null>(null);
   const macdRef = useRef<ISeriesApi<"Line"> | null>(null);
   const macdSignalRef = useRef<ISeriesApi<"Line"> | null>(null);
   const macdHistRef = useRef<ISeriesApi<"Histogram"> | null>(null);
@@ -1250,53 +1314,140 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (!chartRef.current) return;
     if (indicators.rsi && !rsiRef.current) {
       const paneIndex = 1;
-      const r = chartRef.current.addSeries(
-        LineSeries,
+      const scaleId = "rsi";
+      const chart = chartRef.current;
+      // Creation order is z-order: backdrops, then rails, then the fills, then
+      // the lines on top.
+      const flatBand = (fill: string) => ({
+        baseValue: { type: "price" as const, price: 0 },
+        topFillColor1: fill,
+        topFillColor2: fill,
+        bottomFillColor1: "rgba(0,0,0,0)",
+        bottomFillColor2: "rgba(0,0,0,0)",
+        topLineColor: "rgba(0,0,0,0)",
+        bottomLineColor: "rgba(0,0,0,0)",
+        lineWidth: 1 as const,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+        priceScaleId: scaleId,
+      });
+
+      // 30..70 tint, and the two solid extreme zones. Each is a constant
+      // series filled down to a baseValue, which renders as a rectangle.
+      rsiBandRef.current = chart.addSeries(BaselineSeries, flatBand(RSI_BAND_FILL), paneIndex);
+      rsiZoneUpRef.current = chart.addSeries(BaselineSeries, flatBand(RSI_ZONE_UP_FILL), paneIndex);
+      // The lower zone fills *downwards* from its baseline, so it uses the
+      // bottom pair instead.
+      rsiZoneDownRef.current = chart.addSeries(
+        BaselineSeries,
         {
-          color: INDICATOR_COLORS.rsi,
-          lineWidth: 1,
-          priceLineVisible: false,
-          lastValueVisible: false,
+          ...flatBand("rgba(0,0,0,0)"),
+          bottomFillColor1: RSI_ZONE_DOWN_FILL,
+          bottomFillColor2: RSI_ZONE_DOWN_FILL,
         },
         paneIndex,
       );
-      const r30 = chartRef.current.addSeries(
-        LineSeries,
+
+      const rail = {
+        color: RSI_RAIL_COLOR,
+        lineWidth: 1 as const,
+        lineStyle: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+        priceScaleId: scaleId,
+      };
+      const r30 = chart.addSeries(LineSeries, rail, paneIndex);
+      const r50 = chart.addSeries(LineSeries, rail, paneIndex);
+      const r70 = chart.addSeries(LineSeries, rail, paneIndex);
+
+      // The two gradient fills follow the RSI itself. `relativeGradient` ties
+      // the gradient to the base value rather than to the pane's edges, so the
+      // fade always starts exactly at the level that was crossed.
+      rsiSpikeUpRef.current = chart.addSeries(
+        BaselineSeries,
         {
-          color: TV_COLORS.textMuted,
+          baseValue: { type: "price", price: 70 },
+          relativeGradient: true,
+          topFillColor1: RSI_SPIKE_UP_STRONG,
+          topFillColor2: RSI_SPIKE_UP_FADE,
+          bottomFillColor1: "rgba(0,0,0,0)",
+          bottomFillColor2: "rgba(0,0,0,0)",
+          // The visible line is drawn once, by `rsiRef` below; these two would
+          // otherwise paint it three times over, each a different colour.
+          topLineColor: "rgba(0,0,0,0)",
+          bottomLineColor: "rgba(0,0,0,0)",
           lineWidth: 1,
-          lineStyle: 2,
           priceLineVisible: false,
           lastValueVisible: false,
+          crosshairMarkerVisible: false,
+          priceScaleId: scaleId,
         },
         paneIndex,
       );
-      const r70 = chartRef.current.addSeries(
-        LineSeries,
+      rsiSpikeDownRef.current = chart.addSeries(
+        BaselineSeries,
         {
-          color: TV_COLORS.textMuted,
+          baseValue: { type: "price", price: 30 },
+          relativeGradient: true,
+          topFillColor1: "rgba(0,0,0,0)",
+          topFillColor2: "rgba(0,0,0,0)",
+          bottomFillColor1: RSI_SPIKE_DOWN_FADE,
+          bottomFillColor2: RSI_SPIKE_DOWN_STRONG,
+          topLineColor: "rgba(0,0,0,0)",
+          bottomLineColor: "rgba(0,0,0,0)",
           lineWidth: 1,
-          lineStyle: 2,
           priceLineVisible: false,
           lastValueVisible: false,
+          crosshairMarkerVisible: false,
+          priceScaleId: scaleId,
         },
         paneIndex,
       );
+
+      rsiMaRef.current = chart.addSeries(
+        LineSeries,
+        {
+          color: RSI_MA_COLOR,
+          lineWidth: 2,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          priceScaleId: scaleId,
+        },
+        paneIndex,
+      );
+      const r = chart.addSeries(
+        LineSeries,
+        {
+          color: RSI_LINE_COLOR,
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          priceScaleId: scaleId,
+        },
+        paneIndex,
+      );
+
       rsiRef.current = r;
       rsi30Ref.current = r30;
+      rsi50Ref.current = r50;
       rsi70Ref.current = r70;
       try {
-        chartRef.current.panes()[1]?.setStretchFactor(1);
-        chartRef.current.panes()[0]?.setStretchFactor(3);
+        chart.panes()[1]?.setStretchFactor(1);
+        chart.panes()[0]?.setStretchFactor(3);
       } catch {}
       updateRSI();
     } else if (!indicators.rsi && rsiRef.current && chartRef.current) {
-      chartRef.current.removeSeries(rsiRef.current);
-      if (rsi30Ref.current) chartRef.current.removeSeries(rsi30Ref.current);
-      if (rsi70Ref.current) chartRef.current.removeSeries(rsi70Ref.current);
-      rsiRef.current = null;
-      rsi30Ref.current = null;
-      rsi70Ref.current = null;
+      for (const ref of [
+        rsiRef, rsi30Ref, rsi50Ref, rsi70Ref, rsiMaRef,
+        rsiBandRef, rsiZoneUpRef, rsiZoneDownRef, rsiSpikeUpRef, rsiSpikeDownRef,
+      ]) {
+        if (ref.current) {
+          try { chartRef.current.removeSeries(ref.current); } catch {}
+          ref.current = null;
+        }
+      }
     }
     requestAnimationFrame(() => recomputePaneOffsets());
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1727,7 +1878,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
     // EMAs visibility is driven by per-instance `hidden` flag in the sync effect
     if (rsiRef.current) rsiRef.current.applyOptions({ visible: v("rsi") });
     if (rsi30Ref.current) rsi30Ref.current.applyOptions({ visible: v("rsi") });
+    if (rsi50Ref.current) rsi50Ref.current.applyOptions({ visible: v("rsi") });
     if (rsi70Ref.current) rsi70Ref.current.applyOptions({ visible: v("rsi") });
+    if (rsiMaRef.current) rsiMaRef.current.applyOptions({ visible: v("rsi") });
+    for (const ref of [rsiBandRef, rsiZoneUpRef, rsiZoneDownRef, rsiSpikeUpRef, rsiSpikeDownRef]) {
+      ref.current?.applyOptions({ visible: v("rsi") });
+    }
     if (stochRsiKRef.current) stochRsiKRef.current.applyOptions({ visible: v("stochrsi") });
     if (stochRsiDRef.current) stochRsiDRef.current.applyOptions({ visible: v("stochrsi") });
     if (stochRsi20Ref.current) stochRsi20Ref.current.applyOptions({ visible: v("stochrsi") });
@@ -1931,7 +2087,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
   useEffect(() => {
     updateRSI();
-  }, [config.rsi]);
+  }, [config.rsi, config.rsiMaLength, config.rsiUpperZone, config.rsiLowerZone]);
 
   useEffect(() => {
     updateMACD();
@@ -2258,21 +2414,52 @@ export function PriceChart({ symbol, timeframe }: Props) {
     const c = candlesRef.current;
     if (c.length === 0 || !rsiRef.current) return;
     const cfg = configRef.current;
-    const data = rsi(c, cfg.rsi).map((p) => ({
+    const pts = rsi(c, cfg.rsi);
+    const data = pts.map((p) => ({
       time: p.time as UTCTimestamp,
       value: p.value,
     }));
     rsiRef.current.setData(data);
-    if (rsi30Ref.current && data.length > 0)
-      rsi30Ref.current.setData([
-        { time: data[0].time, value: 30 },
-        { time: data[data.length - 1].time, value: 30 },
-      ]);
-    if (rsi70Ref.current && data.length > 0)
-      rsi70Ref.current.setData([
-        { time: data[0].time, value: 70 },
-        { time: data[data.length - 1].time, value: 70 },
-      ]);
+    // Both gradient fills plot the same series; only their base value and
+    // which half is coloured differ.
+    rsiSpikeUpRef.current?.setData(data);
+    rsiSpikeDownRef.current?.setData(data);
+    rsiMaRef.current?.setData(
+      smaOf(pts, cfg.rsiMaLength).map((p) => ({
+        time: p.time as UTCTimestamp,
+        value: p.value,
+      })),
+    );
+
+    if (data.length > 0) {
+      const first = data[0].time;
+      const last = data[data.length - 1].time;
+      const rail = (series: ISeriesApi<"Line"> | null, value: number) =>
+        series?.setData([
+          { time: first, value },
+          { time: last, value },
+        ]);
+      rail(rsi30Ref.current, 30);
+      rail(rsi50Ref.current, 50);
+      rail(rsi70Ref.current, 70);
+
+      // Flat backdrops. Each is a two-point constant series filled to its
+      // baseline, which draws as a rectangle spanning the pane.
+      const slab = (
+        series: ISeriesApi<"Baseline"> | null,
+        value: number,
+        base: number,
+      ) => {
+        series?.applyOptions({ baseValue: { type: "price", price: base } });
+        series?.setData([
+          { time: first, value },
+          { time: last, value },
+        ]);
+      };
+      slab(rsiBandRef.current, 70, 30);
+      slab(rsiZoneUpRef.current, 100, cfg.rsiUpperZone);
+      slab(rsiZoneDownRef.current, 0, cfg.rsiLowerZone);
+    }
     setLastValues((prev) => ({ ...prev, rsi: data.at(-1)?.value }));
   }
 
@@ -2898,6 +3085,69 @@ export function PriceChart({ symbol, timeframe }: Props) {
       setCurrentLivePrice(last.close);
     }
   }
+
+  // Repair stale data, whatever caused it.
+  //
+  // The socket watchdog in the WS clients catches a feed that has gone silent,
+  // and the status-transition effect below refetches once it comes back. Both
+  // reason about the *connection*. This one reasons about the **data**, which
+  // is what the user actually sees: if the newest bar's close time is already
+  // in the past and no successor has arrived, the chart is frozen — and it
+  // does not matter whether that was a half-open socket, a laptop waking from
+  // sleep, a dropped subscription, a reconnect that raced, or something not
+  // thought of yet. Checking the symptom covers every cause at once, so this
+  // is the backstop that makes "the chart is stuck" self-healing rather than
+  // something to diagnose.
+  //
+  // Restricted to the streaming sources on purpose: a REST-poll series (FRED
+  // updates at most daily) is *legitimately* older than its last bar's close,
+  // and would refetch forever.
+  useEffect(() => {
+    const kind = resolveSource(symbol).kind;
+    if (kind !== "binance" && kind !== "bybit") return;
+
+    let cancelled = false;
+    let inFlight = false;
+
+    const isStale = () => {
+      const arr = candlesRef.current;
+      const last = arr[arr.length - 1];
+      if (!last) return false;
+      return Date.now() / 1000 > barCloseTime(last.time, timeframe) + STALE_BAR_GRACE_SEC;
+    };
+
+    const repair = async () => {
+      if (cancelled || inFlight || document.hidden) return;
+      if (useReplayStore.getState().active) return;
+      if (!isStale()) return;
+      inFlight = true;
+      try {
+        const fresh = await fetchCandles(symbol, timeframe, 1000);
+        if (cancelled || useReplayStore.getState().active || fresh.length === 0) return;
+        applyReplayCandles(fresh);
+      } catch (e) {
+        console.error("Stale-bar refetch failed:", e);
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    const id = setInterval(() => void repair(), STALE_BAR_CHECK_MS);
+    // Coming back to the tab is the single most likely moment to be stale —
+    // a sleeping machine delivers no WS frames and fires no timers.
+    const onWake = () => void repair();
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+    window.addEventListener("online", onWake);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
+      window.removeEventListener("online", onWake);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, timeframe]);
 
   // Recover the bars missed while the socket was gone.
   //
