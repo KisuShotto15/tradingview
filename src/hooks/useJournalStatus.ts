@@ -43,12 +43,10 @@ export function useJournalStatus(enabled: boolean): JournalState {
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
 
   useEffect(() => {
-    if (!enabled || !journalToken()) {
-      setStatus(null);
-      setError(null);
-      setUnauthorized(false);
-      return;
-    }
+    // No clearing here on purpose: a synchronous setState in an effect body
+    // triggers a cascading render, and the disconnected view is derived from
+    // `enabled` at the bottom instead.
+    if (!enabled || !journalToken()) return;
 
     let cancelled = false;
     /** Latched on 401/403: a rejected token will keep being rejected, so the
@@ -57,7 +55,6 @@ export function useJournalStatus(enabled: boolean): JournalState {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const ac = new AbortController();
 
-    setUnauthorized(false);
 
     async function load() {
       if (cancelled || halted) return;
@@ -117,5 +114,10 @@ export function useJournalStatus(enabled: boolean): JournalState {
     };
   }, [enabled, nonce]);
 
+  // Gated rather than cleared, so disconnecting doesn't leave the last
+  // account's numbers on screen and no effect has to write state to hide them.
+  if (!enabled) {
+    return { status: null, error: null, unauthorized: false, loading: false, refresh };
+  }
   return { status, error, unauthorized, loading, refresh };
 }

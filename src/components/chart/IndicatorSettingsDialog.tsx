@@ -35,6 +35,7 @@ const TITLES: Record<IndicatorKey, string> = {
   vumanchu: "VuManChu Cipher B",
   obv: "On-Balance Volume",
   keylevels: "Key Levels (W,M,Q,Y)",
+  vwap: "Anchored VWAP",
 };
 
 export function IndicatorSettingsDialog() {
