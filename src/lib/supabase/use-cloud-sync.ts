@@ -63,7 +63,10 @@ export function useCloudSync() {
         useChartStore.setState({
           indicators: settings.indicators,
           hidden: settings.hidden,
-          config: settings.config ?? DEFAULT_CONFIG,
+          // Same reason as the store's `merge`: the cloud row holds a whole
+          // `config` object, so a field added after it was written would land
+          // as `undefined` on every sign-in.
+          config: { ...DEFAULT_CONFIG, ...(settings.config ?? {}) },
         });
 
         // Ajustes visuales: colores, estilos de indicadores, EMAs, chartType

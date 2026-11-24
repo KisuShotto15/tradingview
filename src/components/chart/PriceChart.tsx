@@ -1314,7 +1314,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (!chartRef.current) return;
     if (indicators.rsi && !rsiRef.current) {
       const paneIndex = 1;
-      const scaleId = "rsi";
       const chart = chartRef.current;
       // Creation order is z-order: backdrops, then rails, then the fills, then
       // the lines on top.
@@ -1330,7 +1329,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
         priceLineVisible: false,
         lastValueVisible: false,
         crosshairMarkerVisible: false,
-        priceScaleId: scaleId,
       });
 
       // 30..70 tint, and the two solid extreme zones. Each is a constant
@@ -1356,7 +1354,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
         priceLineVisible: false,
         lastValueVisible: false,
         crosshairMarkerVisible: false,
-        priceScaleId: scaleId,
       };
       const r30 = chart.addSeries(LineSeries, rail, paneIndex);
       const r50 = chart.addSeries(LineSeries, rail, paneIndex);
@@ -1382,7 +1379,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
           priceLineVisible: false,
           lastValueVisible: false,
           crosshairMarkerVisible: false,
-          priceScaleId: scaleId,
         },
         paneIndex,
       );
@@ -1401,7 +1397,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
           priceLineVisible: false,
           lastValueVisible: false,
           crosshairMarkerVisible: false,
-          priceScaleId: scaleId,
         },
         paneIndex,
       );
@@ -1413,7 +1408,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
           lineWidth: 2,
           priceLineVisible: false,
           lastValueVisible: false,
-          priceScaleId: scaleId,
         },
         paneIndex,
       );
@@ -1424,7 +1418,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
           lineWidth: 1,
           priceLineVisible: false,
           lastValueVisible: false,
-          priceScaleId: scaleId,
         },
         paneIndex,
       );
@@ -1804,14 +1797,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
     if (indicators.stochrsi) {
       const paneIndex = panelIndexFor("stochrsi");
-      const scaleId = "stochrsi";
       const band = {
         color: TV_COLORS.textMuted,
         lineWidth: 1 as const,
         lineStyle: 2,
         priceLineVisible: false,
         lastValueVisible: false,
-        priceScaleId: scaleId,
         // These two deliberately DO feed autoscale (no `autoscaleInfoProvider:
         // () => null` here, unlike ADX's key level): they are what keeps the
         // pane showing at least 20..80 when K and D are pinned at an extreme,
@@ -1819,12 +1810,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
       };
       stochRsiKRef.current = chartRef.current.addSeries(
         LineSeries,
-        { color: STOCH_RSI_K_COLOR, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, priceScaleId: scaleId },
+        { color: STOCH_RSI_K_COLOR, lineWidth: 2, priceLineVisible: false, lastValueVisible: false },
         paneIndex,
       );
       stochRsiDRef.current = chartRef.current.addSeries(
         LineSeries,
-        { color: STOCH_RSI_D_COLOR, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, priceScaleId: scaleId },
+        { color: STOCH_RSI_D_COLOR, lineWidth: 2, priceLineVisible: false, lastValueVisible: false },
         paneIndex,
       );
       stochRsi20Ref.current = chartRef.current.addSeries(LineSeries, band, paneIndex);

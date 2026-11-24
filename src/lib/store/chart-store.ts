@@ -1248,6 +1248,30 @@ export const useChartStore = create<ChartState>()(
         }
         return p;
       },
+      /**
+       * Deep-merge `config` instead of letting the stored copy replace it.
+       *
+       * Zustand's default merge is shallow *at the top level*: `config` is one
+       * key, so a persisted `config` object overwrites `DEFAULT_CONFIG` whole.
+       * Any field added to `IndicatorConfig` later therefore arrives as
+       * `undefined` for every existing user — and it fails silently, because
+       * `undefined` flows into a calculation or a chart option instead of
+       * throwing. That is exactly how `adxKeyLevel` broke (patched per-key in
+       * the v4 migration below) and how the RSI zones shipped filling the
+       * whole pane: `baseValue: { price: undefined }`.
+       *
+       * Doing it here rather than in `migrate` covers every rehydrate, not
+       * just the ones that cross a version bump, so the next field added to
+       * `IndicatorConfig` needs no migration at all.
+       */
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<ChartState>;
+        return {
+          ...current,
+          ...p,
+          config: { ...DEFAULT_CONFIG, ...(p.config ?? {}) },
+        };
+      },
       partialize: (s) => ({
         symbol: s.symbol,
         timeframe: s.timeframe,
