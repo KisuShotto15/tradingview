@@ -76,8 +76,19 @@ export async function proxy(request: NextRequest) {
  * What stays matched is page navigation, which is what the /login redirect is
  * actually for.
  */
+/**
+ * `manifest.webmanifest`, `sw.js` and `/.well-known/` are excluded because
+ * they must be readable *without* a session.
+ *
+ * They were not, and it broke two things silently: an install prompt reads the
+ * manifest before anyone signs in, so "add to home screen" only ever got the
+ * /login redirect; and Android's Digital Asset Links check fetches
+ * `/.well-known/assetlinks.json` from Google's servers with no cookies at all,
+ * so a TWA build could never verify its domain and would always show a browser
+ * address bar over the app.
+ */
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/yahoo|api/fred|api/coingecko|api/trade/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|[.]well-known/|api/yahoo|api/fred|api/coingecko|api/trade/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

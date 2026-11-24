@@ -50,3 +50,4 @@ id_rsa*
 credentials.json
 .aws/
 .ssh/
+.android/

@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.kisushotto.charts",
+      "sha256_cert_fingerprints": [
+        "7D:09:4C:10:55:19:4E:48:89:69:2D:14:EC:8A:F3:BE:60:01:6F:D3:F7:82:86:4E:AA:B8:9A:2F:B1:EB:38:FE"
+      ]
+    }
+  }
+]

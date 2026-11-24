@@ -24,6 +24,15 @@ const matcher = matcherFromSource();
 const runs = (path: string) => matcher.test(path);
 
 describe("proxy matcher", () => {
+  it("skips the PWA files and /.well-known, which must work signed out", () => {
+    // An install prompt reads the manifest before anyone signs in, and
+    // Google fetches assetlinks.json with no cookies to verify a TWA's
+    // domain. Both used to get the /login redirect instead.
+    expect(runs("/manifest.webmanifest")).toBe(false);
+    expect(runs("/sw.js")).toBe(false);
+    expect(runs("/.well-known/assetlinks.json")).toBe(false);
+  });
+
   it("runs on page navigation — that's what the /login redirect is for", () => {
     expect(runs("/")).toBe(true);
     expect(runs("/login")).toBe(true);
