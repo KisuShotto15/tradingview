@@ -51,3 +51,4 @@ credentials.json
 .aws/
 .ssh/
 .android/
+dist/
