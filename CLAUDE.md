@@ -15,7 +15,7 @@ npm test         # Unit tests (see below)
 npm run test:watch
 ```
 
-**Tests** run on Node's built-in runner (`node --test`) with **no extra dependencies** — the sandbox has no npm registry access, so Vitest/Jest can't be installed. Node 24 strips TypeScript natively; `test/register.mjs` (loaded via `--import`) registers a resolve hook for the `@/*` alias + extensionless imports and polyfills `localStorage` for Zustand `persist` stores. Assertions use a tiny Jest-style shim at [src/test-utils/expect.ts](src/test-utils/expect.ts) over `node:assert`. Tests live next to the code as `*.test.ts` and cover **pure logic only** (stores, indicators, drawing/alert math, sizing, formatting, symbol/exchange resolution) — no DOM/component rendering. Add a test: create `foo.test.ts` importing from `node:test` + `@/test-utils/expect`.
+**Tests** run on Node's built-in runner (`node --test`) with **no extra dependencies**. Node strips TypeScript natively; `test/register.mjs` (loaded via `--import`) registers a resolve hook for the `@/*` alias + extensionless imports and polyfills `localStorage` for Zustand `persist` stores. Assertions use a tiny Jest-style shim at [src/test-utils/expect.ts](src/test-utils/expect.ts) over `node:assert`. Tests live next to the code as `*.test.ts` and cover **pure logic only** (stores, indicators, drawing/alert math, sizing, formatting, symbol/exchange resolution) — no DOM/component rendering. Add a test: create `foo.test.ts` importing from `node:test` + `@/test-utils/expect`.
 
 The `npm test` script bakes in the `src/**/*.test.ts` glob, so to scope a run, invoke node directly:
 
@@ -29,7 +29,9 @@ node --import ./test/register.mjs --disable-warning=MODULE_TYPELESS_PACKAGE_JSON
   --test --test-isolation=none --test-name-pattern="slInputToPrice" "src/**/*.test.ts"
 ```
 
-`--test-isolation=none` is required (Zustand `persist` needs the shared polyfilled `localStorage`).
+Earlier versions of this file said `--test-isolation=none` was required for Zustand `persist`. It isn't: `test/register.mjs` is loaded per worker via `--import`, so every isolated process gets its own polyfilled `localStorage`, and the full suite passes without the flag. It has been dropped from the `test` scripts because it is a Node 24 flag and aborts outright on Node 22 (`node: bad option`) — which silently left `npm test` unrunnable.
+
+**Install the dependencies and verify before claiming anything.** This file used to say the sandbox had no npm registry access; that is no longer true. `npm ci` works, and with it so do `npx tsc --noEmit`, `npm run build` and `npx eslint`. Skipping that check once let a type error — a `Record<IndicatorKey, string>` left incomplete by a new indicator key — sit on `master` across five commits, breaking every deploy while the code itself read as correct. `next build` needs `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to get past prerendering `/_not-found`; any placeholder value works for a local check.
 
 `next build` runs the full TypeScript type-check (`paths` alias `@/*` → `src/*`). Note **Next 16 removed ESLint from the build** — lint runs only via `npm run lint`, never blocks `next build`. The repo carries pre-existing `react-hooks` lint errors unrelated to most changes; don't treat a red `npm run lint` as a regression without checking whether your files are involved.
 
