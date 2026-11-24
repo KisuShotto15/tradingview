@@ -2,6 +2,10 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import {
+  DEFAULT_CANDLE_PALETTE,
+  migrateCandlePalette,
+} from "@/lib/chart/candle-palette";
 import type { Timeframe } from "@/lib/binance/types";
 import { DEFAULT_FLAG_COLOR } from "@/lib/watchlist/flags";
 import { unifiedHistory, isApplyingHistory, withoutHistory } from "@/lib/history";
@@ -210,12 +214,7 @@ export interface ChartColors {
 export const DEFAULT_CHART_COLORS: ChartColors = {
   bg: "#000000",
   gridLines: "#0e0e0e",
-  bodyUp: "#26a69a",
-  bodyDown: "#ef5350",
-  borderUp: "#26a69a",
-  borderDown: "#ef5350",
-  wickUp: "#26a69a",
-  wickDown: "#ef5350",
+  ...DEFAULT_CANDLE_PALETTE,
 };
 
 /** Per-indicator style overrides (colors, visibility) */
@@ -1189,7 +1188,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: "tv-gratis-chart-state",
-      version: 5,
+      version: 6,
       migrate: (persisted, fromVersion) => {
         const p = persisted as Record<string, unknown>;
         if (fromVersion < 3 && Array.isArray(p.watchlist)) {
@@ -1217,6 +1216,14 @@ export const useChartStore = create<ChartState>()(
           const adxStyle = p.adxStyle as Record<string, unknown> | undefined;
           if (adxStyle && adxStyle.showKeyLevel === undefined) adxStyle.showKeyLevel = true;
           if (adxStyle && adxStyle.keyLevelColor === "#787b86") adxStyle.keyLevelColor = "#ffffff";
+        }
+        // v6: the candle palette moved from teal/red to purple. Only rewrite a
+        // stored set that is still the old default in full — someone who chose
+        // their own colours keeps them.
+        if (fromVersion < 6 && p.chartColors) {
+          p.chartColors = migrateCandlePalette(
+            p.chartColors as Record<string, string>,
+          );
         }
         return p;
       },

@@ -84,7 +84,10 @@ export function BarCountdown({
         top,
         width: axisW - 2,
         height: CHIP_H,
-        backgroundColor: up ? chartColors.bodyUp : chartColors.bodyDown,
+        // Border, not body: bodies may be translucent (the default palette
+        // draws them at 30%), and a see-through chip over the price axis is
+        // unreadable. The border colour is the solid one of the pair.
+        backgroundColor: up ? chartColors.borderUp : chartColors.borderDown,
       }}
       title="Time left until the current bar closes"
     >
