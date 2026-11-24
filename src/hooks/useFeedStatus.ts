@@ -46,12 +46,16 @@ const LABELS: Record<string, string> = {
  */
 export function useFeedStatus(symbol: string): FeedInfo {
   const kind = resolveSource(symbol).kind;
-  const streaming = kind === "binance" || kind === "bybit";
+  // Synthetic expressions are evaluated from live Binance klines, so they
+  // stream like any other Binance chart — labelling them "Delayed" described
+  // the arithmetic, not the feed.
+  const streaming = kind === "binance" || kind === "bybit" || kind === "synthetic";
   const [status, setStatus] = useState<FeedStatus>("connecting");
   const [stale, setStale] = useState(false);
 
   useEffect(() => {
-    if (kind === "binance") return getBinanceWS().statusFor(symbol).subscribe(setStatus);
+    if (kind === "binance" || kind === "synthetic")
+      return getBinanceWS().statusFor(symbol).subscribe(setStatus);
     if (kind === "bybit") return getBybitWS().status.subscribe(setStatus);
     // REST-poll sources have no socket to subscribe to. Nothing is cleared
     // here on purpose — a stale value from the previously charted symbol is

@@ -104,11 +104,24 @@ export function Watchlist() {
   const [rows, setRows] = useState<Record<string, Row>>({});
   const [flash, setFlash] = useState<Record<string, "up" | "down" | null>>({});
   const applyTick = useBatchedTicks(setRows, setFlash);
-  /** When a live tick last arrived, for the REST fallback below. */
-  const lastTickAtRef = useRef(0);
-  const onTick = useCallback(
+  /**
+   * When a live tick last arrived, per venue, for the REST fallback below.
+   *
+   * Per venue and not one shared clock: the two sockets fail independently,
+   * and a single clock let a ticking Binance row suppress the fallback for
+   * frozen Bybit rows — precisely the case the fallback exists for.
+   */
+  const lastTickAtRef = useRef<{ binance: number; bybit: number }>({ binance: 0, bybit: 0 });
+  const onBinanceTick = useCallback(
     (t: Parameters<typeof applyTick>[0]) => {
-      lastTickAtRef.current = Date.now();
+      lastTickAtRef.current.binance = Date.now();
+      applyTick(t);
+    },
+    [applyTick],
+  );
+  const onBybitTick = useCallback(
+    (t: Parameters<typeof applyTick>[0]) => {
+      lastTickAtRef.current.bybit = Date.now();
       applyTick(t);
     },
     [applyTick],
@@ -185,8 +198,8 @@ export function Watchlist() {
     if (bybitSyms.length > 0) fetchBybitTickers24h(bybitSyms).then(seed).catch(console.error);
 
     const unsubs: (() => void)[] = [];
-    if (binanceSyms.length > 0) unsubs.push(getBinanceWS().subscribeMiniTickers(binanceSyms, onTick));
-    if (bybitSyms.length > 0) unsubs.push(getBybitWS().subscribeMiniTickers(bybitSyms, onTick));
+    if (binanceSyms.length > 0) unsubs.push(getBinanceWS().subscribeMiniTickers(binanceSyms, onBinanceTick));
+    if (bybitSyms.length > 0) unsubs.push(getBybitWS().subscribeMiniTickers(bybitSyms, onBybitTick));
 
     // REST fallback.
     //
@@ -198,9 +211,11 @@ export function Watchlist() {
     // wherever WebSockets don't get through but HTTPS does.
     const pollId = setInterval(() => {
       if (cancelled || document.hidden) return;
-      if (Date.now() - lastTickAtRef.current < TICK_SILENCE_MS) return;
-      if (binanceSyms.length > 0) fetchTickers24h(binanceSyms).then(seed).catch(() => {});
-      if (bybitSyms.length > 0) fetchBybitTickers24h(bybitSyms).then(seed).catch(() => {});
+      const now = Date.now();
+      if (binanceSyms.length > 0 && now - lastTickAtRef.current.binance >= TICK_SILENCE_MS)
+        fetchTickers24h(binanceSyms).then(seed).catch(() => {});
+      if (bybitSyms.length > 0 && now - lastTickAtRef.current.bybit >= TICK_SILENCE_MS)
+        fetchBybitTickers24h(bybitSyms).then(seed).catch(() => {});
     }, FALLBACK_POLL_MS);
 
     return () => {
@@ -209,7 +224,7 @@ export function Watchlist() {
       unsubs.forEach((u) => u());
     };
       // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [symbols.join(","), onTick]);
+  }, [symbols.join(","), onBinanceTick, onBybitTick]);
 
   useEffect(() => {
     if (!contextMenu) return;

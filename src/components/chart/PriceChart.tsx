@@ -431,6 +431,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     const bySeries: Record<string, ISeriesApi<SeriesType> | null> = {
       main: candleSeriesRef.current,
       rsi: rsiRef.current,
+      stochrsi: stochRsiKRef.current,
       macd: macdRef.current,
       adx: adxRef.current,
       squeeze: squeezeHistRef.current,
@@ -1219,7 +1220,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       // Sub-pane: find host indicator
       const idxMap = indicatorPaneIdxRef.current;
       let hostKey: IndicatorKey | null = null;
-      for (const k of ["rsi", "macd", "adx", "squeeze", "vumanchu"] as const) {
+      for (const k of ["rsi", "stochrsi", "macd", "adx", "squeeze", "vumanchu"] as const) {
         if (idxMap[k] === clickedPane && state.indicators[k]) {
           const target = state.indicatorOverlays[k];
           if (!target || target === "own" || !state.indicators[target as IndicatorKey]) {
@@ -1328,6 +1329,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     if (!chartRef.current) return;
     if (indicators.rsi && !rsiRef.current) {
       const paneIndex = 1;
+      ensurePane(paneIndex);
       const chart = chartRef.current;
       // Creation order is z-order: backdrops, then rails, then the fills, then
       // the lines on top.
@@ -1467,8 +1469,20 @@ export function PriceChart({ symbol, timeframe }: Props) {
   // MACD pane
   useEffect(() => {
     if (!chartRef.current) return;
-    if (indicators.macd && !macdRef.current) {
-      const paneIndex = indicators.rsi ? 2 : 1;
+    // Teardown first, like every other sub-pane: `addSeries` cannot move a
+    // series between panes, and another study toggling on or off shifts this
+    // one's computed index. The old `if (on && !ref) create` shape silently
+    // did nothing on those re-runs, leaving MACD drawn in a pane that now
+    // belongs to something else.
+    for (const ref of [macdRef, macdSignalRef, macdHistRef]) {
+      if (ref.current) {
+        try { chartRef.current.removeSeries(ref.current); } catch {}
+        ref.current = null;
+      }
+    }
+    if (indicators.macd) {
+      const paneIndex = panelIndexFor("macd");
+      ensurePane(paneIndex);
       const m = chartRef.current.addSeries(
         LineSeries,
         {
@@ -1502,23 +1516,40 @@ export function PriceChart({ symbol, timeframe }: Props) {
         chartRef.current.panes()[0]?.setStretchFactor(3);
       } catch {}
       updateMACD();
-    } else if (!indicators.macd && macdRef.current && chartRef.current) {
-      if (macdRef.current) chartRef.current.removeSeries(macdRef.current);
-      if (macdSignalRef.current) chartRef.current.removeSeries(macdSignalRef.current);
-      if (macdHistRef.current) chartRef.current.removeSeries(macdHistRef.current);
-      macdRef.current = null;
-      macdSignalRef.current = null;
-      macdHistRef.current = null;
     }
     requestAnimationFrame(() => recomputePaneOffsets());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicators.macd, indicators.rsi]);
+  }, [indicators.macd, indicators.rsi, indicators.stochrsi, indicators.adx, indicators.squeeze, indicators.vumanchu, indicatorOverlays]);
 
   /**
    * Compute pane index for a sub-chart indicator. Fixed display order:
    *   1: RSI, 2: MACD, 3: ADX, 4: Squeeze, 5: VuManChu
    * Each indicator falls into the next available index based on which higher-priority ones are enabled.
    */
+  /**
+   * Make sure `index` exists as a pane before a series is added to it.
+   *
+   * `addSeries(..., paneIndex)` does not create intermediate panes: an index
+   * beyond the last existing pane is clamped to the next free one. That bit
+   * hard when Stoch RSI was inserted into the ordering — MACD asked for pane
+   * 3 while only 0..1 existed, so its *first* series was clamped into pane 2
+   * (creating it) and the other two then landed in 3. The result was the MACD
+   * line drawn inside the Stoch RSI pane, with that pane's scale blown out to
+   * MACD's range, while the histogram sat correctly one pane below.
+   *
+   * Every sub-pane effect calls this first, so the requested index is always
+   * the index actually used, no matter which study mounts first.
+   */
+  function ensurePane(index: number) {
+    const chart = chartRef.current;
+    if (!chart) return;
+    try {
+      while (chart.panes().length <= index) chart.addPane();
+    } catch {
+      // Older builds without addPane: fall back to the clamping behaviour.
+    }
+  }
+
   function panelIndexFor(key: "rsi" | "stochrsi" | "macd" | "adx" | "squeeze" | "vumanchu" | "obv"): number {
     const order: Array<typeof key> = ["rsi", "stochrsi", "macd", "adx", "squeeze", "vumanchu", "obv"];
     const assigned: Record<string, number> = {};
@@ -1559,6 +1590,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
     if (indicators.adx) {
       const paneIndex = panelIndexFor("adx");
+      ensurePane(paneIndex);
       const style = useChartStore.getState().adxStyle;
       // When ADX shares a pane with another indicator, give it its own overlay
       // price scale so it auto-scales independently (ADX: 0-100 vs Squeeze: ±3
@@ -1605,7 +1637,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
     requestAnimationFrame(() => recomputePaneOffsets());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicators.adx, indicators.rsi, indicators.macd, indicatorOverlays]);
+  }, [indicators.adx, indicators.rsi, indicators.stochrsi, indicators.macd, indicatorOverlays]);
 
   // ── Squeeze Momentum pane ────────────────────────────────────────────────
   useEffect(() => {
@@ -1623,6 +1655,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     squeezeDotsMarkersRef.current = null;
     if (indicators.squeeze) {
       const paneIndex = panelIndexFor("squeeze");
+      ensurePane(paneIndex);
       const sqStyle = useChartStore.getState().squeezeStyle;
       // HistogramSeries with per-bar 4 colors (Pine logic) for both modes —
       // the visible result is the colored fill from baseline (0) to value.
@@ -1675,7 +1708,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
     requestAnimationFrame(() => recomputePaneOffsets());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicators.squeeze, indicators.rsi, indicators.macd, indicators.adx, indicatorOverlays, paneZOrder]);
+  }, [indicators.squeeze, indicators.rsi, indicators.stochrsi, indicators.macd, indicators.adx, indicatorOverlays, paneZOrder]);
 
   // ── VuManChu Cipher B pane ───────────────────────────────────────────────
   useEffect(() => {
@@ -1693,6 +1726,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
     if (indicators.vumanchu) {
       const paneIndex = panelIndexFor("vumanchu");
+      ensurePane(paneIndex);
       // WT1 (light blue area)
       vmcWt1Ref.current = chartRef.current.addSeries(
         AreaSeries,
@@ -1800,7 +1834,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
     requestAnimationFrame(() => recomputePaneOffsets());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicators.vumanchu, indicators.rsi, indicators.macd, indicators.adx, indicators.squeeze, indicatorOverlays]);
+  }, [indicators.vumanchu, indicators.rsi, indicators.stochrsi, indicators.macd, indicators.adx, indicators.squeeze, indicatorOverlays]);
 
   // ── Stochastic RSI pane ──────────────────────────────────────────────────
   useEffect(() => {
@@ -1815,6 +1849,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
     if (indicators.stochrsi) {
       const paneIndex = panelIndexFor("stochrsi");
+      ensurePane(paneIndex);
       const band = {
         color: TV_COLORS.textMuted,
         lineWidth: 1 as const,
@@ -1857,6 +1892,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
     if (indicators.obv) {
       const paneIndex = panelIndexFor("obv");
+      ensurePane(paneIndex);
       obvRef.current = chartRef.current.addSeries(
         LineSeries,
         {
@@ -1875,7 +1911,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
     requestAnimationFrame(() => recomputePaneOffsets());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicators.obv, indicators.rsi, indicators.macd, indicators.adx, indicators.squeeze, indicators.vumanchu, indicatorOverlays]);
+  }, [indicators.obv, indicators.rsi, indicators.stochrsi, indicators.macd, indicators.adx, indicators.squeeze, indicators.vumanchu, indicatorOverlays]);
 
   // Visibility — eye toggle (hidden state) + enabled state combined.
   // Sub-pane series are also hidden when subPanesHidden (so their legend headers vanish).
@@ -1957,6 +1993,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
     apply(
       rsiRef as unknown as React.RefObject<ISeriesApi<"Line"> | null>,
       !!indicatorLogScale.rsi,
+    );
+    apply(
+      stochRsiKRef as unknown as React.RefObject<ISeriesApi<"Line"> | null>,
+      !!indicatorLogScale.stochrsi,
     );
     apply(
       macdRef as unknown as React.RefObject<ISeriesApi<"Line"> | null>,
@@ -2097,6 +2137,16 @@ export function PriceChart({ symbol, timeframe }: Props) {
   useEffect(() => {
     updateRSI();
   }, [config.rsi, config.rsiMaLength, config.rsiUpperZone, config.rsiLowerZone]);
+
+  useEffect(() => {
+    updateStochRsi();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    config.stochRsiLength,
+    config.stochRsiStochLength,
+    config.stochRsiK,
+    config.stochRsiD,
+  ]);
 
   useEffect(() => {
     updateMACD();
@@ -3176,6 +3226,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
     let cancelled = false;
     let inFlight = false;
+    const startedAt = Date.now();
 
     const isStale = () => {
       const arr = candlesRef.current;
@@ -3195,11 +3246,30 @@ export function PriceChart({ symbol, timeframe }: Props) {
       // watchlist's miniTickers, so it keeps looking alive and its own
       // watchdog never fires. Refetching would paper over that until the next
       // bar; what it needs is the subscription rebuilt.
-      const streamQuiet = chartTickAgeMs() > CHART_TICK_STALE_MS;
+      // Two different questions, and conflating them breaks one or the other.
+      //
+      // "Is the stream quiet?" must count from mount when no tick has *ever*
+      // arrived — a socket that opens and never delivers is the whole reason
+      // the REST fallback exists, and keying it on tick age alone (Infinity
+      // forever) silently disabled the fallback in exactly that case.
+      //
+      // "May I rebuild the subscription?" is stricter: before the first tick
+      // the initial fetch may still be in flight and the subscription may not
+      // exist yet, so tearing it down cancels the load. Give it a fair chance
+      // first.
+      const tickAge = chartTickAgeMs();
+      const quietFor = tickAge === Infinity ? Date.now() - startedAt : tickAge;
+      const streamQuiet = quietFor > CHART_TICK_STALE_MS;
+      const mayResubscribe =
+        tickAge !== Infinity || Date.now() - startedAt > RESUBSCRIBE_MIN_GAP_MS;
       const barsStale = isStale();
       if (!streamQuiet && !barsStale) return;
 
-      if (streamQuiet && Date.now() - lastResubAtRef.current > RESUBSCRIBE_MIN_GAP_MS) {
+      if (
+        streamQuiet &&
+        mayResubscribe &&
+        Date.now() - lastResubAtRef.current > RESUBSCRIBE_MIN_GAP_MS
+      ) {
         lastResubAtRef.current = Date.now();
         setFeedNonce((n) => n + 1);
         // The rebuild refetches on its own; don't also pull here.
@@ -3261,12 +3331,19 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
     // Read before subscribing: `subscribe` replays the current value, and an
     // already-live feed must not be mistaken for a recovery.
+    //
+    // `seenFirst` covers the other end of the same mistake: on a cold load the
+    // emitter starts at "down" and the socket's first connect flips it to
+    // "live", which is not a recovery from anything — treating it as one made
+    // every page load fetch 1000 bars twice.
     let wasLive = emitter.get() === "live";
+    let seenFirst = false;
     let cancelled = false;
     const unsub = emitter.subscribe((st) => {
       const live = st === "live";
-      const recovered = live && !wasLive;
+      const recovered = live && !wasLive && seenFirst;
       wasLive = live;
+      seenFirst = true;
       // Only on the way back up, and never before the initial fetch has put
       // something on the chart — that path already loads fresh data itself.
       if (!recovered || candlesRef.current.length === 0) return;
@@ -3870,6 +3947,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         if (paneIdx > 0) {
           for (const k of [
             "rsi",
+            "stochrsi",
             "macd",
             "adx",
             "squeeze",
@@ -3902,6 +3980,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
             // Reset just the price scale of the pane to auto
             const seriesByPane = {
               rsi: rsiRef.current,
+              stochrsi: stochRsiKRef.current,
               macd: macdRef.current,
               adx: adxRef.current,
               squeeze: squeezeHistRef.current,
