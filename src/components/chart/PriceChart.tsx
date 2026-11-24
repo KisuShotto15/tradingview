@@ -32,6 +32,7 @@ import { resolveSource } from "@/lib/symbols/source";
 import { getSymbolInfo } from "@/lib/trading/symbol-info";
 import { ema, rsi, macd, obv } from "@/lib/indicators";
 import { stochRsi } from "@/lib/indicators/stochrsi";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { barCloseTime } from "@/lib/chart/countdown";
 import {
   markChartTick,
@@ -238,6 +239,7 @@ interface PaneOffset {
 }
 
 export function PriceChart({ symbol, timeframe }: Props) {
+  const isMobile = useIsMobile();
   const containerRef = useRef<HTMLDivElement>(null);
   const outerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -4092,12 +4094,23 @@ export function PriceChart({ symbol, timeframe }: Props) {
         <BuySellOverlay />
 
         {/* Indicator pills for the main pane (collapsible) */}
-        <div className="mt-1 flex flex-col items-start gap-1">
+        <div
+          className={
+            // Wrap into rows on a phone instead of one chip per line: three
+            // compact chips fit across a 400px plot, and stacking them pushed
+            // the legend a third of the way down the candles.
+            isMobile
+              ? "mt-1 flex max-w-[82%] flex-row flex-wrap items-start gap-1"
+              : "mt-1 flex flex-col items-start gap-1"
+          }
+        >
           {!pillsCollapsed && (
             <>
               {mainPaneEntries.map((entry, i) => (
                 <div key={entry.key} className="pointer-events-auto flex items-center gap-0.5">
-                  {mainPaneEntries.length > 1 && (
+                  {/* Reordering by 10px arrows is not a touch affordance; on a
+                      phone the order is managed from the indicators sheet. */}
+                  {!isMobile && mainPaneEntries.length > 1 && (
                     <div className="flex flex-col">
                       <button
                         title="Move up"
