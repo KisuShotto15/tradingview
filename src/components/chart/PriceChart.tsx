@@ -179,7 +179,7 @@ interface LastValues {
  * a bar boundary; short enough that a frozen chart repairs itself in seconds.
  */
 const STALE_BAR_GRACE_SEC = 30;
-const STALE_BAR_CHECK_MS = 15_000;
+const STALE_BAR_CHECK_MS = 5_000;
 /** Floor between forced resubscriptions, so a stream that stays quiet for a
  *  real reason (a genuinely dead market, a blocked host) can't turn into a
  *  reconnect loop. */
@@ -3063,6 +3063,55 @@ export function PriceChart({ symbol, timeframe }: Props) {
   // ── Bar replay ─────────────────────────────────────────────────────────────
   // Push a candle slice through every series + indicator. Indicators read
   // candlesRef, so pointing it at the slice truncates them for free.
+  /**
+   * Splice a short tail of freshly fetched bars into the live array.
+   *
+   * Used by the REST fallback below, which runs when the socket is open but
+   * delivering nothing. Deliberately not `applyReplayCandles`: that re-sets
+   * every series from a 1000-bar array, which is far too much to repeat every
+   * few seconds just to move the last candle.
+   */
+  function mergeLiveCandles(tail: Candle[]) {
+    if (tail.length === 0 || !candleSeriesRef.current) return;
+    const arr = candlesRef.current;
+    for (const k of tail) {
+      const last = arr[arr.length - 1];
+      if (last && last.time === k.time) arr[arr.length - 1] = k;
+      else if (!last || k.time > last.time) {
+        arr.push(k);
+        if (arr.length > 2000) arr.shift();
+      } else continue;
+      const t = k.time as UTCTimestamp;
+      candleSeriesRef.current.update({ time: t, open: k.open, high: k.high, low: k.low, close: k.close });
+      lineSeriesRef.current?.update({ time: t, value: k.close });
+      areaSeriesRef.current?.update({ time: t, value: k.close });
+      volumeSeriesRef.current?.update({
+        time: t,
+        value: k.volume,
+        color: k.close >= k.open ? `${TV_COLORS.green}66` : `${TV_COLORS.red}66`,
+      });
+    }
+    updateEMAs();
+    updateVWAP();
+    updateRSI();
+    updateStochRsi();
+    updateMACD();
+    updateADX();
+    updateSqueeze();
+    updateVumanchu();
+    updateOBV();
+    const last = arr[arr.length - 1];
+    const prev = arr[arr.length - 2] ?? last;
+    if (last) {
+      const lp = {
+        value: last.close,
+        pct: prev.close === 0 ? 0 : ((last.close - prev.close) / prev.close) * 100,
+      };
+      setLastPrice(lp);
+      setCurrentLivePrice(lp.value);
+    }
+  }
+
   function applyReplayCandles(arr: Candle[]) {
     candlesRef.current = arr;
     globalCandlesRef.current = arr;
@@ -3157,14 +3206,23 @@ export function PriceChart({ symbol, timeframe }: Props) {
         return;
       }
 
-      if (!barsStale) return;
       inFlight = true;
       try {
-        const fresh = await fetchCandles(symbol, timeframe, 1000);
-        if (cancelled || useReplayStore.getState().active || fresh.length === 0) return;
-        applyReplayCandles(fresh);
+        if (barsStale) {
+          // A hole where closed bars should be: only a full refetch fills it.
+          const fresh = await fetchCandles(symbol, timeframe, 1000);
+          if (cancelled || useReplayStore.getState().active || fresh.length === 0) return;
+          applyReplayCandles(fresh);
+        } else {
+          // Socket open but mute, and the bars are still current: keep the
+          // chart live over REST instead of standing still until the bar
+          // rolls. A short tail is all that can have changed.
+          const tail = await fetchCandles(symbol, timeframe, 3);
+          if (cancelled || useReplayStore.getState().active) return;
+          mergeLiveCandles(tail);
+        }
       } catch (e) {
-        console.error("Stale-bar refetch failed:", e);
+        console.error("Feed fallback fetch failed:", e);
       } finally {
         inFlight = false;
       }

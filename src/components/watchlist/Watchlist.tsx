@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -41,6 +41,12 @@ import { useBatchedTicks } from "@/hooks/useBatchedTicks";
 import { CoinIcon, getBaseAsset } from "./CoinIcon";
 import { FlagPennant } from "./FlagPennant";
 import { FLAG_COLORS } from "@/lib/watchlist/flags";
+
+/** No tick for this long means the socket is not feeding us, whatever it
+ *  claims about being connected. */
+const TICK_SILENCE_MS = 20_000;
+/** How often to re-seed over REST while that is the case. */
+const FALLBACK_POLL_MS = 5_000;
 
 interface Row {
   symbol: string;
@@ -98,6 +104,15 @@ export function Watchlist() {
   const [rows, setRows] = useState<Record<string, Row>>({});
   const [flash, setFlash] = useState<Record<string, "up" | "down" | null>>({});
   const applyTick = useBatchedTicks(setRows, setFlash);
+  /** When a live tick last arrived, for the REST fallback below. */
+  const lastTickAtRef = useRef(0);
+  const onTick = useCallback(
+    (t: Parameters<typeof applyTick>[0]) => {
+      lastTickAtRef.current = Date.now();
+      applyTick(t);
+    },
+    [applyTick],
+  );
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -170,14 +185,31 @@ export function Watchlist() {
     if (bybitSyms.length > 0) fetchBybitTickers24h(bybitSyms).then(seed).catch(console.error);
 
     const unsubs: (() => void)[] = [];
-    if (binanceSyms.length > 0) unsubs.push(getBinanceWS().subscribeMiniTickers(binanceSyms, applyTick));
-    if (bybitSyms.length > 0) unsubs.push(getBybitWS().subscribeMiniTickers(bybitSyms, applyTick));
+    if (binanceSyms.length > 0) unsubs.push(getBinanceWS().subscribeMiniTickers(binanceSyms, onTick));
+    if (bybitSyms.length > 0) unsubs.push(getBybitWS().subscribeMiniTickers(bybitSyms, onTick));
+
+    // REST fallback.
+    //
+    // The seed above runs once and every value after it comes from the
+    // socket, so a socket that opens but never delivers leaves these rows
+    // frozen at their opening price for as long as the tab stays up — with no
+    // error and nothing to distinguish it from a flat market. Re-seeding on a
+    // timer whenever no tick has arrived for a while keeps the list moving
+    // wherever WebSockets don't get through but HTTPS does.
+    const pollId = setInterval(() => {
+      if (cancelled || document.hidden) return;
+      if (Date.now() - lastTickAtRef.current < TICK_SILENCE_MS) return;
+      if (binanceSyms.length > 0) fetchTickers24h(binanceSyms).then(seed).catch(() => {});
+      if (bybitSyms.length > 0) fetchBybitTickers24h(bybitSyms).then(seed).catch(() => {});
+    }, FALLBACK_POLL_MS);
 
     return () => {
       cancelled = true;
+      clearInterval(pollId);
       unsubs.forEach((u) => u());
     };
-  }, [symbols.join(",")]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbols.join(","), onTick]);
 
   useEffect(() => {
     if (!contextMenu) return;
