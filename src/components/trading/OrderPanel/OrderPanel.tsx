@@ -484,11 +484,15 @@ function formatForMode(n: number, mode: SizingMode): string {
 /* ───────────────────────── sub-components ───────────────────────── */
 
 function ConnectGate({ onConnect }: { onConnect: () => void }) {
+  // The venue is a user choice; naming Binance unconditionally told a Bybit
+  // user to connect the wrong exchange.
+  const exchange = useTradingStore((s) => s.exchange);
+  const venue = exchange === "bybit" ? "Bybit" : "Binance";
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+    <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-6 text-center">
       <KeyRound className="h-8 w-8 text-tv-text-muted" />
       <p className="text-xs text-tv-text-muted">
-        Connect your Binance API to place orders directly from the chart.
+        Connect your {venue} API to place orders directly from the chart.
       </p>
       <button
         onClick={onConnect}

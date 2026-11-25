@@ -79,8 +79,13 @@ export function TradeScreen() {
         </div>
       )}
 
-      {/* Order form */}
-      <div className="shrink-0 border-b border-tv-border">
+      {/* Order form.
+          While disconnected the panel is just the "connect your API" gate,
+          which centres itself in whatever height it is given — inside a
+          `shrink-0` wrapper that is its own natural height, so it pinned to
+          the top with a rule under it and a screen of black below. Let it
+          take the remaining space instead. */}
+      <div className={connected ? "shrink-0 border-b border-tv-border" : "flex min-h-0 flex-1"}>
         <OrderPanel />
       </div>
 

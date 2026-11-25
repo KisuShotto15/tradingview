@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowDown,
+  ArrowUp,
+  Bell,
   ChevronDown,
   ChevronRight,
   Copy,
@@ -15,8 +18,6 @@ import {
   Trash2,
   Type,
   X,
-  ArrowUp,
-  ArrowDown,
 } from "lucide-react";
 import { fetchTickers24h, cleanSym } from "@/lib/binance/rest";
 import { fetchBybitTickers24h } from "@/lib/bybit/public";
@@ -36,6 +37,8 @@ import { CoinIcon, getBaseAsset } from "@/components/watchlist/CoinIcon";
 import { describeSymbol } from "@/lib/symbols/describe";
 import { FlagPennant } from "@/components/watchlist/FlagPennant";
 import { FLAG_COLORS } from "@/lib/watchlist/flags";
+import { useAlertsStore } from "@/lib/store/alerts-store";
+import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { MobileSheet } from "./MobileSheet";
 
 /** No tick for this long means the socket is not feeding us, whatever it
@@ -101,6 +104,8 @@ export function WatchlistScreen() {
    * missing. TradingView's flag chips behave the same way.
    */
   const [flagFilter, setFlagFilter] = useState<Set<string>>(new Set());
+  const alerts = useAlertsStore((st) => st.alerts);
+  const drawingsForAlerts = useDrawingsStore((st) => st.drawings);
 
   const active = watchlists.find((w) => w.id === activeWatchlistId) ?? watchlists[0];
   const items = active?.items ?? [];
@@ -108,6 +113,22 @@ export function WatchlistScreen() {
     () => items.filter((i) => i.type === "symbol").map((i) => i.value),
     [items],
   );
+
+  /**
+   * Symbols carrying at least one enabled alert, from both mechanisms — the
+   * standalone price/RSI/MACD alerts and the ones attached to a drawing.
+   *
+   * Keyed by `cleanSym` so a watchlist row for "BTCUSDT" matches an alert set
+   * on "BTCUSDT.P" or "BYBIT:BTCUSDT.P": those are the same instrument to a
+   * person scanning the list, and keying on the raw ticker would silently
+   * show no badge on the row they are actually watching.
+   */
+  const alertedSymbols = useMemo(() => {
+    const set = new Set<string>();
+    for (const a of alerts) if (a.enabled) set.add(cleanSym(a.symbol));
+    for (const d of drawingsForAlerts) if (d.alert?.enabled) set.add(cleanSym(d.symbol));
+    return set;
+  }, [alerts, drawingsForAlerts]);
 
   const positionsBySymbol = useMemo(() => {
     const map = new Map<string, Position>();
@@ -582,6 +603,7 @@ export function WatchlistScreen() {
                 selectMode={selectMode}
                 showHandle={showHandle}
                 isDragTarget={isDragTarget}
+                hasAlert={alertedSymbols.has(cleanSym(item.value))}
                 posSide={(() => {
                   const rowMatchesExchange = resolveSource(item.value).kind === tradingExchange;
                   const openPosition = rowMatchesExchange
@@ -734,7 +756,7 @@ export function WatchlistScreen() {
 /** A single symbol row: tap opens the chart (or toggles selection in select
  *  mode), long-press enters select mode, the grip handle drags to reorder. */
 function SymbolRow({
-  item, rowRef, row, flash, isActive, isSelected, selectMode, showHandle, isDragTarget, posSide,
+  item, rowRef, row, flash, isActive, isSelected, selectMode, showHandle, isDragTarget, posSide, hasAlert,
   onOpen, onLongPress, onDragPointerDown, onDragPointerMove, onDragPointerUp, onDragPointerCancel,
   onMore,
 }: {
@@ -748,6 +770,7 @@ function SymbolRow({
   showHandle: boolean;
   isDragTarget: boolean;
   posSide: "LONG" | "SHORT" | null;
+  hasAlert: boolean;
   onOpen: () => void;
   onLongPress: () => void;
   onDragPointerDown: (e: React.PointerEvent) => void;
@@ -836,7 +859,20 @@ function SymbolRow({
         {/* Larger than the desktop row on purpose: on a phone the icon is the
             fastest way to find a row, and a 18px mark is below the size at
             which a coin logo is recognisable at arm's length. */}
-        <CoinIcon symbol={displaySymbol} size={30} />
+        <span className="relative shrink-0">
+          <CoinIcon symbol={displaySymbol} size={30} />
+          {hasAlert && (
+            // Pinned to the icon, as TradingView does, rather than given its
+            // own column: the badge is a property of the instrument, and a
+            // column would cost width on every row to mark a handful.
+            <span
+              className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-tv-panel ring-1 ring-tv-border"
+              title="Alert set"
+            >
+              <Bell className="h-2 w-2 text-tv-yellow" />
+            </span>
+          )}
+        </span>
         <div className="flex min-w-0 flex-col">
           <span className="flex items-center gap-1.5 truncate text-[15px] font-semibold leading-tight">
             {posSide ? getBaseAsset(displaySymbol) : displaySymbol}
