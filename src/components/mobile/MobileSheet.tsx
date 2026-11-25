@@ -2,6 +2,7 @@
 
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useBackHandler } from "@/lib/mobile/back-stack";
 
 /**
  * Fullscreen mobile sheet that slides up from the bottom edge of the viewport.
@@ -19,6 +20,9 @@ export function MobileSheet({
   children: React.ReactNode;
   className?: string;
 }) {
+  // Back closes this sheet before anything behind it.
+  useBackHandler(true, onClose);
+
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col bg-tv-bg"

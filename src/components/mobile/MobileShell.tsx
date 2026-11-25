@@ -16,8 +16,9 @@ import { MobileSheetsRoot } from "./MobileSheetsRoot";
  */
 export function MobileShell() {
   const tab = useMobileStore((s) => s.tab);
-  // Back closes the topmost layer instead of the whole app.
-  useAndroidBack();
+  // Back closes the topmost layer instead of the whole app; from the home
+  // screen it asks first rather than leaving on one press.
+  const { exitHint } = useAndroidBack();
 
   return (
     <div
@@ -40,6 +41,16 @@ export function MobileShell() {
       </main>
       <BottomTabBar />
       <MobileSheetsRoot />
+      {exitHint && (
+        <div
+          className="pointer-events-none fixed inset-x-0 bottom-24 z-[60] flex justify-center"
+          role="status"
+        >
+          <span className="rounded-full bg-tv-panel/95 px-4 py-2 text-sm text-tv-text shadow-lg ring-1 ring-tv-border">
+            Press back again to exit
+          </span>
+        </div>
+      )}
     </div>
   );
 }

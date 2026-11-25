@@ -137,6 +137,25 @@
   }
 }
 
+/* Bottom action sheets. Sliding in from the edge it is anchored to is what
+   says where the sheet came from and where dismissing it sends it back — a
+   panel that simply appears reads as a new screen instead of a layer over
+   the one you were on. The easing is a fast-out, settle-in curve so the
+   sheet arrives rather than decelerating all the way. */
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes sheet-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [class*="animate-[sheet-"] {
+    animation: none !important;
+  }
+}
+
 /* Horizontal bars that are swiped, not dragged by a bar. The mobile chart
    toolbar scrolls sideways under a thumb, so a visible scrollbar is a strip
    of chrome marking an affordance nobody uses there. Unlayered, like the

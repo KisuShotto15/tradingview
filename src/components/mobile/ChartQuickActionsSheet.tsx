@@ -8,6 +8,7 @@ import { useTradingStore } from "@/lib/store/trading-store";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { resolveSource } from "@/lib/symbols/source";
 import { formatPrice } from "@/lib/format";
+import { MobileActionSheet } from "./MobileActionSheet";
 
 /**
  * The sheet behind the "+" on the price axis.
@@ -82,50 +83,36 @@ export function ChartQuickActionsSheet({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end" role="dialog" aria-modal="true" aria-label="Actions at price">
-      {/* Tapping away is how a bottom sheet is dismissed on a phone. */}
-      <button
-        className="absolute inset-0 bg-black/50"
-        aria-label="Close"
-        onClick={onClose}
-      />
-      <div
-        className="relative max-h-[70%] overflow-y-auto rounded-t-2xl border-t border-tv-border bg-tv-panel pb-[env(safe-area-inset-bottom)]"
-      >
-        <div className="flex justify-center py-2">
-          <span className="h-1 w-10 rounded-full bg-tv-border" />
-        </div>
+    <MobileActionSheet label="Actions at price" onClose={onClose}>
+      <Row icon={<AlarmClockPlus className="h-5 w-5" />} onClick={addAlert}>
+        Add alert on {symbol} at <Value>{shown}</Value>
+      </Row>
 
-        <Row icon={<AlarmClockPlus className="h-5 w-5" />} onClick={addAlert}>
-          Add alert on {symbol} at <Value>{shown}</Value>
-        </Row>
-
-        {canTrade && (
-          <>
-            <Divider />
-            <Row icon={<ChevronsUp className="h-5 w-5" />} onClick={() => prepareOrder("BUY")}>
-              Buy {symbol} at <Value>{shown}</Value> limit
-            </Row>
-            <Row icon={<ChevronsDown className="h-5 w-5" />} onClick={() => prepareOrder("SELL")}>
-              Sell {symbol} at <Value>{shown}</Value> limit
-            </Row>
-            <Row icon={<PlusSquare className="h-5 w-5" />} onClick={() => prepareOrder("BUY")}>
-              Add order on {symbol} at <Value>{shown}</Value>…
-            </Row>
-          </>
-        )}
-
-        <Divider />
-        <Row icon={<Minus className="h-5 w-5" />} onClick={drawHLine}>
-          Draw horizontal line at <Value>{shown}</Value>
-        </Row>
-        {time !== null && (
-          <Row icon={<MoveRight className="h-5 w-5" />} onClick={drawHRay}>
-            Draw horizontal ray at <Value>{shown}</Value>
+      {canTrade && (
+        <>
+          <Divider />
+          <Row icon={<ChevronsUp className="h-5 w-5" />} onClick={() => prepareOrder("BUY")}>
+            Buy {symbol} at <Value>{shown}</Value> limit
           </Row>
-        )}
-      </div>
-    </div>
+          <Row icon={<ChevronsDown className="h-5 w-5" />} onClick={() => prepareOrder("SELL")}>
+            Sell {symbol} at <Value>{shown}</Value> limit
+          </Row>
+          <Row icon={<PlusSquare className="h-5 w-5" />} onClick={() => prepareOrder("BUY")}>
+            Add order on {symbol} at <Value>{shown}</Value>…
+          </Row>
+        </>
+      )}
+
+      <Divider />
+      <Row icon={<Minus className="h-5 w-5" />} onClick={drawHLine}>
+        Draw horizontal line at <Value>{shown}</Value>
+      </Row>
+      {time !== null && (
+        <Row icon={<MoveRight className="h-5 w-5" />} onClick={drawHRay}>
+          Draw horizontal ray at <Value>{shown}</Value>
+        </Row>
+      )}
+    </MobileActionSheet>
   );
 }
 

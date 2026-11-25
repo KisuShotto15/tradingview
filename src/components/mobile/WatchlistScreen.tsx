@@ -45,6 +45,7 @@ import { FLAG_COLORS } from "@/lib/watchlist/flags";
 import { useAlertsStore } from "@/lib/store/alerts-store";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { MobileSheet } from "./MobileSheet";
+import { MobileActionSheet } from "./MobileActionSheet";
 
 /** No tick for this long means the socket is not feeding us, whatever it
  *  claims about being connected. */
@@ -707,8 +708,11 @@ export function WatchlistScreen() {
       )}
 
       {/* Per-item actions sheet */}
+      {/* A short list of things to do to the row you held — a sheet from the
+          bottom edge, not a trip to a full screen, so the list it belongs to
+          stays visible behind it. */}
       {actionsFor && active && (
-        <MobileSheet
+        <MobileActionSheet
           title={actionsFor.type === "label" ? actionsFor.value : stripExchangePrefix(actionsFor.value)}
           onClose={() => setActionsFor(null)}
         >
@@ -799,12 +803,12 @@ export function WatchlistScreen() {
               />
             </>
           )}
-        </MobileSheet>
+        </MobileActionSheet>
       )}
 
       {/* "Move to list" picker — shared by the per-item sheet and the batch bar */}
       {moveListOpen && active && (
-        <MobileSheet title="Move to…" onClose={() => setMoveListOpen(null)}>
+        <MobileActionSheet title="Move to…" onClose={() => setMoveListOpen(null)}>
           {watchlists.filter((w) => w.id !== active.id).map((w) => (
             <button
               key={w.id}
@@ -823,7 +827,7 @@ export function WatchlistScreen() {
               {w.name}
             </button>
           ))}
-        </MobileSheet>
+        </MobileActionSheet>
       )}
     </div>
   );
