@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import { expect } from "@/test-utils/expect";
-import { formatPrice, formatPct, formatVolume, pricePrecisionFor, priceFormatFor } from "./format";
+import { formatPrice, formatPct, formatVolume, pricePrecisionFor, priceFormatFor, changeFromPct, formatChange } from "./format";
 
 describe("formatPrice", () => {
   it("uses thousands separators above 1000", () => {
@@ -56,5 +56,33 @@ describe("formatVolume", () => {
     expect(formatVolume(3_400_000)).toBe("3.40M");
     expect(formatVolume(7_800)).toBe("7.80K");
     expect(formatVolume(42)).toBe("42.00");
+  });
+});
+
+describe("changeFromPct", () => {
+  it("recovers the absolute move from price and percentage", () => {
+    // 110 after +10% means the open was 100, so the move is +10.
+    expect(changeFromPct(110, 10)).toBeCloseTo(10, 9);
+    expect(changeFromPct(90, -10)).toBeCloseTo(-10, 9);
+  });
+
+  it("is zero on a flat tape", () => {
+    expect(changeFromPct(100, 0)).toBe(0);
+  });
+
+  it("gives up rather than dividing by zero at -100%", () => {
+    expect(changeFromPct(100, -100)).toBe(null);
+  });
+
+  it("rejects non-finite inputs", () => {
+    expect(changeFromPct(NaN, 1)).toBe(null);
+    expect(changeFromPct(1, Infinity)).toBe(null);
+  });
+});
+
+describe("formatChange", () => {
+  it("always carries an explicit sign", () => {
+    expect(formatChange(1420.33)).toBe("+1,420.33");
+    expect(formatChange(-1420.33)).toBe("−1,420.33");
   });
 });

@@ -35,6 +35,28 @@ export function formatPct(n: number): string {
   return `${sign}${n.toFixed(2)}%`;
 }
 
+/**
+ * The absolute 24h move, derived from the current price and the percentage.
+ *
+ * Both venues' ticker payloads carry the percentage, and Bybit's WebSocket
+ * delta frames carry nothing else — so rather than plumb a third field that
+ * is only sometimes present, recover it: price = open * (1 + pct/100), hence
+ * change = price - price / (1 + pct/100). Exact for any pct except -100%,
+ * where the open was zero and there is no meaningful move to show.
+ */
+export function changeFromPct(price: number, pct: number): number | null {
+  if (!isFinite(price) || !isFinite(pct)) return null;
+  const ratio = 1 + pct / 100;
+  if (ratio === 0) return null;
+  return price - price / ratio;
+}
+
+/** Signed absolute move, formatted like a price. */
+export function formatChange(n: number): string {
+  if (!isFinite(n)) return "—";
+  return `${n >= 0 ? "+" : "−"}${formatPrice(Math.abs(n))}`;
+}
+
 export function formatVolume(n: number): string {
   if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
   if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;

@@ -29,10 +29,11 @@ import { useChartStore, type WatchlistItem } from "@/lib/store/chart-store";
 import { useMobileStore } from "@/lib/store/mobile-store";
 import { useTradingStore } from "@/lib/store/trading-store";
 import type { Position } from "@/lib/binance/trading-types";
-import { formatPrice, formatPct } from "@/lib/format";
+import { formatPrice, formatPct, changeFromPct, formatChange } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useBatchedTicks } from "@/hooks/useBatchedTicks";
 import { CoinIcon, getBaseAsset } from "@/components/watchlist/CoinIcon";
+import { describeSymbol } from "@/lib/symbols/describe";
 import { FlagPennant } from "@/components/watchlist/FlagPennant";
 import { FLAG_COLORS } from "@/lib/watchlist/flags";
 import { MobileSheet } from "./MobileSheet";
@@ -527,7 +528,6 @@ export function WatchlistScreen() {
                 onDragPointerUp={handleDragPointerUp}
                 onDragPointerCancel={handleDragPointerCancel}
                 onMore={() => setActionsFor(item)}
-                onRemove={() => removeWatchlistItem(active.id, item.id)}
               />
             );
           })
@@ -666,7 +666,7 @@ export function WatchlistScreen() {
 function SymbolRow({
   item, rowRef, row, flash, isActive, isSelected, selectMode, showHandle, isDragTarget, posSide,
   onOpen, onLongPress, onDragPointerDown, onDragPointerMove, onDragPointerUp, onDragPointerCancel,
-  onMore, onRemove,
+  onMore,
 }: {
   item: Extract<WatchlistItem, { type: "symbol" }>;
   rowRef: (el: HTMLElement | null) => void;
@@ -685,7 +685,6 @@ function SymbolRow({
   onDragPointerUp: (e: React.PointerEvent) => void;
   onDragPointerCancel: (e: React.PointerEvent) => void;
   onMore: () => void;
-  onRemove: () => void;
 }) {
   const s = item.value;
   const displaySymbol = stripExchangePrefix(s);
@@ -763,23 +762,28 @@ function SymbolRow({
         <span className="w-[9px] shrink-0" />
       )}
 
-      <div className="flex min-w-0 items-center gap-1.5">
-        <CoinIcon symbol={displaySymbol} size={18} />
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        {/* Larger than the desktop row on purpose: on a phone the icon is the
+            fastest way to find a row, and a 18px mark is below the size at
+            which a coin logo is recognisable at arm's length. */}
+        <CoinIcon symbol={displaySymbol} size={30} />
         <div className="flex min-w-0 flex-col">
-          <span className="flex items-center gap-1.5 truncate text-sm font-semibold">
+          <span className="flex items-center gap-1.5 truncate text-[15px] font-semibold leading-tight">
             {posSide ? getBaseAsset(displaySymbol) : displaySymbol}
             {posSide && <PositionSideBadge side={posSide} />}
           </span>
-          <span className="text-[10px] uppercase tracking-wider text-tv-text-muted">
-            {resolveSource(s).kind === "bybit" ? "Bybit" : "Binance"}
+          {/* The long name, not the venue: every row is on the same venue, so
+              that line was the same string all the way down the list. */}
+          <span className="truncate text-[12px] leading-tight text-tv-text-muted">
+            {describeSymbol(s)}
           </span>
         </div>
       </div>
 
-      <div className="flex flex-col items-end gap-0.5">
+      <div className="flex shrink-0 flex-col items-end leading-tight">
         <span
           className={cn(
-            "font-mono text-sm tabular-nums transition-colors",
+            "font-mono text-[15px] tabular-nums transition-colors",
             flash === "up" && "text-tv-green",
             flash === "down" && "text-tv-red",
             !flash && "text-tv-text",
@@ -789,11 +793,15 @@ function SymbolRow({
         </span>
         <span
           className={cn(
-            "rounded px-1.5 py-px font-mono text-[10px] tabular-nums",
-            row ? (row.pct >= 0 ? "bg-tv-green/15 text-tv-green" : "bg-tv-red/15 text-tv-red") : "text-tv-text-muted",
+            "flex items-baseline gap-1.5 font-mono text-[12px] tabular-nums",
+            row ? (row.pct >= 0 ? "text-tv-green" : "text-tv-red") : "text-tv-text-muted",
           )}
         >
-          {row ? formatPct(row.pct) : "—"}
+          {row && (() => {
+            const chg = changeFromPct(row.price, row.pct);
+            return chg === null ? null : <span>{formatChange(chg)}</span>;
+          })()}
+          <span>{row ? formatPct(row.pct) : "—"}</span>
         </span>
       </div>
 
@@ -811,16 +819,6 @@ function SymbolRow({
             aria-label="More actions"
           >
             <MoreHorizontal className="h-4 w-4" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove();
-            }}
-            className="rounded p-1.5 text-tv-text-dim active:text-tv-red"
-            aria-label={`Remove ${s} from watchlist`}
-          >
-            <X className="h-4 w-4" />
           </button>
         </div>
       )}

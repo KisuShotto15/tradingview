@@ -14,10 +14,21 @@ import { cn } from "@/lib/utils";
 /**
  * Mobile chart screen.
  *
- * Top bar: symbol chip (swipe up/down → previous/next symbol in active
+ * The toolbar sits at the **bottom**, under the chart and directly above the
+ * tab bar, which is where TradingView's mobile chart puts it and why that
+ * layout feels reachable: on a tall phone the top of the screen is the one
+ * place a thumb cannot get to without shifting grip, and every one of these
+ * controls is used mid-analysis. Moving it down also hands the chart the full
+ * height of the screen, which is the thing the user is actually looking at.
+ *
+ * It carries: symbol chip (swipe up/down → previous/next symbol in the active
  * watchlist), timeframe chip (swipe up/down → previous/next *pinned*
  * timeframe, tap → full picker), chart type, undo/redo, drawing tools,
- * replay, and a "…" for indicators.
+ * replay, snapshot, and a "…" for indicators.
+ *
+ * There is deliberately no separate header: `PriceChart`'s own legend line
+ * already reads "BTCUSDT.P · 5m · Binance 67,440.03 −0.53%", so a top bar
+ * repeating the symbol and price would cost a row of chart for nothing.
  *
  * The chart itself uses the existing desktop <PriceChart /> — it already
  * supports pinch-zoom and pan on touch devices. `ChartTypeSelector` and
@@ -61,9 +72,14 @@ export function ChartScreen() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Top bar — scrolls horizontally rather than wrapping/clipping on a
+      {/* Chart first: it gets the whole screen above the toolbar. */}
+      <div className="relative min-h-0 flex-1">
+        <PriceChart symbol={symbol} timeframe={timeframe} />
+      </div>
+
+      {/* Toolbar — scrolls horizontally rather than wrapping or clipping on a
           narrow phone, since it packs in every desktop header action. */}
-      <header className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-tv-border bg-tv-panel px-2 py-1.5">
+      <footer className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-t border-tv-border bg-tv-panel px-2 py-1.5">
         <SwipeChip
           label={symbol}
           onSwipe={nextSymbol}
@@ -81,6 +97,26 @@ export function ChartScreen() {
           <ChartTypeSelector />
         </div>
         <button
+          onClick={() => openSheet("drawings")}
+          className="shrink-0 rounded p-1.5 text-tv-text-muted active:bg-tv-panel-hover"
+          aria-label="Drawing tools"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => openSheet("indicators")}
+          className="shrink-0 rounded p-1.5 text-tv-text-muted active:bg-tv-panel-hover"
+          aria-label="Indicators"
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </button>
+
+        {/* Secondary actions, after a divider. The bar scrolls, so ordering is
+            what decides which controls are reachable without a swipe — symbol,
+            timeframe, chart type, drawing and indicators are the five a chart
+            user reaches for, and they now all fit on screen. */}
+        <span className="mx-0.5 h-5 w-px shrink-0 bg-tv-border" />
+        <button
           onClick={() => void undo()}
           className="shrink-0 rounded p-1.5 text-tv-text-muted active:bg-tv-panel-hover"
           aria-label="Undo"
@@ -94,13 +130,6 @@ export function ChartScreen() {
         >
           <Redo2 className="h-4 w-4" />
         </button>
-        <button
-          onClick={() => openSheet("drawings")}
-          className="shrink-0 rounded p-1.5 text-tv-text-muted active:bg-tv-panel-hover"
-          aria-label="Drawing tools"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
         {!replayActive && (
           <button
             onClick={enterReplayPicking}
@@ -113,19 +142,7 @@ export function ChartScreen() {
         <div className="shrink-0">
           <SnapshotButton />
         </div>
-        <button
-          onClick={() => openSheet("indicators")}
-          className="shrink-0 rounded p-1.5 text-tv-text-muted active:bg-tv-panel-hover"
-          aria-label="Indicators"
-        >
-          <MoreHorizontal className="h-4 w-4" />
-        </button>
-      </header>
-
-      {/* Chart */}
-      <div className="relative min-h-0 flex-1">
-        <PriceChart symbol={symbol} timeframe={timeframe} />
-      </div>
+      </footer>
     </div>
   );
 }

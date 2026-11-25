@@ -240,6 +240,16 @@ interface PaneOffset {
 
 export function PriceChart({ symbol, timeframe }: Props) {
   const isMobile = useIsMobile();
+  /**
+   * How much taller the price pane is than one sub-pane.
+   *
+   * 3 leaves the price pane at 60% with two studies open, which is fine on a
+   * desktop plot and cramped on a phone; 5 puts it at ~71%, which is the
+   * share a mobile charting app gives the candles. Derived from the reactive
+   * hook rather than a module-level `window.innerWidth`, so rotating the
+   * phone re-applies it.
+   */
+  const mainPaneStretch = isMobile ? 5 : 3;
   const containerRef = useRef<HTMLDivElement>(null);
   const outerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -1450,7 +1460,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       rsi70Ref.current = r70;
       try {
         chart.panes()[1]?.setStretchFactor(1);
-        chart.panes()[0]?.setStretchFactor(3);
+        chart.panes()[0]?.setStretchFactor(mainPaneStretch);
       } catch {}
       updateRSI();
     } else if (!indicators.rsi && rsiRef.current && chartRef.current) {
@@ -1515,7 +1525,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       macdHistRef.current = h;
       try {
         chartRef.current.panes()[paneIndex]?.setStretchFactor(1);
-        chartRef.current.panes()[0]?.setStretchFactor(3);
+        chartRef.current.panes()[0]?.setStretchFactor(mainPaneStretch);
       } catch {}
       updateMACD();
     }
@@ -1633,7 +1643,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       );
       try {
         chartRef.current.panes()[paneIndex]?.setStretchFactor(1);
-        chartRef.current.panes()[0]?.setStretchFactor(3);
+        chartRef.current.panes()[0]?.setStretchFactor(mainPaneStretch);
       } catch {}
       updateADX();
     }
@@ -1679,7 +1689,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       squeezeDotsMarkersRef.current = createSeriesMarkers(squeezeDotsRef.current);
       try {
         chartRef.current.panes()[paneIndex]?.setStretchFactor(1);
-        chartRef.current.panes()[0]?.setStretchFactor(3);
+        chartRef.current.panes()[0]?.setStretchFactor(mainPaneStretch);
       } catch {}
       updateSqueeze();
       // When ADX and Squeeze share a pane, enforce the configured visual z-order.
@@ -1830,7 +1840,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       }
       try {
         chartRef.current.panes()[paneIndex]?.setStretchFactor(1.4);
-        chartRef.current.panes()[0]?.setStretchFactor(3);
+        chartRef.current.panes()[0]?.setStretchFactor(mainPaneStretch);
       } catch {}
       updateVumanchu();
     }
@@ -1877,7 +1887,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       stochRsi80Ref.current = chartRef.current.addSeries(LineSeries, band, paneIndex);
       try {
         chartRef.current.panes()[paneIndex]?.setStretchFactor(1);
-        chartRef.current.panes()[0]?.setStretchFactor(3);
+        chartRef.current.panes()[0]?.setStretchFactor(mainPaneStretch);
       } catch {}
       updateStochRsi();
     }
@@ -1907,7 +1917,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       );
       try {
         chartRef.current.panes()[paneIndex]?.setStretchFactor(1);
-        chartRef.current.panes()[0]?.setStretchFactor(3);
+        chartRef.current.panes()[0]?.setStretchFactor(mainPaneStretch);
       } catch {}
       updateOBV();
     }
@@ -3201,6 +3211,22 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
   }
 
+  // Re-apply the price pane's share whenever it changes.
+  //
+  // The sub-pane effects set it when they create their pane, but `useIsMobile`
+  // is false on the first render by design (it is SSR-safe and only learns the
+  // real width after mount), so those effects had already run with the desktop
+  // value. Without this the phone layout silently kept the 3:1:1 split.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    try {
+      chart.panes()[0]?.setStretchFactor(mainPaneStretch);
+    } catch {
+      // Pane 0 always exists once the chart is built; ignore a teardown race.
+    }
+  }, [mainPaneStretch, indicators]);
+
   // A new symbol or timeframe starts with no tick of its own.
   useEffect(() => {
     resetChartTick();
@@ -4037,8 +4063,22 @@ export function PriceChart({ symbol, timeframe }: Props) {
         className="pointer-events-none absolute z-10 flex flex-col gap-1 text-xs tabular-nums"
       >
         {/* Row 1: symbol · timeframe · Binance + live price inline; OHLC on hover */}
-        <div className="flex flex-nowrap items-center gap-x-2 overflow-hidden whitespace-nowrap text-[12px]">
+        <div
+          className={
+            // On a phone the whole line — symbol, timeframe, venue, then four
+            // OHLC figures and a volume — is far wider than the screen, and
+            // `nowrap` + `overflow-hidden` silently cut it off mid-number.
+            // Wrapping is better than truncating a price.
+            isMobile
+              ? "flex max-w-[88vw] flex-wrap items-center gap-x-2 text-[12px]"
+              : "flex flex-nowrap items-center gap-x-2 overflow-hidden whitespace-nowrap text-[12px]"
+          }
+        >
           <span className="font-semibold text-tv-text">{symbol}</span>
+          {/* While a candle is being read, the timeframe and venue are the
+              least useful things on the line; on a phone they give way. */}
+          {!(isMobile && hover) && (
+            <>
           <span className="text-tv-text-muted">·</span>
           <span className="font-semibold text-tv-text-muted">{timeframeLabel(timeframe)}</span>
           <span className="text-tv-text-muted">·</span>
@@ -4053,6 +4093,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
               return "Binance";
             })()}
           </span>
+            </>
+          )}
           {!hover && lastPrice && (
             <>
               <span className={`font-semibold tabular-nums ${greenOrRed(lastPrice.pct)}`}>
@@ -4067,7 +4109,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
             <span className="text-[10px] text-tv-text-muted">Loading…</span>
           )}
           {hover && (
-            <div className="flex items-center gap-x-2 text-[11px]">
+            <div className={isMobile
+              ? "flex flex-wrap items-center gap-x-1.5 text-[10px]"
+              : "flex items-center gap-x-2 text-[11px]"}>
               <span className="text-tv-text-muted">
                 O <span className={greenOrRed(hover.c - hover.o)}>{formatPrice(hover.o)}</span>
               </span>
@@ -4083,9 +4127,13 @@ export function PriceChart({ symbol, timeframe }: Props) {
               <span className={greenOrRed(hover.pct)}>
                 {hover.pct >= 0 ? "+" : ""}{hover.pct.toFixed(2)}%
               </span>
-              <span className="text-tv-text-muted">
-                Vol <span className="text-tv-text">{formatVolume(hover.v)}</span>
-              </span>
+              {/* Volume is already on its own pill; on a phone that repeat
+                  is what pushes OHLC onto a second line. */}
+              {!isMobile && (
+                <span className="text-tv-text-muted">
+                  Vol <span className="text-tv-text">{formatVolume(hover.v)}</span>
+                </span>
+              )}
             </div>
           )}
         </div>
