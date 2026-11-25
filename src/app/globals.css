@@ -234,4 +234,24 @@
     -webkit-user-select: text;
     user-select: text;
   }
+
+  /*
+   * Finger-wide targets for the line hit areas on the chart: the drawings'
+   * anchors and bodies, and the entry/TP/SL order lines.
+   *
+   * Each of those carries an invisible stroke for the gesture to land on,
+   * 10px wide — fine for a mouse, about a fifth of a fingertip. On a phone a
+   * trend line had to be hit within five pixels of its centre or the tap went
+   * to the chart underneath, which is what made the drawings feel broken
+   * rather than fiddly: the miss is silent and looks like the drawing
+   * ignoring you.
+   *
+   * Done here rather than with a `strokeWidth` attribute because CSS beats a
+   * presentation attribute and follows the media query for free — no hook, no
+   * re-render, and nothing for a component to forget to pass. 26px is a
+   * ±13px tolerance, which is what the venues' own mobile charts allow.
+   */
+  svg .chart-hit-line {
+    stroke-width: 26px;
+  }
 }

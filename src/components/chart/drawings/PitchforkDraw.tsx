@@ -104,7 +104,7 @@ export function PitchforkDraw({
         y2={cy}
         stroke="transparent"
         strokeWidth={10}
-        className="drawing-hit"
+        className="drawing-hit chart-hit-line"
         style={{ pointerEvents: "stroke", cursor: selected ? "move" : "pointer" }}
         onPointerDown={(e) => {
           if (selected) {

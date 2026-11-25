@@ -3556,14 +3556,15 @@ export function PriceChart({ symbol, timeframe }: Props) {
   //
   // `BarCountdown` draws price, change and countdown as one plate in the
   // candle's colour; leaving the native label on stacked a second, grey box
-  // against it for the same number. Restored the moment the countdown is
-  // turned off in chart settings, since then the label is the only readout.
+  // against it for the same number. The native label comes back only in bar
+  // replay, where the plate is not mounted — the price it carries comes from
+  // the live feed, which is not what a replayed chart is showing.
   useEffect(() => {
-    const show = !(showBarCountdown && !replayActive);
+    const show = replayActive;
     for (const ref of [candleSeriesRef, lineSeriesRef, areaSeriesRef]) {
       ref.current?.applyOptions({ lastValueVisible: show });
     }
-  }, [showBarCountdown, replayActive, chartType]);
+  }, [replayActive, chartType]);
 
   // Re-apply the price pane's share whenever it changes.
   //
@@ -4301,7 +4302,15 @@ export function PriceChart({ symbol, timeframe }: Props) {
       )}
       {measureRender}
 
-      {showBarCountdown && !replayActive && (
+      {/*
+        Mounted whenever there is a live price, not only when the countdown is
+        on. The plate is what stands in for lightweight-charts' own last-value
+        label, and it is the only one of the two that can step aside for the
+        crosshair's label — the library draws both of those itself, one over
+        the other, with no API to move either. Turning the countdown off in
+        chart settings now drops the countdown line and keeps the plate.
+      */}
+      {!replayActive && (
         <BarCountdown
           chart={chartRef.current}
           candleSeries={candleSeriesRef.current}
@@ -4311,6 +4320,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           containerWidth={containerSize.width}
           mainPaneHeight={paneOffsets[0]?.height ?? containerSize.height}
           renderTick={renderTick}
+          showCountdown={showBarCountdown}
         />
       )}
 

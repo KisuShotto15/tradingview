@@ -99,14 +99,23 @@ export function FibExtensionDraw({
 
   return (
     <g>
-      {/* A→B→C guide segments (also the clickable hit area) */}
+      {/*
+        The hit area is its own transparent polyline rather than the visible
+        guide below.
+
+        The guide is a 1px dashed line, and using it as the target meant this
+        drawing could not be selected with a finger at all — so it could not be
+        moved, restyled or deleted once placed. A separate shape is what lets
+        the target be finger-wide while the guide stays hairline-thin; the
+        width comes from `.chart-hit-line` in globals.css, which widens it
+        only on a touch device.
+      */}
       <polyline
         points={`${ax},${ay} ${bx},${by} ${cx},${cy}`}
         fill="none"
-        stroke={drawing.color ?? "#787b86"}
-        strokeWidth={selected ? 1.5 : 1}
-        strokeDasharray="4 3"
-        className="drawing-hit"
+        stroke="transparent"
+        strokeWidth={10}
+        className="drawing-hit chart-hit-line"
         style={{ pointerEvents: "stroke", cursor: selected ? "move" : "pointer" }}
         onPointerDown={(e) => {
           if (selected) {
@@ -117,6 +126,15 @@ export function FibExtensionDraw({
           }
         }}
         onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
+      />
+      {/* A→B→C guide segments */}
+      <polyline
+        points={`${ax},${ay} ${bx},${by} ${cx},${cy}`}
+        fill="none"
+        stroke={drawing.color ?? "#787b86"}
+        strokeWidth={selected ? 1.5 : 1}
+        strokeDasharray="4 3"
+        style={{ pointerEvents: "none" }}
       />
       {levels.map((lvl) => {
         const y = candleSeries?.priceToCoordinate(lvl.price) ?? null;

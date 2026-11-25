@@ -81,6 +81,7 @@ export function BrushDraw({ drawing, chart, candleSeries, selected, onSelect }: 
         strokeWidth={Math.max(lw + 8, 12)}
         strokeLinecap="round"
         strokeLinejoin="round"
+        className="drawing-hit chart-hit-line"
         style={{ cursor: "move", pointerEvents: "stroke" }}
       />
       {selected && (

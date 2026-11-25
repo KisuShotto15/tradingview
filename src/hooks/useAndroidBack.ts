@@ -134,6 +134,20 @@ function handleBack(): boolean {
     return true;
   }
 
+  // Tabs before the chart's own state: the chart is home, so back from any
+  // other tab lands there before the next press offers to leave.
+  //
+  // This has to come first because an armed tool and a selected drawing are
+  // both invisible from the watchlist or the trade screen. Consuming the
+  // press for one of them from another tab spends it on something the user
+  // cannot see — the screen simply does not change, and back looks broken.
+  // It became reachable the moment a newly placed drawing started arriving
+  // selected: draw a line, switch tabs, press back, nothing happens.
+  if (mobile.tab !== "chart") {
+    mobile.setTab("chart");
+    return true;
+  }
+
   // Same order the Esc key uses on desktop: drop the armed tool before the
   // selection, since a tool in flight is the more surprising state to be left
   // in and the one with no other visible way out on a phone.
@@ -143,13 +157,6 @@ function handleBack(): boolean {
   }
   if (drawings.selectedId !== null) {
     drawings.setSelected(null);
-    return true;
-  }
-
-  // Tabs last: the chart is home, so back from any other tab lands there
-  // before the next press offers to leave.
-  if (mobile.tab !== "chart") {
-    mobile.setTab("chart");
     return true;
   }
 

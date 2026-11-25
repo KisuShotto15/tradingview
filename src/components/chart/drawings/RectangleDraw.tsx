@@ -54,6 +54,47 @@ export function RectangleDraw({
     onMove: (pt: Point) => updateLive(drawing.id, { b: pt } as Partial<RectangleDrawing>),
     onEnd: commitEnd,
   });
+  /**
+   * The two corners that are not stored anchors.
+   *
+   * A rectangle keeps only `a` and `b`; its other two corners are the mixed
+   * pairs (b.time, a.price) and (a.time, b.price). Both used to be wired to
+   * whichever single anchor they shared an x with, so grabbing the top-right
+   * corner moved the *bottom*-right one: the corner you held stayed put while
+   * the opposite edge followed your finger, and the only way to get the shape
+   * you wanted was to drag the two real anchors instead. Each now writes one
+   * coordinate into each anchor, which is what makes a corner resize the two
+   * edges that meet at it.
+   */
+  const current = () => {
+    const c = useDrawingsStore.getState().drawings.find((d) => d.id === drawing.id);
+    return c && c.kind === "rectangle" ? c : null;
+  };
+  const dragBA = useDragPoint(chart, candleSeries, container, {
+    onStart: snap,
+    onMove: (pt: Point) => {
+      const c = current();
+      if (!c) return;
+      updateLive(drawing.id, {
+        a: { time: c.a.time, price: pt.price },
+        b: { time: pt.time, price: c.b.price },
+      } as Partial<RectangleDrawing>);
+    },
+    onEnd: commitEnd,
+  });
+  const dragAB = useDragPoint(chart, candleSeries, container, {
+    onStart: snap,
+    onMove: (pt: Point) => {
+      const c = current();
+      if (!c) return;
+      updateLive(drawing.id, {
+        a: { time: pt.time, price: c.a.price },
+        b: { time: c.b.time, price: pt.price },
+      } as Partial<RectangleDrawing>);
+    },
+    onEnd: commitEnd,
+  });
+
   const dragRect = useDragShape<RectangleDrawing>(
     chart,
     candleSeries,
@@ -123,14 +164,8 @@ export function RectangleDraw({
         <>
           <DrawHandle x={ax} y={ay} color={borderColor} selected onPointerDown={dragA} />
           <DrawHandle x={bx} y={by} color={borderColor} selected onPointerDown={dragB} />
-          <DrawHandle x={bx} y={ay} color={borderColor} selected onPointerDown={(e) => {
-            snap();
-            dragB(e);
-          }} />
-          <DrawHandle x={ax} y={by} color={borderColor} selected onPointerDown={(e) => {
-            snap();
-            dragA(e);
-          }} />
+          <DrawHandle x={bx} y={ay} color={borderColor} selected onPointerDown={dragBA} />
+          <DrawHandle x={ax} y={by} color={borderColor} selected onPointerDown={dragAB} />
         </>
       )}
     </g>

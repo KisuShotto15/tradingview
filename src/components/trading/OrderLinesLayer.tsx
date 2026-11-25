@@ -180,7 +180,7 @@ function LineRow({
 
   return (
     <g style={{ opacity: modifying ? 0.55 : 1 }}>
-      {/* Hit area for drag */}
+      {/* Hit area for drag — `chart-hit-line` widens it for a fingertip. */}
       <line
         x1={0}
         x2={width}
@@ -188,6 +188,7 @@ function LineRow({
         y2={y}
         stroke="transparent"
         strokeWidth={10}
+        className="chart-hit-line"
         style={{
           pointerEvents: line.onDrag ? "stroke" : "none",
           cursor: line.onDrag ? "ns-resize" : "default",
@@ -777,8 +778,22 @@ export function OrderLinesLayer({
     };
   }, [candleSeries]);
 
+  /*
+   * Pointer events, not mouse events.
+   *
+   * A touch screen never sends `mousemove`: it synthesises a mouse event pair
+   * after `touchend` and nothing in between. So an entry, stop or target line
+   * could be grabbed on a phone and would then simply not move, and a drag
+   * released somewhere else committed the price it was grabbed at. Dragging a
+   * stop is the whole point of having the levels on the chart, which made this
+   * the same silent failure the drawings had, on the lines that cost money.
+   *
+   * `pointercancel` has to end the gesture too: the browser sends it when it
+   * decides the touch was really a chart pan, and without it `dragRef` stayed
+   * set and the next finger-down anywhere kept re-pricing the line.
+   */
   useEffect(() => {
-    function onMove(e: MouseEvent) {
+    function onMove(e: PointerEvent) {
       if (!dragRef.current || !candleSeries || !container) return;
       const rect = container.getBoundingClientRect();
       const relY = e.clientY - rect.top;
@@ -794,11 +809,16 @@ export function OrderLinesLayer({
       dragRef.current = null;
       if (s?.onCommit && isFinite(s.lastPrice)) s.onCommit(s.lastPrice);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    function onCancel() {
+      dragRef.current = null;
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
     return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
     };
   }, [candleSeries, container]);
 

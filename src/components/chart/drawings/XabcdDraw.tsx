@@ -83,12 +83,19 @@ export function XabcdDraw({
 
   return (
     <g>
+      {/*
+        A transparent polyline carries the gesture, so the target is as wide as
+        a fingertip (`.chart-hit-line`, widened on touch only) while the
+        pattern keeps its own line weight. Using the visible polyline meant the
+        whole drawing hung off a target as thin as the user's `lineWidth` — one
+        pixel by default, which no finger can hit.
+      */}
       <polyline
         points={pointsStr}
-        fill={`${color}12`}
-        stroke={color}
-        strokeWidth={strokeWidth}
-        className="drawing-hit"
+        fill="none"
+        stroke="transparent"
+        strokeWidth={10}
+        className="drawing-hit chart-hit-line"
         style={{ pointerEvents: "stroke", cursor: selected ? "move" : "pointer" }}
         onPointerDown={(e) => {
           if (selected) {
@@ -99,6 +106,13 @@ export function XabcdDraw({
           }
         }}
         onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
+      />
+      <polyline
+        points={pointsStr}
+        fill={`${color}12`}
+        stroke={color}
+        strokeWidth={strokeWidth}
+        style={{ pointerEvents: "none" }}
       />
       {pts.map((p, i) => (
         <g key={i}>

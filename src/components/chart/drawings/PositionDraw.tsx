@@ -10,6 +10,8 @@ import type {
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { DrawHandle } from "./DrawHandle";
 import { useDragShape } from "./use-drag-shape";
+import { beginPointerDrag } from "./pointer-drag";
+import { magnetRadius, magnetSnapDragging } from "@/lib/chart/magnet";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { formatPrice } from "@/lib/format";
 import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
@@ -105,6 +107,15 @@ export function PositionDraw({
    * Left-edge handles. All three re-price their level vertically; only the
    * middle one (entry) also drags the left edge, so the box is resized from a
    * single grip while the stop/target handles stay purely vertical.
+   *
+   * These four handles were the last drag in the app still listening for
+   * `mousemove`/`mouseup` on the document, which a touch screen never sends:
+   * the long and short position tools could be placed and moved as a whole,
+   * but their entry, stop, target and right edge could not be adjusted at all
+   * on a phone — the one thing those tools exist for. Everything else moved
+   * to pointer events; this is the same change, so a finger, a mouse and a pen
+   * all take the same path. `beginPointerDrag` also brings the capture and the
+   * slop threshold the hand-rolled version lacked.
    */
   function makeYDrag(field: "entry" | "stop" | "target") {
     const resizesWidth = field === "entry";
@@ -120,28 +131,44 @@ export function PositionDraw({
       onSelect();
       snap();
       const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
-      function onMove(ev: MouseEvent) {
-        const rect = container!.getBoundingClientRect();
-        const patch: Record<string, number> = {};
-        const p = candleSeries!.coordinateToPrice(ev.clientY - rect.top);
-        if (p !== null) patch[field] = p as number;
-        if (resizesWidth) {
-          const t = xToTime(chart!, ev.clientX - rect.left, globalCandlesRef.current, intervalSec);
-          if (t !== null) patch.timeA = t;
-        }
-        if (Object.keys(patch).length > 0) {
-          updateLive(drawing.id, patch as Partial<Drawing>);
-        }
-      }
-      function onUp() {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-        document.body.style.cursor = "";
-        commitEnd();
-      }
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
       document.body.style.cursor = resizesWidth ? "move" : "ns-resize";
+      beginPointerDrag(e, {
+        onMove(ev) {
+          const rect = container!.getBoundingClientRect();
+          const y = ev.clientY - rect.top;
+          const patch: Record<string, number> = {};
+          const p = candleSeries!.coordinateToPrice(y);
+          const t = chart
+            ? xToTime(chart, ev.clientX - rect.left, globalCandlesRef.current, intervalSec)
+            : null;
+          if (p !== null) {
+            let price = p as number;
+            // Magnet: the same rule the other drawings' anchors follow, so a
+            // stop dropped with the magnet on lands on the wick it was aimed
+            // at rather than a pixel beside it.
+            if (
+              t !== null &&
+              (ev.ctrlKey || ev.metaKey || useChartStore.getState().magnetMode)
+            ) {
+              const snapped = magnetSnapDragging(
+                price,
+                t,
+                globalCandlesRef.current,
+                magnetRadius(candleSeries!, y),
+              );
+              if (snapped !== null) price = snapped;
+            }
+            patch[field] = price;
+          }
+          if (resizesWidth && t !== null) patch.timeA = t;
+          if (Object.keys(patch).length > 0) {
+            updateLive(drawing.id, patch as Partial<Drawing>);
+          }
+        },
+        onEnd(moved) {
+          if (moved) commitEnd();
+        },
+      });
     };
   }
 
@@ -153,22 +180,18 @@ export function PositionDraw({
     onSelect();
     snap();
     const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
-    function onMove(ev: MouseEvent) {
-      const rect = container!.getBoundingClientRect();
-      const x = ev.clientX - rect.left;
-      const t = xToTime(chart!, x, globalCandlesRef.current, intervalSec);
-      if (t === null) return;
-      updateLive(drawing.id, { timeB: t } as Partial<Drawing>);
-    }
-    function onUp() {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      document.body.style.cursor = "";
-      commitEnd();
-    }
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
     document.body.style.cursor = "ew-resize";
+    beginPointerDrag(e, {
+      onMove(ev) {
+        const rect = container!.getBoundingClientRect();
+        const t = xToTime(chart!, ev.clientX - rect.left, globalCandlesRef.current, intervalSec);
+        if (t === null) return;
+        updateLive(drawing.id, { timeB: t } as Partial<Drawing>);
+      },
+      onEnd(moved) {
+        if (moved) commitEnd();
+      },
+    });
   }
 
   const dragShape = useDragShape<PositionDrawing>(
@@ -302,8 +325,18 @@ export function PositionDraw({
         style={{ pointerEvents: "none" }}
       />
 
-      {/* Outer pills — above top zone, below bottom zone — visible on hover or selected */}
-      {(hovered || selected) && (
+      {/*
+        Outer pills — above the top zone, below the bottom one.
+
+        Shown on hover or selection, and permanently when the drawing's own
+        "Show labels" setting is on. That setting existed in the settings
+        dialog and was written to the drawing, but nothing ever read it, so
+        ticking it did nothing at all. It matters most on a phone, where there
+        is no hover: without it the only way to read a position's target and
+        stop was to select the box, and selecting it also puts the context
+        toolbar over the chart.
+      */}
+      {(hovered || selected || drawing.showLabels) && (
         <>
           <OuterPill
             cx={left + zoneWidth / 2} y={topY}
