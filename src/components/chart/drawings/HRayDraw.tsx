@@ -6,7 +6,6 @@ import type { HRayDrawing } from "@/lib/drawings/types";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { useDragShape } from "./use-drag-shape";
 import { useDrawings } from "@/lib/supabase/use-drawings";
-import { formatPrice } from "@/lib/format";
 
 interface Props {
   drawing: HRayDrawing;
@@ -113,31 +112,12 @@ export function HRayDraw({
         strokeWidth={1}
         style={{ pointerEvents: "none" }}
       />
-      {/* Price label */}
-      <g style={{ pointerEvents: "none" }}>
-        <rect
-          x={anchorX + 8}
-          y={y - 8}
-          width={drawing.alert?.enabled ? 84 : 70}
-          height={16}
-          fill={color}
-          rx={2}
-        />
-        <text
-          x={anchorX + 12}
-          y={y + 3}
-          fill="#ffffff"
-          fontSize={10}
-          fontFamily="var(--font-mono), monospace"
-        >
-          {formatPrice(drawing.anchor.price)}
+      {/* The price is written on the price scale, by DrawingAxisLabels. */}
+      {drawing.alert?.enabled && (
+        <text x={anchorX + 10} y={y + 4} fontSize={11} style={{ pointerEvents: "none" }}>
+          🔔
         </text>
-        {drawing.alert?.enabled && (
-          <text x={anchorX + 80} y={y + 3} fill="#ffffff" fontSize={11}>
-            🔔
-          </text>
-        )}
-      </g>
+      )}
     </g>
   );
 }

@@ -6,7 +6,6 @@ import type { HLineDrawing } from "@/lib/drawings/types";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { useDragShape } from "./use-drag-shape";
 import { useDrawings } from "@/lib/supabase/use-drawings";
-import { formatPrice } from "@/lib/format";
 
 interface Props {
   drawing: HLineDrawing;
@@ -98,31 +97,15 @@ export function HLineDraw({
         strokeDasharray={strokeDasharray}
         style={{ pointerEvents: "none" }}
       />
-      {/* Price label */}
-      <g style={{ pointerEvents: "none" }}>
-        <rect
-          x={4}
-          y={y - 8}
-          width={drawing.alert?.enabled ? 84 : 70}
-          height={16}
-          fill={color}
-          rx={2}
-        />
-        <text
-          x={8}
-          y={y + 3}
-          fill="#ffffff"
-          fontSize={10}
-          fontFamily="var(--font-mono), monospace"
-        >
-          {formatPrice(drawing.price)}
+      {/* The price itself is written on the price scale, by
+          DrawingAxisLabels — in the plot it sat on top of the candles it is
+          meant to help read. Only the alert bell stays on the line, because
+          it marks the line rather than naming a price. */}
+      {drawing.alert?.enabled && (
+        <text x={6} y={y + 4} fontSize={11} style={{ pointerEvents: "none" }}>
+          🔔
         </text>
-        {drawing.alert?.enabled && (
-          <text x={76} y={y + 3} fill="#ffffff" fontSize={11}>
-            🔔
-          </text>
-        )}
-      </g>
+      )}
     </g>
   );
 }

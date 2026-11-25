@@ -67,6 +67,7 @@ import { BarCountdown } from "./BarCountdown";
 import { ChartQuickActionsSheet } from "@/components/mobile/ChartQuickActionsSheet";
 import { AxisPlusButton } from "./AxisPlusButton";
 import { AlertPriceLines } from "@/components/alerts/AlertPriceLines";
+import { DrawingAxisLabels } from "./drawings/DrawingAxisLabels";
 import { KeyLevelsOverlay } from "./KeyLevelsOverlay";
 import { computeKeyLevels } from "@/lib/indicators/keylevels";
 import type { SqueezePoint } from "@/lib/indicators/squeeze";
@@ -1215,7 +1216,98 @@ export function PriceChart({ symbol, timeframe }: Props) {
      */
     const CLICK_SLOP_PX = { mouse: 5, touch: 12 };
     const LONG_PRESS_MS = 600;
+    /** Past this, a press is a deliberate hold rather than a tap. */
+    const TAP_MS = 250;
     const clickTrack = { id: -1, x: 0, y: 0, t: 0, ok: false };
+    /*
+     * Every press, whatever it landed on, so the crosshair can be cleaned up
+     * after gestures that should never have raised one. `clickTrack` cannot
+     * do this: it only follows presses on the chart's own canvases, and two
+     * of the three cases here start somewhere else.
+     */
+    const pressTrack = { id: -1, x: 0, y: 0, t: 0, onScale: false, ok: false };
+
+    const onAnyDown = (e: PointerEvent) => {
+      if (e.pointerType === "mouse") return; // the mouse has a real hover
+      const el = containerRef.current;
+      if (!el) return;
+      const x = e.clientX - el.getBoundingClientRect().left;
+      pressTrack.id = e.pointerId;
+      pressTrack.x = e.clientX;
+      pressTrack.y = e.clientY;
+      pressTrack.t = Date.now();
+      pressTrack.onScale = x > chart.timeScale().width();
+      pressTrack.ok = true;
+    };
+
+    /*
+     * The crosshair belongs to a deliberate hold on the chart, and nothing
+     * else.
+     *
+     * lightweight-charts raises it from gestures that are not that: a quick
+     * tap, and a press on the price scale — which is where the A and L
+     * buttons sit, so adjusting the scale left a crosshair stuck across the
+     * chart. Rather than try to stop the library mid-gesture, let it do what
+     * it does and put the chart back afterwards: this is the one place that
+     * decides whether a crosshair survives, so the rule holds however the
+     * library decides to behave.
+     */
+    const onAnyUp = (e: PointerEvent) => {
+      if (!pressTrack.ok || e.pointerId !== pressTrack.id) return;
+      pressTrack.ok = false;
+      const moved =
+        Math.abs(e.clientX - pressTrack.x) > CLICK_SLOP_PX.touch ||
+        Math.abs(e.clientY - pressTrack.y) > CLICK_SLOP_PX.touch;
+      const held = Date.now() - pressTrack.t >= TAP_MS;
+      // A drag is a pan or a scale drag; leave whatever the library did.
+      if (moved) return;
+      if (pressTrack.onScale || !held) chart.clearCrosshairPosition();
+    };
+
+    /*
+     * Placing a point by touch: press, slide, release.
+     *
+     * With a tool armed there was no way to see where a point would land
+     * before committing it — a finger covers what it is pointing at, and the
+     * crosshair only comes up on a long press, by which time you have
+     * already decided. So while a tool is armed, pressing puts the crosshair
+     * under the finger straight away and sliding moves it, with the preview
+     * of the shape drawn from it; the point lands where the crosshair is when
+     * the finger lifts, not where it first touched down.
+     *
+     * Panning and zooming are switched off for the duration, or the chart
+     * would slide out from under the point being placed.
+     */
+    const placing = { active: false, x: 0, y: 0 };
+
+    const aimCrosshair = (clientX: number, clientY: number) => {
+      const el = containerRef.current;
+      const series = candleSeriesRef.current;
+      if (!el || !series) return;
+      const rect = el.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      if (x > chart.timeScale().width()) return;
+      const price = series.coordinateToPrice(y);
+      const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
+      const time = xToTime(chart, x, candlesRef.current, intervalSec);
+      if (price === null || time === null) return;
+      placing.x = clientX;
+      placing.y = clientY;
+      // Only a real bar can anchor the crosshair; past the last one the
+      // preview still follows via our own handler.
+      const bars = candlesRef.current;
+      const logical = chart.timeScale().coordinateToLogical(x);
+      if (logical !== null && bars.length > 0 && logical >= 0 && logical <= bars.length - 1) {
+        chart.setCrosshairPosition(price as number, bars[Math.round(logical)].time as UTCTimestamp, series);
+      }
+    };
+
+    const onPlaceMove = (e: PointerEvent) => {
+      if (!placing.active || e.pointerId !== clickTrack.id) return;
+      e.preventDefault();
+      aimCrosshair(e.clientX, e.clientY);
+    };
 
     const onClickDown = (e: PointerEvent) => {
       // A second pointer means a pinch or a multi-touch gesture, not a click.
@@ -1233,21 +1325,41 @@ export function PriceChart({ symbol, timeframe }: Props) {
       clickTrack.y = e.clientY;
       clickTrack.t = Date.now();
       clickTrack.ok = true;
+
+      const armed = toolRef.current !== "cursor" && toolRef.current !== "eraser";
+      if (armed && e.pointerType !== "mouse" && !useReplayStore.getState().picking) {
+        placing.active = true;
+        // Seeded here, not only in `aimCrosshair`: that bails out over the
+        // price scale, and a stale position would drop the point at the
+        // container's origin.
+        placing.x = e.clientX;
+        placing.y = e.clientY;
+        chart.applyOptions({ handleScroll: false, handleScale: false });
+        aimCrosshair(e.clientX, e.clientY);
+      }
     };
 
     const onClickUp = (e: PointerEvent) => {
       if (!clickTrack.ok || e.pointerId !== clickTrack.id) return;
       clickTrack.ok = false;
+      const wasPlacing = placing.active;
+      if (wasPlacing) {
+        placing.active = false;
+        chart.applyOptions({ handleScroll: true, handleScale: true });
+      }
       const slop = e.pointerType === "mouse" ? CLICK_SLOP_PX.mouse : CLICK_SLOP_PX.touch;
       // A drag is a pan, and a long press is the crosshair — neither clicks.
-      if (Math.abs(e.clientX - clickTrack.x) > slop) return;
-      if (Math.abs(e.clientY - clickTrack.y) > slop) return;
-      if (Date.now() - clickTrack.t > LONG_PRESS_MS) return;
+      // While placing, both are how the point is aimed, so neither applies.
+      if (!wasPlacing) {
+        if (Math.abs(e.clientX - clickTrack.x) > slop) return;
+        if (Math.abs(e.clientY - clickTrack.y) > slop) return;
+        if (Date.now() - clickTrack.t > LONG_PRESS_MS) return;
+      }
       const el = containerRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      const x = (wasPlacing ? placing.x : e.clientX) - rect.left;
+      const y = (wasPlacing ? placing.y : e.clientY) - rect.top;
       // Past the time scale's width is the price axis, which is not a
       // placement surface — lightweight-charts keeps its own gestures there.
       if (x > chart.timeScale().width()) return;
@@ -1265,6 +1377,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
 
     containerRef.current.addEventListener("pointerdown", onClickDown, { capture: true });
     containerRef.current.addEventListener("pointerup", onClickUp);
+    containerRef.current.addEventListener("pointermove", onPlaceMove);
+    containerRef.current.addEventListener("pointerdown", onAnyDown, { capture: true });
+    containerRef.current.addEventListener("pointerup", onAnyUp, { capture: true });
+    containerRef.current.addEventListener("pointercancel", onAnyUp, { capture: true });
 
     const onContextMenu = (e: MouseEvent) => {
       e.preventDefault();
@@ -1299,6 +1415,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
       probeTarget.removeEventListener("pointerdown", onPointerTypeProbe, { capture: true });
       probeTarget.removeEventListener("pointerdown", onClickDown, { capture: true });
       probeTarget.removeEventListener("pointerup", onClickUp);
+      probeTarget.removeEventListener("pointermove", onPlaceMove);
+      probeTarget.removeEventListener("pointerdown", onAnyDown, { capture: true });
+      probeTarget.removeEventListener("pointerup", onAnyUp, { capture: true });
+      probeTarget.removeEventListener("pointercancel", onAnyUp, { capture: true });
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
@@ -4217,6 +4337,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
           onClose={() => setQuickActionsPrice(null)}
         />
       )}
+
+      {/* Horizontal drawings write their price on the scale, not over the
+          candles. */}
+      <DrawingAxisLabels candleSeries={candleSeriesRef.current} symbol={symbol} />
 
       {/* Standalone price alerts, drawn the moment one is created. */}
       <AlertPriceLines

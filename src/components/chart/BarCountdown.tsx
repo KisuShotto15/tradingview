@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import { candlesRef } from "@/lib/chart/candles-ref";
 import { formatCountdown, secondsToBarClose } from "@/lib/chart/countdown";
@@ -24,6 +24,29 @@ const BLOCK_H = LINE_H * LINES;
  * scale. Kept small enough that it covers only the last bar or two.
  */
 const OVERHANG = 16;
+
+/** Half the height of lightweight-charts' own crosshair price label. */
+const CROSSHAIR_LABEL_HALF = 11;
+
+/** Where the plate's top edge lands, clamped inside the pane. */
+function plateTop(y: number, paneHeight: number, dodge: number): number {
+  let top = y - BLOCK_H / 2 + dodge;
+  if (top + BLOCK_H > paneHeight) top = paneHeight - BLOCK_H;
+  if (top < 0) top = 0;
+  return top;
+}
+
+/** The plate's centre, measured after clamping — where it really is. */
+function plateCentre(
+  series: ISeriesApi<"Candlestick">,
+  price: number,
+  paneHeight: number,
+  dodge: number,
+): number | null {
+  const y = series.priceToCoordinate(price);
+  if (y === null) return null;
+  return plateTop(y as number, paneHeight, dodge) + BLOCK_H / 2;
+}
 
 interface Props {
   chart: IChartApi | null;
@@ -71,10 +94,55 @@ export function BarCountdown({
   const chartColors = useChartStore((s) => s.chartColors);
   const [now, setNow] = useState(() => Date.now());
 
+  /*
+   * How far to step aside for the crosshair's own price label.
+   *
+   * Both sit on the price scale, and lightweight-charts draws its label right
+   * over this plate when the crosshair passes the last price — so reading the
+   * price under your finger hid the one thing you always want on screen, and
+   * vice versa. The plate is ours, so the plate is what moves: `dodge` is a
+   * whole block height, signed away from the crosshair.
+   *
+   * It is state rather than a style written in the crosshair handler because
+   * it changes twice per pass — in and out of the overlap — not once per
+   * pixel of movement.
+   */
+  const [dodge, setDodge] = useState(0);
+  /**
+   * The inputs the handler needs to work out where the plate sits. Kept in a
+   * ref and refreshed in an effect: the handler is registered once, and the
+   * alternative — writing the computed position during render — is the thing
+   * that makes a render depend on the previous one.
+   */
+  const placeRef = useRef({ lastPrice, mainPaneHeight, dodge: 0 });
+
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    placeRef.current = { lastPrice, mainPaneHeight, dodge };
+  });
+
+  useEffect(() => {
+    if (!chart || !candleSeries) return;
+    const handler = (param: { point?: { x: number; y: number } }) => {
+      const { lastPrice: p, mainPaneHeight: h, dodge: d } = placeRef.current;
+      const centre = p === null ? null : plateCentre(candleSeries, p, h, d);
+      if (!param.point || centre === null) {
+        setDodge((prev) => (prev === 0 ? prev : 0));
+        return;
+      }
+      const gap = param.point.y - centre;
+      const clash = Math.abs(gap) < BLOCK_H / 2 + CROSSHAIR_LABEL_HALF;
+      // Step away from the crosshair, never towards it.
+      const next = clash ? (gap >= 0 ? -BLOCK_H : BLOCK_H) : 0;
+      setDodge((prev) => (prev === next ? prev : next));
+    };
+    chart.subscribeCrosshairMove(handler);
+    return () => chart.unsubscribeCrosshairMove(handler);
+  }, [chart, candleSeries]);
 
   void renderTick;
 
@@ -93,9 +161,7 @@ export function BarCountdown({
 
   // Centred on the price, clamped so it never hangs off either edge of the
   // pane — at the extremes the plate slides rather than being cut.
-  let top = (y as number) - BLOCK_H / 2;
-  if (top + BLOCK_H > mainPaneHeight) top = mainPaneHeight - BLOCK_H;
-  if (top < 0) top = 0;
+  const top = plateTop(y as number, mainPaneHeight, dodge);
 
   const remaining = secondsToBarClose(last.time, timeframe, now);
   const up = last.close >= last.open;
