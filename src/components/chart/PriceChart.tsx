@@ -66,6 +66,7 @@ import { FloatingContextToolbar } from "./FloatingContextToolbar";
 import { BarCountdown } from "./BarCountdown";
 import { ChartQuickActionsSheet } from "@/components/mobile/ChartQuickActionsSheet";
 import { AxisPlusButton } from "./AxisPlusButton";
+import { AlertPriceLines } from "@/components/alerts/AlertPriceLines";
 import { KeyLevelsOverlay } from "./KeyLevelsOverlay";
 import { computeKeyLevels } from "@/lib/indicators/keylevels";
 import type { SqueezePoint } from "@/lib/indicators/squeeze";
@@ -80,6 +81,8 @@ import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { unifiedHistory, registerViewportApplier, isApplyingHistory } from "@/lib/history";
 import { registerPricePerPixel } from "@/lib/chart/nudge";
 import { registerChartCapture, composeChartPng } from "@/lib/chart/snapshot";
+import { captureViewport, restoreViewport, sameCandles } from "@/lib/chart/viewport-memory";
+import { loadViewport, saveViewport } from "@/lib/chart/viewport-store";
 import { generateId, FIB_LEVELS_DEFAULT } from "@/lib/drawings/types";
 import { FIB_EXT_RATIOS_DEFAULT } from "@/lib/drawings/fib";
 import { useAlertMonitor } from "@/hooks/useAlertMonitor";
@@ -1130,6 +1133,15 @@ export function PriceChart({ symbol, timeframe }: Props) {
         if (bars >= 5 && bars <= 5000) {
           useChartStore.getState().setVisibleBars(bars);
         }
+        // Remember where this chart was left, so a restart — or the phone
+        // evicting the app — comes back to the same bars rather than to the
+        // right edge. Debounced with the rest of this block, so a pan writes
+        // once it settles, not once per frame.
+        saveViewport(
+          symbolRef.current,
+          useChartStore.getState().timeframe,
+          captureViewport(range, candlesRef.current.map((c) => c.time)),
+        );
         // Push viewport op to unified history (skip during undo/redo application)
         if (!isApplyingHistory) {
           const before = lastViewport ?? { from: range.from, to: range.to };
@@ -3036,7 +3048,17 @@ export function PriceChart({ symbol, timeframe }: Props) {
         updateOBV();
         if (chartRef.current && klines.length > 0) {
           const lastIdx = klines.length - 1;
-          if (shape) {
+          // Where this exact chart was last left wins: it is the place the
+          // user chose, and after a restart it is the only record of it.
+          // `shape` below only carries the zoom across from the symbol being
+          // left, which is the right answer for a chart never seen before.
+          const remembered = restoreViewport(
+            loadViewport(symbol, timeframe),
+            klines.map((k) => k.time),
+          );
+          if (remembered) {
+            chartRef.current.timeScale().setVisibleLogicalRange(remembered);
+          } else if (shape) {
             // Preserve the previous zoom (span) and right-edge offset so the new
             // symbol shows at the same scale/position the user was looking at.
             const to = lastIdx + shape.rightOffset;
@@ -3339,6 +3361,35 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
   }
 
+  /**
+   * Replace the whole candle array without moving the chart.
+   *
+   * Every refetch path — coming back to a live feed, filling a hole left by a
+   * sleeping socket — goes through `applyReplayCandles`, which `setData`s
+   * every series. The logical range survives that call, but it points at
+   * positions in an array whose contents have shifted, so the chart jumped
+   * each time; coming back to the app read as the chart rebuilding itself.
+   * Capturing the view in terms the new array can be measured against, and
+   * reapplying it, keeps the same bars on screen.
+   *
+   * The identical-data case skips the work altogether: a refetch a few
+   * seconds after leaving usually brings back exactly what is already drawn,
+   * and re-setting every series and recomputing every indicator for that is
+   * pure churn.
+   */
+  function applyCandlesKeepingView(arr: Candle[]) {
+    if (sameCandles(candlesRef.current, arr)) return;
+    const ts = chartRef.current?.timeScale();
+    const before = ts
+      ? captureViewport(ts.getVisibleLogicalRange(), candlesRef.current.map((c) => c.time))
+      : null;
+    applyReplayCandles(arr);
+    if (ts && before) {
+      const next = restoreViewport(before, arr.map((c) => c.time));
+      if (next) ts.setVisibleLogicalRange(next);
+    }
+  }
+
   function applyReplayCandles(arr: Candle[]) {
     candlesRef.current = arr;
     globalCandlesRef.current = arr;
@@ -3488,7 +3539,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           // A hole where closed bars should be: only a full refetch fills it.
           const fresh = await fetchCandles(symbol, timeframe, 1000);
           if (cancelled || useReplayStore.getState().active || fresh.length === 0) return;
-          applyReplayCandles(fresh);
+          applyCandlesKeepingView(fresh);
         } else {
           // Socket open but mute, and the bars are still current: keep the
           // chart live over REST instead of standing still until the bar
@@ -3558,7 +3609,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         try {
           const fresh = await fetchCandles(symbol, timeframe, 1000);
           if (cancelled || useReplayStore.getState().active || fresh.length === 0) return;
-          applyReplayCandles(fresh);
+          applyCandlesKeepingView(fresh);
         } catch (e) {
           console.error("Reconnect refetch failed:", e);
         }
@@ -3585,7 +3636,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         try {
           const fresh = await fetchCandles(symbol, timeframe, 1000);
           if (cancelled || useReplayStore.getState().active) return;
-          applyReplayCandles(fresh);
+          applyCandlesKeepingView(fresh);
         } catch (e) {
           console.error("Replay exit refetch failed:", e);
         }
@@ -4160,6 +4211,13 @@ export function PriceChart({ symbol, timeframe }: Props) {
           onClose={() => setQuickActionsPrice(null)}
         />
       )}
+
+      {/* Standalone price alerts, drawn the moment one is created. */}
+      <AlertPriceLines
+        candleSeries={candleSeriesRef.current}
+        symbol={symbol}
+        color="#ffb74d"
+      />
 
       <FloatingContextToolbar
         containerSize={containerSize}

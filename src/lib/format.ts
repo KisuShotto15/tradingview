@@ -29,6 +29,29 @@ export function formatPrice(n: number): string {
   return n.toFixed(6);
 }
 
+/**
+ * The same number of decimals `formatPrice` picks, but plain: no thousands
+ * separators, so the string can be put in an input and read back.
+ *
+ * `parseFloat(formatPrice(x))` looks like a harmless round trip and is not:
+ * `formatPrice` groups anything over a thousand, and `parseFloat` stops dead
+ * at the comma. Every alert created on a symbol priced over $1,000 was saved
+ * at a level of one to three digits — 59,060.4 became 59 — so it could never
+ * fire, and the dialog showed that stump as the price the user had picked.
+ */
+export function formatPriceForInput(n: number): string {
+  if (!isFinite(n)) return "";
+  if (n >= 1000) return trimZeros(n.toFixed(2));
+  if (n >= 1) return trimZeros(n.toFixed(2));
+  if (n >= 0.01) return trimZeros(n.toFixed(4));
+  return trimZeros(n.toFixed(6));
+}
+
+/** "59060.40" → "59060.4"; "0.001000" → "0.001". */
+function trimZeros(s: string): string {
+  return s.includes(".") ? s.replace(/\.?0+$/, "") : s;
+}
+
 export function formatPct(n: number): string {
   if (!isFinite(n)) return "—";
   const sign = n >= 0 ? "+" : "";

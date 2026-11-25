@@ -33,11 +33,35 @@ export function MobileShell() {
        */
       onContextMenu={(e) => e.preventDefault()}
     >
-      <main className="min-h-0 flex-1 overflow-hidden">
-        {tab === "watchlist" && <WatchlistScreen />}
-        {tab === "chart" && <ChartScreen />}
-        {tab === "trade" && <TradeScreen />}
-        {tab === "menu" && <MenuScreen />}
+      {/*
+        The chart stays mounted whichever tab is showing.
+        Unmounting it calls `chart.remove()`, and the chart that comes back is
+        a new one: the pan and zoom the user had set are gone, every series is
+        rebuilt and the whole candle history is fetched again. Switching to the
+        watchlist and back is a thing people do constantly, and it should cost
+        nothing. Hidden with `invisible` rather than `hidden`, so the container
+        keeps its size — a chart laid out at 0x0 has to rediscover its
+        dimensions on the way back, which is its own visible reflow.
+      */}
+      <main className="relative min-h-0 flex-1 overflow-hidden">
+        <div
+          className={cn(
+            "absolute inset-0",
+            tab !== "chart" && "invisible pointer-events-none",
+          )}
+          aria-hidden={tab !== "chart"}
+        >
+          <ChartScreen />
+        </div>
+        {tab === "watchlist" && (
+          <div className="absolute inset-0"><WatchlistScreen /></div>
+        )}
+        {tab === "trade" && (
+          <div className="absolute inset-0"><TradeScreen /></div>
+        )}
+        {tab === "menu" && (
+          <div className="absolute inset-0"><MenuScreen /></div>
+        )}
       </main>
       <BottomTabBar />
       <MobileSheetsRoot />

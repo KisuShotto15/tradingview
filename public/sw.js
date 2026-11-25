@@ -14,11 +14,21 @@
 const CACHE = "kisu-charts-shell-v1";
 const SHELL = ["/", "/manifest.webmanifest", "/logo.svg"];
 
+// No `skipWaiting()` and no `clients.claim()`, on purpose.
+//
+// Together they hand a running page over to a freshly installed worker
+// mid-session. The page keeps the HTML and the chunk URLs it loaded with,
+// while the new worker answers from a cache built for a different build — and
+// a chunk that 404s inside the App Router is recovered by reloading the page.
+// That is a reload out of nowhere, in the middle of whatever the user was
+// doing, and on a chart that meant losing their place.
+//
+// Without them the new worker waits, and takes over the next time the app is
+// opened cold, which nobody notices.
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE).then((cache) => cache.addAll(SHELL).catch(() => {})),
   );
-  self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
@@ -27,7 +37,6 @@ self.addEventListener("activate", (event) => {
       Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))),
     ),
   );
-  self.clients.claim();
 });
 
 self.addEventListener("fetch", (event) => {

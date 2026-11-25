@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import { expect } from "@/test-utils/expect";
-import { formatPrice, formatPct, formatVolume, pricePrecisionFor, priceFormatFor, axisPriceFormatter, changeFromPct, formatChange } from "./format";
+import { formatPrice, formatPct, formatVolume, pricePrecisionFor, priceFormatFor, axisPriceFormatter, changeFromPct, formatChange, formatPriceForInput } from "./format";
 
 describe("formatPrice", () => {
   it("uses thousands separators above 1000", () => {
@@ -105,5 +105,31 @@ describe("axisPriceFormatter", () => {
 
   it("does not crash on a non-finite price", () => {
     expect(axisPriceFormatter(2)(NaN)).toBe("—");
+  });
+});
+
+describe("formatPriceForInput", () => {
+  it("never groups, so the string survives a parseFloat round trip", () => {
+    // The bug this exists for: formatPrice(59060.4) is "59,060.4", and
+    // parseFloat of that is 59.
+    expect(formatPriceForInput(59060.4)).toBe("59060.4");
+    expect(parseFloat(formatPriceForInput(59060.4))).toBe(59060.4);
+    expect(parseFloat(formatPriceForInput(1234567.89))).toBe(1234567.89);
+  });
+
+  it("keeps the decimals the price magnitude deserves", () => {
+    expect(formatPriceForInput(12.5)).toBe("12.5");
+    expect(formatPriceForInput(0.0432)).toBe("0.0432");
+    expect(formatPriceForInput(0.00012345)).toBe("0.000123");
+  });
+
+  it("drops trailing zeros rather than showing 59060.00", () => {
+    expect(formatPriceForInput(59060)).toBe("59060");
+    expect(formatPriceForInput(1)).toBe("1");
+  });
+
+  it("gives an empty string for a non-number, so the field stays blank", () => {
+    expect(formatPriceForInput(NaN)).toBe("");
+    expect(formatPriceForInput(Infinity)).toBe("");
   });
 });
