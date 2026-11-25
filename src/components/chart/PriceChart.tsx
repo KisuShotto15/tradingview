@@ -77,6 +77,7 @@ import { useReplayStore } from "@/lib/replay/replay-store";
 import { ReplayToolbar } from "./ReplayToolbar";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
 import { magnetRadius, magnetSnap } from "@/lib/chart/magnet";
+import { registerCrosshairAimer } from "@/lib/chart/crosshair";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { unifiedHistory, registerViewportApplier, isApplyingHistory } from "@/lib/history";
@@ -1298,20 +1299,24 @@ export function PriceChart({ symbol, timeframe }: Props) {
      */
     const placing = { active: false, x: 0, y: 0 };
 
-    const aimCrosshair = (clientX: number, clientY: number) => {
+    /**
+     * Put the crosshair under a viewport position. Shared by touch placement
+     * and, through the registry below, by every drawing drag — a drag holds
+     * pointer capture, so the chart's canvas never sees the moves and its
+     * crosshair would otherwise stay frozen where the drag started.
+     */
+    const placeCrosshair = (clientX: number, clientY: number): boolean => {
       const el = containerRef.current;
       const series = candleSeriesRef.current;
-      if (!el || !series) return;
+      if (!el || !series) return false;
       const rect = el.getBoundingClientRect();
       const x = clientX - rect.left;
       const y = clientY - rect.top;
-      if (x > chart.timeScale().width()) return;
+      if (x > chart.timeScale().width()) return false;
       const price = series.coordinateToPrice(y);
       const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
       const time = xToTime(chart, x, candlesRef.current, intervalSec);
-      if (price === null || time === null) return;
-      placing.x = clientX;
-      placing.y = clientY;
+      if (price === null || time === null) return false;
       // Only a real bar can anchor the crosshair; past the last one the
       // preview still follows via our own handler.
       const bars = candlesRef.current;
@@ -1319,6 +1324,14 @@ export function PriceChart({ symbol, timeframe }: Props) {
       if (logical !== null && bars.length > 0 && logical >= 0 && logical <= bars.length - 1) {
         chart.setCrosshairPosition(price as number, bars[Math.round(logical)].time as UTCTimestamp, series);
       }
+      return true;
+    };
+    registerCrosshairAimer(placeCrosshair);
+
+    const aimCrosshair = (clientX: number, clientY: number) => {
+      if (!placeCrosshair(clientX, clientY)) return;
+      placing.x = clientX;
+      placing.y = clientY;
     };
 
     const onPlaceMove = (e: PointerEvent) => {
@@ -1469,6 +1482,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       probeTarget.removeEventListener("pointerdown", onAnyDown, { capture: true });
       probeTarget.removeEventListener("pointerup", onAnyUp, { capture: true });
       probeTarget.removeEventListener("pointercancel", onAnyUp, { capture: true });
+      registerCrosshairAimer(null);
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;

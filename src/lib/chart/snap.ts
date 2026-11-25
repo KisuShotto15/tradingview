@@ -2,35 +2,47 @@ import type { Candle } from "@/lib/binance/types";
 import type { Drawing, Point } from "@/lib/drawings/types";
 
 /**
- * Snap a price to the nearest OHLC level of the candle closest to the given
- * timestamp. Returns null if there are no candles, or if the cursor is nowhere
- * near that candle.
+ * The spacing between bars, in seconds, taken from the series itself.
  *
- * "Near" is the candle's own high–low span, widened by `maxDistance` at each
- * end — not `maxDistance` from the nearest level. The difference is the whole
- * behaviour: a pointer anywhere on the candle, body or wick, grabs the nearest
- * of its four levels, which is what a magnet is for. Measuring from the levels
- * instead meant that aiming at the middle of a long wick — the obvious place
- * to aim — was too far from both ends to snap to either, so the magnet looked
- * dead exactly where it was wanted. Outside the candle altogether it still
- * declines, which is what keeps it from flinging a dragged point across the
- * pane to the only level it could find.
+ * Derived rather than passed in so the module stays dependency-free: the
+ * caller's `intervalSec` would say the same thing, but every call site would
+ * have to thread it through.
+ */
+function barSpan(candles: Candle[]): number | null {
+  if (candles.length < 2) return null;
+  const span = candles[1].time - candles[0].time;
+  return span > 0 ? span : null;
+}
+
+/**
+ * Snap a price to the nearest OHLC level of the bar the cursor is over.
+ * Returns null when there are no candles, or when the cursor is not over one.
+ *
+ * There is deliberately **no vertical tolerance**. A bar occupies a column,
+ * and only one bar can be under the cursor at a time, so within that column
+ * there is exactly one candle to snap to and no ambiguity to resolve: above
+ * it, the nearest of its four levels is its high; below it, its low. A
+ * vertical reach only ever decided whether to answer at all, and whatever it
+ * was set to, aiming anywhere other than close to a level made the magnet go
+ * quiet — which is indistinguishable from it being broken. It was 14px, then
+ * 30px, and the right answer turned out to be that the question was wrong.
+ *
+ * The gate is horizontal instead: half a bar either side of the bar's centre,
+ * which is precisely its own column. That is what keeps the magnet from
+ * reaching into the empty space past the last bar, where there is no candle
+ * to grab and the cursor should move freely.
  */
 export function snapToOHLC(
   price: number,
   time: number,
   candles: Candle[],
-  maxDistance?: number,
 ): number | null {
   if (candles.length === 0) return null;
   const candle = candles.reduce((best, c) =>
     Math.abs(c.time - time) < Math.abs(best.time - time) ? c : best,
   );
-  if (maxDistance !== undefined) {
-    const low = Math.min(candle.low, candle.open, candle.close, candle.high);
-    const high = Math.max(candle.low, candle.open, candle.close, candle.high);
-    if (price < low - maxDistance || price > high + maxDistance) return null;
-  }
+  const span = barSpan(candles);
+  if (span !== null && Math.abs(candle.time - time) > span / 2) return null;
   const levels = [candle.open, candle.high, candle.low, candle.close];
   return levels.reduce((closest, level) =>
     Math.abs(level - price) < Math.abs(closest - price) ? level : closest,
@@ -149,18 +161,16 @@ export function drawingPriceLevels(
 
 /**
  * Magnet target: the candidate price closest to `price`, considering both the
- * nearest candle's OHLC and every level the other drawings expose at `time`.
- * Returns null when there is nothing to snap to.
+ * OHLC of the bar under the cursor and every level the other drawings expose
+ * at `time`. Returns null when there is nothing to snap to.
  *
- * `maxDistance` is a reach, in price units, beyond which nothing is snapped.
- * It is optional only so the pure tests can leave it out: every real call site
- * passes one, because without it there is always *some* nearest level and the
- * magnet therefore always fires. That is not a magnet, it is a teleport —
- * dragging a trend line's endpoint 70px up could land it 175px down, on the
- * far side of the candle whose OHLC happened to be nearest. The caller
- * converts a pixel reach into price through the series' own scale, so the pull
- * feels the same at any zoom level. It is applied differently to the two kinds
- * of candidate: see `snapToOHLC`.
+ * `maxDistance` is a reach in price units, and it now bounds **only the
+ * drawings' levels**. A drawing's level has no thickness and there can be any
+ * number of them anywhere on the pane, so without a bound the magnet would
+ * fling a dragged point across the chart to whichever fib rung happened to be
+ * nearest — a teleport rather than a snap. The candle needs no such bound
+ * because its column already answers "which candle", and that is the whole
+ * ambiguity there was to settle; see `snapToOHLC`.
  */
 export function snapToLevels(
   price: number,
@@ -174,8 +184,8 @@ export function snapToLevels(
   const candidates = drawingPriceLevels(drawings, time, excludeId).filter(
     (level) => maxDistance === undefined || Math.abs(level - price) <= maxDistance,
   );
-  // The candle is judged by its own span — see snapToOHLC.
-  const ohlc = snapToOHLC(price, time, candles, maxDistance);
+  // The candle is judged by its column, not by distance — see snapToOHLC.
+  const ohlc = snapToOHLC(price, time, candles);
   if (ohlc !== null) candidates.push(ohlc);
   if (candidates.length === 0) return null;
   return candidates.reduce((closest, level) =>

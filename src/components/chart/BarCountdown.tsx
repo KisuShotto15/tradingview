@@ -40,39 +40,24 @@ const OVERHANG = 16;
 const CROSSHAIR_LABEL_HALF = 11;
 
 /** Where the plate's top edge lands, clamped inside the pane. */
-function plateTop(y: number, paneHeight: number, dodge: number, lines: number): number {
+function plateTop(y: number, paneHeight: number, lines: number): number {
   const h = blockH(lines);
-  let top = y - h / 2 + dodge;
+  let top = y - h / 2;
   if (top + h > paneHeight) top = paneHeight - h;
   if (top < 0) top = 0;
   return top;
 }
 
-/** The plate's centre for a given dodge, measured after clamping. */
+/** The plate's centre, measured after clamping. */
 function plateCentre(
   series: ISeriesApi<"Candlestick">,
   price: number,
   paneHeight: number,
-  dodge: number,
   lines: number,
 ): number | null {
   const y = series.priceToCoordinate(price);
   if (y === null) return null;
-  return plateTop(y as number, paneHeight, dodge, lines) + blockH(lines) / 2;
-}
-
-/** Does the crosshair's label reach the plate, with this dodge applied? */
-function clashesAt(
-  series: ISeriesApi<"Candlestick">,
-  price: number,
-  paneHeight: number,
-  dodge: number,
-  crosshairY: number,
-  lines: number,
-): boolean {
-  const centre = plateCentre(series, price, paneHeight, dodge, lines);
-  if (centre === null) return false;
-  return Math.abs(crosshairY - centre) < blockH(lines) / 2 + CROSSHAIR_LABEL_HALF;
+  return plateTop(y as number, paneHeight, lines) + blockH(lines) / 2;
 }
 
 interface Props {
@@ -128,27 +113,28 @@ export function BarCountdown({
   const BLOCK_H = blockH(lines);
 
   /*
-   * How far to step aside for the crosshair's own price label.
+   * Whether the crosshair's own price label is over the plate.
    *
-   * Both sit on the price scale, and lightweight-charts draws its label right
-   * over this plate when the crosshair passes the last price — so reading the
-   * price under your finger hid the one thing you always want on screen, and
-   * vice versa. The plate is ours, so the plate is what moves: `dodge` is a
-   * whole block height, signed away from the crosshair.
+   * Both sit on the price axis, and lightweight-charts draws its label right
+   * across this plate when the crosshair passes the last price. Something has
+   * to give, and it is the plate: the price under the cursor is what you are
+   * looking at while you move the cursor, so it takes priority and the plate
+   * steps out from under it until the crosshair moves on.
+   *
+   * The plate used to *move* instead — a whole block height, signed away from
+   * the crosshair. That kept both readable but broke the thing a price axis is
+   * for: the label left the price it belongs to, so the last price appeared to
+   * jump around the scale whenever the cursor went near it, and the axis
+   * stopped being a fixed ruler you can read a position against. Fixed in
+   * place and yielding is what the venues do.
    *
    * It is state rather than a style written in the crosshair handler because
-   * it changes twice per pass — in and out of the overlap — not once per
-   * pixel of movement.
-   *
-   * The decision is taken from the plate's *home* position, never from where
-   * it has already moved to. Measuring the overlap against the dodged plate
-   * made the answer depend on the previous answer, and so it alternated: once
-   * stepped aside the plate no longer clashed, which said "go home", where it
-   * clashed again, which said "step aside". The plate flickered between the
-   * two for every crosshair move, and on the frames it was home it sat right
-   * under the crosshair's label — the overlap this is here to prevent.
+   * it changes twice per pass — in and out of the overlap — not once per pixel
+   * of movement. And because the plate no longer moves, the test is taken
+   * against one fixed position: there is no feedback loop left to oscillate,
+   * which the dodging version had to be written carefully to avoid.
    */
-  const [dodge, setDodge] = useState(0);
+  const [covered, setCovered] = useState(false);
   /**
    * The inputs the handler needs to work out where the plate sits. Kept in a
    * ref and refreshed in an effect: the handler is registered once, and the
@@ -171,29 +157,12 @@ export function BarCountdown({
     if (!chart || !candleSeries) return;
     const handler = (param: { point?: { x: number; y: number } }) => {
       const { lastPrice: p, mainPaneHeight: h, lines: n } = placeRef.current;
-      const block = blockH(n);
-      const home = p === null ? null : plateCentre(candleSeries, p, h, 0, n);
-      if (!param.point || home === null || p === null) {
-        setDodge((prev) => (prev === 0 ? prev : 0));
-        return;
-      }
-      const y = param.point.y;
-      if (Math.abs(y - home) >= block / 2 + CROSSHAIR_LABEL_HALF) {
-        setDodge((prev) => (prev === 0 ? prev : 0));
-        return;
-      }
-      // Step away from the crosshair, never towards it — but near the top or
-      // bottom of the pane `plateTop` clamps the plate back into view, so the
-      // preferred direction can be the one that cannot move. Then go the
-      // other way; the crosshair is at that edge too, so one of the two
-      // always clears.
-      const away = y - home >= 0 ? -block : block;
-      const next = !clashesAt(candleSeries, p, h, away, y, n)
-        ? away
-        : !clashesAt(candleSeries, p, h, -away, y, n)
-          ? -away
-          : 0;
-      setDodge((prev) => (prev === next ? prev : next));
+      const centre = p === null ? null : plateCentre(candleSeries, p, h, n);
+      const hit =
+        !!param.point &&
+        centre !== null &&
+        Math.abs(param.point.y - centre) < blockH(n) / 2 + CROSSHAIR_LABEL_HALF;
+      setCovered((prev) => (prev === hit ? prev : hit));
     };
     chart.subscribeCrosshairMove(handler);
     return () => chart.unsubscribeCrosshairMove(handler);
@@ -214,9 +183,15 @@ export function BarCountdown({
   const y = candleSeries.priceToCoordinate(lastPrice);
   if (y === null) return null;
 
+  // The crosshair's label is over us: yield the space rather than fight for
+  // it. Nothing else draws the last price here (PriceChart turns the native
+  // last-value label off while this is mounted), so what the user sees is the
+  // price under the cursor alone, which is the one they are reading.
+  if (covered) return null;
+
   // Centred on the price, clamped so it never hangs off either edge of the
   // pane — at the extremes the plate slides rather than being cut.
-  const top = plateTop(y as number, mainPaneHeight, dodge, lines);
+  const top = plateTop(y as number, mainPaneHeight, lines);
 
   const remaining = showCountdown ? secondsToBarClose(last.time, timeframe, now) : 0;
   const up = last.close >= last.open;

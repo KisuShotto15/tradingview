@@ -6,7 +6,6 @@ import { useChartStore } from "@/lib/store/chart-store";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
-import { magnetRadius, magnetSnapDragging } from "@/lib/chart/magnet";
 import { DRAG_SLOP_PX, beginPointerDrag } from "./pointer-drag";
 
 /** True if the currently-selected drawing is locked (no drag allowed). */
@@ -71,17 +70,32 @@ export function useDragShape<T>(
           const t = xToTime(chart, x, globalCandlesRef.current, interval);
           const rawP = candleSeries.coordinateToPrice(y);
           if (t === null || rawP === null) return;
-          let p = rawP as number;
-          // Magnet snap: held Ctrl/Cmd, or the persistent magnet-mode toggle
-          if (ev.ctrlKey || ev.metaKey || useChartStore.getState().magnetMode) {
-            const snapped = magnetSnapDragging(
-              p,
-              t,
-              globalCandlesRef.current,
-              magnetRadius(candleSeries, y),
-            );
-            if (snapped !== null) p = snapped;
-          }
+          const p = rawP as number;
+          /*
+           * No magnet here, deliberately: this is a translation of the whole
+           * shape, and the magnet snaps *points*.
+           *
+           * The price under the cursor is not one of the shape's points — you
+           * grab a line wherever you happen to click on it — so snapping it
+           * moves the shape by the distance from an arbitrary grab position to
+           * a candle level. Both ways of doing it are wrong in a visible way.
+           * Snapping only the live end (what this did) measured the delta from
+           * the raw grab price, so a 60px drag moved the shape 100px on the
+           * first pixel and dragging it back did not put it back; that was
+           * bounded and rare while the magnet needed the cursor to be near a
+           * level, and became constant once a bar owned its whole column.
+           * Snapping both ends instead pins the delta to level-to-level steps,
+           * which makes a vertical drag inside one bar's column do nothing at
+           * all until the cursor crosses the midpoint between two of that
+           * bar's four prices — the shape just refuses to move.
+           *
+           * So a whole-shape drag follows the cursor exactly, and the magnet
+           * stays where it means something: placing a new point, and dragging
+           * an individual anchor (`use-drag-point`, and the long/short's
+           * entry/stop/target), both of which set an absolute snapped price
+           * rather than a delta. It also keeps a magnetised drawing nudgeable,
+           * which a snapped translation does not.
+           */
           const dt = t - startTime;
           const dp = p - startPrice;
           handlersRef.current.onMove(applyRef.current(original, dt, dp));

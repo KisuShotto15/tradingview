@@ -24,6 +24,8 @@
  *   `.drawing-hit` in `DrawingsLayer`.
  */
 
+import { aimCrosshairAt } from "@/lib/chart/crosshair";
+
 /**
  * How far the pointer must travel before a press counts as a drag.
  *
@@ -72,6 +74,12 @@ export function beginPointerDrag(
       if (Math.abs(ev.clientX - startX) < slop && Math.abs(ev.clientY - startY) < slop) return;
       moved = true;
     }
+    // Keep the chart's own crosshair under the pointer. It reads its position
+    // from mouse events on its canvas, and the capture above means the canvas
+    // gets none of them for the whole drag — so without this the crosshair,
+    // and the price label it puts on the axis, stay at the price the drag
+    // started from while the level being dragged moves away from it.
+    aimCrosshairAt(ev.clientX, ev.clientY);
     onMove(ev);
   }
 
