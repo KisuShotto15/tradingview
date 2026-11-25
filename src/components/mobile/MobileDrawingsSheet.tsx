@@ -153,14 +153,14 @@ function ToolSectionList({
             key={t.key}
             className={cn(
               "flex items-center gap-3 border-b border-tv-border/60",
-              active && "bg-tv-blue/15",
+              active && "bg-tv-text/10",
             )}
           >
             <button
               onClick={() => onPick(t.key)}
               className="flex flex-1 items-center gap-3 py-3 pl-3 text-left active:bg-tv-panel-hover"
             >
-              <Icon className={cn("h-5 w-5", active ? "text-tv-blue" : "text-tv-text-muted")} />
+              <Icon className={cn("h-5 w-5", active ? "text-tv-text" : "text-tv-text-muted")} />
               <div className="flex flex-1 flex-col gap-0.5">
                 <span className="text-sm font-medium">{t.label}</span>
                 {t.hint && <span className="text-[10px] text-tv-text-muted">{t.hint}</span>}
@@ -199,9 +199,9 @@ function UtilityRow({
         disabled && "opacity-40",
       )}
     >
-      <Icon className={cn("h-5 w-5", active ? "text-tv-blue" : "text-tv-text-muted")} />
+      <Icon className={cn("h-5 w-5", active ? "text-tv-text" : "text-tv-text-muted")} />
       <div className="flex flex-1 flex-col gap-0.5">
-        <span className={cn("text-sm font-medium", active && "text-tv-blue")}>{label}</span>
+        <span className={cn("text-sm font-medium", active && "text-tv-text")}>{label}</span>
         <span className="text-[10px] text-tv-text-muted">{hint}</span>
       </div>
     </button>

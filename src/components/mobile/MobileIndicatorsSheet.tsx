@@ -57,7 +57,7 @@ export function MobileIndicatorsSheet() {
           onClick={() => addUserEMA()}
           className="flex w-full items-center gap-3 border-b border-tv-border/60 px-3 py-3 text-left active:bg-tv-panel-hover"
         >
-          <Plus className="h-4 w-4 text-tv-blue" />
+          <Plus className="h-4 w-4 text-tv-text" />
           <span className="flex-1 text-sm">EMA — Exponential Moving Average</span>
         </button>
         {userEMAs.length > 0 && (
@@ -84,7 +84,7 @@ export function MobileIndicatorsSheet() {
                   onClick={() => toggle(e.key)}
                   className={cn(
                     "flex h-6 w-6 items-center justify-center rounded border",
-                    on ? "border-tv-blue bg-tv-blue text-white" : "border-tv-border bg-tv-bg",
+                    on ? "border-tv-text bg-tv-text text-tv-bg" : "border-tv-border bg-tv-bg",
                   )}
                   aria-pressed={on}
                   aria-label={`${on ? "Disable" : "Enable"} ${label}`}

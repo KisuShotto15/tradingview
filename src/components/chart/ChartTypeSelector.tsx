@@ -153,7 +153,7 @@ export function ChartTypeSelector({ compact }: Props = {}) {
             className={cn(
               "flex h-6 w-6 items-center justify-center rounded transition-colors",
               active
-                ? "bg-tv-panel-hover text-tv-blue"
+                ? "bg-tv-text/15 text-tv-text"
                 : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
             )}
           >
@@ -187,7 +187,7 @@ export function ChartTypeSelector({ compact }: Props = {}) {
                 >
                   <opt.Icon className="h-3.5 w-3.5 text-tv-text-muted" />
                   <span className="flex-1">{opt.label}</span>
-                  {active && <Check className="h-3 w-3 text-tv-blue" />}
+                  {active && <Check className="h-3 w-3 text-tv-text" />}
                 </DropdownMenuItem>
               </Fragment>
             );

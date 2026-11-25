@@ -121,7 +121,7 @@ export function ChartScreen() {
           onClick={() => openSheet("drawings")}
           className={cn(
             "shrink-0 rounded p-1.5 active:bg-tv-panel-hover",
-            toolArmed ? "bg-tv-blue/15 text-tv-blue" : "text-tv-text-muted",
+            toolArmed ? "bg-tv-text text-tv-bg" : "text-tv-text-muted",
           )}
           aria-label="Drawing tools"
           aria-pressed={toolArmed}
@@ -133,7 +133,7 @@ export function ChartScreen() {
             onClick={toggleMagnetMode}
             className={cn(
               "shrink-0 rounded p-1.5 active:bg-tv-panel-hover",
-              magnetMode ? "bg-tv-blue/15 text-tv-blue" : "text-tv-text-muted",
+              magnetMode ? "bg-tv-text text-tv-bg" : "text-tv-text-muted",
             )}
             aria-label={magnetMode ? "Magnet on — snap to OHLC" : "Magnet off"}
             aria-pressed={magnetMode}
@@ -219,6 +219,11 @@ function SwipeChip({
   compact?: boolean;
 }) {
   const startRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  /**
+   * Set when the gesture turned out to be a swipe, so the click the browser
+   * sends afterwards is dropped instead of being read as a tap.
+   */
+  const swipedRef = useRef(false);
   const [active, setActive] = useState(false);
 
   /**
@@ -265,6 +270,17 @@ function SwipeChip({
         startRef.current = { x: e.clientX, y: e.clientY, t: Date.now() };
         setActive(true);
       }}
+      /*
+       * The swipe resolves here, but a tap deliberately does not: it waits for
+       * the click the browser sends afterwards.
+       *
+       * Opening a fullscreen sheet from `pointerup` puts it under the finger
+       * mid-gesture, and the click that follows lands on whatever row is now
+       * at that spot — tapping the timeframe chip opened the picker and then
+       * immediately chose whichever timeframe had appeared under the thumb,
+       * which read as "the chip does nothing". Letting the button's own click
+       * do the opening is what every other control in this toolbar does.
+       */
       onPointerUp={(e) => {
         setActive(false);
         const s = startRef.current;
@@ -272,7 +288,6 @@ function SwipeChip({
         if (!s) return;
         const dx = e.clientX - s.x;
         const dy = e.clientY - s.y;
-        const dt = Date.now() - s.t;
         const SWIPE_PX = 24;
         // Vertical swipe wins — sign convention: swipe DOWN (positive dy) = previous,
         // swipe UP (negative dy) = next, matching how a wheel feels.
@@ -282,13 +297,20 @@ function SwipeChip({
           // which way to animate; a tap-driven change keeps the last
           // direction, which reads fine because it has no direction of its own.
           dirRef.current = dir;
+          swipedRef.current = true;
           onSwipe(dir);
-        } else if (Math.abs(dx) < 8 && Math.abs(dy) < 8 && dt < 400) {
-          onTap();
         }
+      }}
+      onClick={() => {
+        if (swipedRef.current) {
+          swipedRef.current = false;
+          return;
+        }
+        onTap();
       }}
       onPointerCancel={() => {
         startRef.current = null;
+        swipedRef.current = true; // a cancelled gesture is never a tap
         setActive(false);
       }}
     >

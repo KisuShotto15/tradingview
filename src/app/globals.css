@@ -185,3 +185,34 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+/*
+ * Touch devices: behave like an app, not like a web page.
+ *
+ * A long press on a phone is the app's own gesture here — it opens a
+ * watchlist row's actions, and on the chart it summons the crosshair. The
+ * browser answers the same press by selecting the text under the finger and
+ * raising its callout ("Copy / Share / Search"), which covered the actions
+ * the press was meant to open. Both are turned off wherever there is no
+ * mouse, and re-enabled for the places text genuinely is editable or worth
+ * copying.
+ *
+ * Unlayered on purpose, like the type-scale overrides above: these have to
+ * beat Tailwind's generated utilities whatever the source order.
+ */
+@media (hover: none) {
+  body {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  input,
+  textarea,
+  select,
+  [contenteditable],
+  [contenteditable] * {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}

@@ -2,6 +2,7 @@
 
 import { List, LineChart, ArrowLeftRight, Menu as MenuIcon } from "lucide-react";
 import { useMobileStore, type MobileTab } from "@/lib/store/mobile-store";
+import { useAndroidBack } from "@/hooks/useAndroidBack";
 import { cn } from "@/lib/utils";
 import { WatchlistScreen } from "./WatchlistScreen";
 import { ChartScreen } from "./ChartScreen";
@@ -15,9 +16,22 @@ import { MobileSheetsRoot } from "./MobileSheetsRoot";
  */
 export function MobileShell() {
   const tab = useMobileStore((s) => s.tab);
+  // Back closes the topmost layer instead of the whole app.
+  useAndroidBack();
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-tv-bg text-tv-text">
+    <div
+      className="fixed inset-0 flex flex-col bg-tv-bg text-tv-text"
+      /*
+       * A long press is one of this app's gestures — watchlist row actions,
+       * and the chart's crosshair — and the browser answers the same press
+       * with its own menu, which lands on top of whatever the press opened.
+       * Suppressed for the whole mobile shell; the desktop layout is a
+       * different branch in `page.tsx`, so right-click menus there, including
+       * the chart's own, are untouched.
+       */
+      onContextMenu={(e) => e.preventDefault()}
+    >
       <main className="min-h-0 flex-1 overflow-hidden">
         {tab === "watchlist" && <WatchlistScreen />}
         {tab === "chart" && <ChartScreen />}
@@ -71,7 +85,7 @@ function BottomTabBar() {
               // the icons are the same four in the same order, so nothing
               // becomes unfindable.
               "[@media(max-height:500px)]:py-1",
-              active ? "text-tv-blue" : "text-tv-text-muted active:text-tv-text",
+              active ? "text-tv-text" : "text-tv-text-muted active:text-tv-text",
             )}
             aria-label={label}
           >

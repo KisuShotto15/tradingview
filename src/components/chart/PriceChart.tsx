@@ -55,7 +55,7 @@ import {
   DEFAULT_CHART_COLORS,
 } from "@/lib/store/chart-store";
 import { formatPrice, formatVolume, priceFormatFor, axisPriceFormatter } from "@/lib/format";
-import { ArrowUpDown, Bell, ChevronUp, Maximize2, Settings2 } from "lucide-react";
+import { ArrowUpDown, Bell, ChevronUp, Maximize2, Plus, Settings2 } from "lucide-react";
 import { IndicatorPill } from "./IndicatorPill";
 import { MeasureOverlay } from "./MeasureOverlay";
 import { DrawingsLayer } from "./drawings/DrawingsLayer";
@@ -64,6 +64,7 @@ import { OrderLinesLayer } from "@/components/trading/OrderLinesLayer";
 import { BuySellOverlay } from "@/components/trading/BuySellOverlay";
 import { FloatingContextToolbar } from "./FloatingContextToolbar";
 import { BarCountdown } from "./BarCountdown";
+import { ChartQuickActionsSheet } from "@/components/mobile/ChartQuickActionsSheet";
 import { KeyLevelsOverlay } from "./KeyLevelsOverlay";
 import { computeKeyLevels } from "@/lib/indicators/keylevels";
 import type { SqueezePoint } from "@/lib/indicators/squeeze";
@@ -242,6 +243,10 @@ interface PaneOffset {
 
 export function PriceChart({ symbol, timeframe }: Props) {
   const isMobile = useIsMobile();
+  // Read from inside the chart's long-lived event handlers, which are created
+  // once and would otherwise close over the first render's `false`.
+  const isMobileRef = useRef(isMobile);
+  isMobileRef.current = isMobile;
   /**
    * How much taller the price pane is than one sub-pane.
    *
@@ -390,6 +395,15 @@ export function PriceChart({ symbol, timeframe }: Props) {
   configRef.current = config;
 
   const [chartContextMenu, setChartContextMenu] = useState<{ x: number; y: number; price: number; region: "chart" | "scale" } | null>(null);
+  /**
+   * Price the touch-only "+" on the price axis is parked at, and its y.
+   *
+   * It follows the crosshair and then *stays* where the crosshair left it,
+   * which is what the venues do: on a phone the crosshair is a long press, so
+   * a button that vanished with it could never be tapped.
+   */
+  const [axisPlus, setAxisPlus] = useState<{ y: number; price: number } | null>(null);
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [lastPrice, setLastPrice] = useState<{ value: number; pct: number } | null>(null);
   const [lastValues, setLastValues] = useState<LastValues>({});
@@ -1022,6 +1036,16 @@ export function PriceChart({ symbol, timeframe }: Props) {
           pc = constrainToAxis(chart, candleSeriesRef.current, candlesRef.current, intervalSec, firstPointRef.current, pc);
         }
         setPreviewState((prev) => (prev ? { ...prev, cursor: pc } : prev));
+      }
+
+      // Park the touch "+" on the price axis at the crosshair's level.
+      // Guarded on the ref so a desktop chart pays nothing for it: the
+      // crosshair fires on every mouse move.
+      if (isMobileRef.current && param.point && cursorPrice !== null) {
+        const py = param.point.y;
+        setAxisPlus((prev) =>
+          prev && Math.abs(prev.y - py) < 0.5 ? prev : { y: py, price: cursorPrice as number },
+        );
       }
 
       if (!param.time || !candleSeriesRef.current) {
@@ -4111,6 +4135,47 @@ export function PriceChart({ symbol, timeframe }: Props) {
         />
       )}
 
+      {/*
+        Touch-only "+" on the price axis.
+        It parks where the crosshair last was, and defaults to the middle of
+        the pane before the crosshair has ever been used, so it is reachable
+        from the first tap. The sheet it opens is everything a desktop
+        right-click at a price offers — an alert, a line, an order — which on
+        a phone had no way in at all.
+      */}
+      {isMobile && !replayActive && (() => {
+        const mainH = paneOffsets[0]?.height ?? containerSize.height;
+        const plotW = chartRef.current?.timeScale().width() ?? 0;
+        if (plotW <= 0 || mainH <= 0) return null;
+        const fallbackY = mainH / 2;
+        const y = axisPlus ? Math.min(Math.max(axisPlus.y, 14), mainH - 14) : fallbackY;
+        const price =
+          axisPlus?.price ??
+          (candleSeriesRef.current?.coordinateToPrice(fallbackY) as number | null | undefined) ??
+          null;
+        if (price === null || !isFinite(price)) return null;
+        return (
+          <>
+            <button
+              type="button"
+              aria-label={`Actions at ${formatPrice(price)}`}
+              onClick={() => setQuickActionsOpen(true)}
+              className="pointer-events-auto absolute z-20 flex h-8 w-8 items-center justify-center rounded-full border border-tv-border bg-tv-panel/95 text-tv-text shadow-lg active:bg-tv-panel-hover"
+              style={{ left: plotW - 34, top: y - 16 }}
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+            {quickActionsOpen && (
+              <ChartQuickActionsSheet
+                price={price}
+                time={candlesRef.current[candlesRef.current.length - 1]?.time ?? null}
+                onClose={() => setQuickActionsOpen(false)}
+              />
+            )}
+          </>
+        );
+      })()}
+
       <FloatingContextToolbar
         containerSize={containerSize}
         onOpenSettings={() => {
@@ -4181,7 +4246,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
               top: p.top + p.height - 23,
               right: 4,
             }}
-            className="pointer-events-auto absolute z-10 flex items-center gap-0.5"
+            className="pointer-events-auto absolute z-10 flex items-center gap-0.5 [@media(hover:none)]:gap-1"
           >
             {/* Scale toggles.
                 These sit over the price axis, where every pixel competes with
@@ -4196,7 +4261,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
               onClick={autoFit}
               title="Auto scale"
               aria-pressed={autoScaleActive}
-              className={`flex h-[18px] w-[18px] items-center justify-center rounded-[3px] text-[9px] font-semibold leading-none transition-colors ${
+              className={`flex h-[18px] w-[18px] [@media(hover:none)]:h-6 [@media(hover:none)]:w-6 items-center justify-center rounded-[3px] text-[9px] font-semibold leading-none transition-colors ${
                 autoScaleActive
                   ? "bg-tv-text/90 text-tv-bg"
                   : "text-tv-text-dim hover:text-tv-text"
@@ -4208,7 +4273,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
               onClick={toggleLog}
               title={isLog ? "Switch to linear" : "Switch to logarithmic"}
               aria-pressed={isLog}
-              className={`flex h-[18px] w-[18px] items-center justify-center rounded-[3px] text-[9px] font-semibold leading-none transition-colors ${
+              className={`flex h-[18px] w-[18px] [@media(hover:none)]:h-6 [@media(hover:none)]:w-6 items-center justify-center rounded-[3px] text-[9px] font-semibold leading-none transition-colors ${
                 isLog
                   ? "bg-tv-text/90 text-tv-bg"
                   : "text-tv-text-dim hover:text-tv-text"
@@ -4381,7 +4446,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
               }
               title={pillsCollapsed ? "Show indicators" : "Hide indicators"}
               aria-label={pillsCollapsed ? "Show indicators" : "Hide indicators"}
-              className="pointer-events-auto flex h-5 w-5 items-center justify-center rounded bg-tv-panel/95 text-tv-text-muted ring-1 ring-tv-border hover:bg-tv-panel-hover hover:text-tv-text"
+              className="pointer-events-auto flex h-5 w-5 [@media(hover:none)]:h-7 [@media(hover:none)]:w-7 items-center justify-center rounded bg-tv-panel/95 text-tv-text-muted ring-1 ring-tv-border hover:bg-tv-panel-hover hover:text-tv-text"
             >
               <ChevronUp
                 className={`h-3.5 w-3.5 transition-transform ${

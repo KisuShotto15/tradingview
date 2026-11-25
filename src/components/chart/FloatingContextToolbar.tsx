@@ -147,7 +147,7 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
                     className={cn(
                       "flex h-5 w-5 [@media(hover:none)]:h-8 [@media(hover:none)]:w-8 items-center justify-center rounded text-[9px] font-bold",
                       (drawing.lineWidth ?? 1) === w
-                        ? "bg-tv-blue/20 text-tv-blue"
+                        ? "bg-tv-text/15 text-tv-text"
                         : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
                     )}
                   >

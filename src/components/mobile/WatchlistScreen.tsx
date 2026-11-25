@@ -4,14 +4,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
+  ArrowLeftRight,
   ArrowUpDown,
   Bell,
+  CheckSquare,
   ChevronDown,
   ChevronRight,
   Copy,
   FolderInput,
   GripVertical,
   ListPlus,
+  LineChart,
   ListX,
   MoreHorizontal,
   Pencil,
@@ -29,6 +32,7 @@ import { resolveSource } from "@/lib/symbols/source";
 import { stripExchangePrefix } from "@/lib/symbols/prefix";
 import { useChartStore, type WatchlistItem } from "@/lib/store/chart-store";
 import { useMobileStore } from "@/lib/store/mobile-store";
+import { swallowNextClick } from "@/lib/mobile/swallow-click";
 import { useTradingStore } from "@/lib/store/trading-store";
 import type { Position } from "@/lib/binance/trading-types";
 import { formatPrice, formatPct, changeFromPct, formatChange } from "@/lib/format";
@@ -91,6 +95,7 @@ export function WatchlistScreen() {
   const toggleWatchlistLabelCollapsed = useChartStore((s) => s.toggleWatchlistLabelCollapsed);
   const symbol = useChartStore((s) => s.symbol);
   const setSymbol = useChartStore((s) => s.setSymbol);
+  const openAlertDialog = useChartStore((s) => s.openAlertDialog);
   const openSymbolDialog = useChartStore((s) => s.setSymbolDialogOpen);
   const setSymbolDialogInsertAfterId = useChartStore((s) => s.setSymbolDialogInsertAfterId);
   const setTab = useMobileStore((s) => s.setTab);
@@ -445,7 +450,7 @@ export function WatchlistScreen() {
             aria-label={reorderMode ? "Done reordering" : "Reorder symbols"}
             className={cn(
               "rounded p-1.5 active:bg-tv-panel-hover",
-              reorderMode ? "bg-tv-panel-hover text-tv-blue" : "text-tv-text-muted",
+              reorderMode ? "bg-tv-panel-hover text-tv-text" : "text-tv-text-muted",
             )}
           >
             <ArrowUpDown className="h-4 w-4" />
@@ -470,8 +475,10 @@ export function WatchlistScreen() {
         </button>
       </header>
 
-      {/* Sort row */}
-      <div className="grid shrink-0 grid-cols-[1fr_auto_auto] gap-2 border-b border-tv-border px-3 py-1.5 text-[10px] uppercase tracking-wider text-tv-text-muted">
+      {/* Sort row. `py-2` rather than the label's own line height: Price and
+          24h are buttons, and at 18px tall they were below what a thumb hits
+          reliably. The row reads the same; only its hit area grows. */}
+      <div className="grid shrink-0 grid-cols-[1fr_auto_auto] items-center gap-2 border-b border-tv-border px-3 py-2 text-[10px] uppercase tracking-wider text-tv-text-muted">
         <span>Symbol</span>
         <SortHeader
           label="Price"
@@ -489,7 +496,7 @@ export function WatchlistScreen() {
 
       {/* Multi-select action bar */}
       {selectMode && (
-        <div className="flex shrink-0 items-center gap-1 border-b border-tv-border bg-tv-blue/10 px-2 py-1.5">
+        <div className="flex shrink-0 items-center gap-1 border-b border-tv-border bg-tv-text/10 px-2 py-1.5">
           <span className="flex-1 text-[11px] font-medium">{selected.size} selected</span>
           <div className="relative">
             <button
@@ -560,7 +567,7 @@ export function WatchlistScreen() {
                   }}
                   className={cn(
                     "flex items-center gap-1 border-y border-tv-border bg-tv-bg/50 px-1 py-1.5",
-                    isDragTarget && "border-t-2 border-t-tv-blue",
+                    isDragTarget && "border-t-2 border-t-tv-text",
                   )}
                 >
                   {showHandle ? (
@@ -639,7 +646,14 @@ export function WatchlistScreen() {
                     : null;
                 })()}
                 onOpen={() => open(item)}
-                onLongPress={() => toggleSelected(item.id)}
+                onLongPress={() =>
+                  // In multi-select a long press keeps extending the
+                  // selection, which is what the gesture means there.
+                  // Otherwise it opens the row's actions, the way holding a
+                  // row does on every other chart app — and the way the "…"
+                  // button already did, which a thumb has to aim for.
+                  selectMode ? toggleSelected(item.id) : setActionsFor(item)
+                }
                 onDragPointerDown={(e) => handleDragPointerDown(e, item.id)}
                 onDragPointerMove={handleDragPointerMove}
                 onDragPointerUp={handleDragPointerUp}
@@ -664,7 +678,7 @@ export function WatchlistScreen() {
               }}
               className={cn(
                 "flex w-full items-center justify-between border-b border-tv-border/60 px-4 py-3 text-left text-sm",
-                w.id === activeWatchlistId ? "bg-tv-blue/15 text-tv-blue" : "text-tv-text active:bg-tv-panel-hover",
+                w.id === activeWatchlistId ? "bg-tv-text/10 text-tv-text" : "text-tv-text active:bg-tv-panel-hover",
               )}
             >
               {w.name}
@@ -702,6 +716,43 @@ export function WatchlistScreen() {
             <SheetAction icon={Pencil} label="Rename label…" onClick={() => startRename(actionsFor)} />
           ) : (
             <>
+              <SheetAction
+                icon={LineChart}
+                label="Open chart"
+                onClick={() => {
+                  setSymbol(actionsFor.value);
+                  setActionsFor(null);
+                  setTab("chart");
+                }}
+              />
+              <SheetAction
+                icon={Bell}
+                label="Add alert…"
+                onClick={() => {
+                  // The alert dialog is per-symbol, so chart this one first.
+                  setSymbol(actionsFor.value);
+                  setActionsFor(null);
+                  setTab("chart");
+                  openAlertDialog();
+                }}
+              />
+              <SheetAction
+                icon={ArrowLeftRight}
+                label="Trade"
+                onClick={() => {
+                  setSymbol(actionsFor.value);
+                  setActionsFor(null);
+                  setTab("trade");
+                }}
+              />
+              <SheetAction
+                icon={CheckSquare}
+                label="Select"
+                onClick={() => {
+                  toggleSelected(actionsFor.id);
+                  setActionsFor(null);
+                }}
+              />
               <div className="border-b border-tv-border/60 px-4 py-3">
                 <span className="mb-2 block text-[10px] uppercase tracking-wider text-tv-text-muted">
                   Flag color
@@ -815,6 +866,10 @@ function SymbolRow({
     pressStart.current = { x: e.clientX, y: e.clientY };
     pressTimer.current = setTimeout(() => {
       longPressed.current = true;
+      // The gesture is finished as far as the app is concerned, but the
+      // finger is still down: the click the browser sends on lift would land
+      // inside whatever this just opened. See swallowNextClick.
+      swallowNextClick();
       onLongPress();
     }, LONG_PRESS_MS);
   }
@@ -844,18 +899,18 @@ function SymbolRow({
       className={cn(
         "grid grid-cols-[auto_auto_1fr_auto_auto] items-center gap-1.5 border-b border-tv-border/60 py-2.5 pl-1 pr-2 active:bg-tv-panel-hover",
         isActive && !selectMode && "bg-tv-panel-hover",
-        isSelected && "bg-tv-blue/15",
-        isDragTarget && "border-t-2 border-t-tv-blue",
+        isSelected && "bg-tv-text/10",
+        isDragTarget && "border-t-2 border-t-tv-text",
       )}
     >
       {selectMode ? (
         <span
           className={cn(
             "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2",
-            isSelected ? "border-tv-blue bg-tv-blue" : "border-tv-border",
+            isSelected ? "border-tv-text bg-tv-text" : "border-tv-border",
           )}
         >
-          {isSelected && <span className="h-2 w-2 rounded-full bg-white" />}
+          {isSelected && <span className="h-2 w-2 rounded-full bg-tv-bg" />}
         </span>
       ) : showHandle ? (
         <button
@@ -1034,8 +1089,8 @@ function SortHeader({
     <button
       onClick={onClick}
       className={cn(
-        "flex items-center justify-end gap-0.5 text-right uppercase tracking-wider",
-        active ? "text-tv-blue" : "text-tv-text-dim",
+        "flex min-h-7 items-center justify-end gap-0.5 px-1 text-right uppercase tracking-wider",
+        active ? "text-tv-text" : "text-tv-text-dim",
       )}
     >
       <span>{label}</span>
