@@ -79,7 +79,7 @@ export function ChartScreen() {
 
       {/* Toolbar — scrolls horizontally rather than wrapping or clipping on a
           narrow phone, since it packs in every desktop header action. */}
-      <footer className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-t border-tv-border bg-tv-panel px-2 py-1.5">
+      <footer className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-t border-tv-border bg-tv-panel px-2 py-1.5 [@media(max-height:500px)]:py-0.5">
         <SwipeChip
           label={symbol}
           onSwipe={nextSymbol}

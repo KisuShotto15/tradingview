@@ -64,11 +64,21 @@ function BottomTabBar() {
             aria-selected={active}
             className={cn(
               "flex flex-col items-center gap-0.5 py-2 transition-colors",
+              // Short viewport — a phone held sideways. There the nav and the
+              // chart toolbar together were taking a quarter of a 412px-tall
+              // screen, and rotating is the gesture whose whole purpose is to
+              // give the chart more of it. Drop the labels and the padding;
+              // the icons are the same four in the same order, so nothing
+              // becomes unfindable.
+              "[@media(max-height:500px)]:py-1",
               active ? "text-tv-blue" : "text-tv-text-muted active:text-tv-text",
             )}
+            aria-label={label}
           >
             <Icon className="h-5 w-5" />
-            <span className="text-[10px] font-medium">{label}</span>
+            <span className="text-[10px] font-medium [@media(max-height:500px)]:hidden">
+              {label}
+            </span>
           </button>
         );
       })}
