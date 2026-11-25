@@ -7,6 +7,7 @@ import { useMobileStore } from "@/lib/store/mobile-store";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useReplayStore } from "@/lib/replay/replay-store";
 import { PriceChart } from "@/components/chart/PriceChart";
+import { timeframeLabel } from "@/lib/chart/coords";
 import { ChartTypeSelector } from "@/components/chart/ChartTypeSelector";
 import { SnapshotButton } from "@/components/chart/SnapshotButton";
 import { cn } from "@/lib/utils";
@@ -91,7 +92,7 @@ export function ChartScreen() {
           ariaLabel="Symbol — tap to search, swipe to switch"
         />
         <SwipeChip
-          label={timeframe.toUpperCase()}
+          label={timeframeLabel(timeframe)}
           onSwipe={nextTimeframe}
           onTap={() => openSheet("timeframe")}
           ariaLabel="Timeframe — tap to pick, swipe to cycle pinned"
