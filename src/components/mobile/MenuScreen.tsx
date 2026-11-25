@@ -1,13 +1,14 @@
 "use client";
 
 import {
+  Activity,
+  Bell,
   ChevronRight,
   KeyRound,
+  LogOut,
   Palette,
   Settings,
-  Bell,
-  Activity,
-  LogOut,
+  ShieldCheck,
   User,
 } from "lucide-react";
 import { useTradingStore } from "@/lib/store/trading-store";
@@ -68,6 +69,12 @@ export function MenuScreen() {
           label="Alerts"
           hint={activeAlertCount > 0 ? `${activeAlertCount} active` : undefined}
           onClick={() => openSheet("alerts")}
+        />
+        <Row
+          icon={ShieldCheck}
+          label="Journal"
+          hint="Guardian"
+          onClick={() => openSheet("journal")}
         />
       </Section>
 
