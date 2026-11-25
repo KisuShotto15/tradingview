@@ -93,6 +93,15 @@ export function WatchlistScreen() {
   const allPositions = useTradingStore((s) => s.allPositions);
   const tradingExchange = useTradingStore((s) => s.exchange);
 
+  /**
+   * Flag colours the list is narrowed to. Empty means "show everything".
+   *
+   * Session-only rather than persisted: a filter that survives a reload is a
+   * filter you forget you left on, and the list then looks like symbols went
+   * missing. TradingView's flag chips behave the same way.
+   */
+  const [flagFilter, setFlagFilter] = useState<Set<string>>(new Set());
+
   const active = watchlists.find((w) => w.id === activeWatchlistId) ?? watchlists[0];
   const items = active?.items ?? [];
   const symbols = useMemo(
@@ -195,16 +204,46 @@ export function WatchlistScreen() {
       // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbols.join(","), onBinanceTick, onBybitTick]);
 
+  /**
+   * Flag colours actually in use, so the chip row only offers real ones.
+   *
+   * Built from the items and then *ordered* by the palette, rather than
+   * filtered by it: a colour that is on a row but not in `FLAG_COLORS` — one
+   * carried over from an older palette, or set on another device — would
+   * otherwise have no chip, leaving those rows unreachable by filter with
+   * nothing to explain why.
+   */
+  const flagsInUse = useMemo(() => {
+    const set = new Set<string>();
+    for (const i of items) if (i.type === "symbol" && i.flagColor) set.add(i.flagColor);
+    const known = FLAG_COLORS.filter((c) => set.has(c));
+    const extra = [...set].filter((c) => !FLAG_COLORS.includes(c)).sort();
+    return [...known, ...extra];
+  }, [items]);
+
   const visibleItems = useMemo(() => {
+    const filtering = flagFilter.size > 0;
     let hidingUnder: string | null = null;
-    return items.filter((item) => {
+    const kept = items.filter((item) => {
       if (item.type === "label") {
         hidingUnder = collapsed.has(item.id) ? item.id : null;
         return true;
       }
-      return hidingUnder === null;
+      if (hidingUnder !== null) return false;
+      return !filtering || (item.flagColor ? flagFilter.has(item.flagColor) : false);
     });
-  }, [items, collapsed]);
+    // A label whose every symbol was filtered out is just a heading over
+    // nothing, so drop it rather than leave gaps down the list.
+    if (!filtering) return kept;
+    return kept.filter((item, i) => {
+      if (item.type !== "label") return true;
+      for (let j = i + 1; j < kept.length; j++) {
+        if (kept[j].type === "label") break;
+        return true;
+      }
+      return false;
+    });
+  }, [items, collapsed, flagFilter]);
 
   const displayItems = useMemo(
     () => sortWatchlistItems(visibleItems, rows, sort),
@@ -335,6 +374,37 @@ export function WatchlistScreen() {
           <span className="truncate">{active.name}</span>
           <ChevronDown className="h-3.5 w-3.5 shrink-0 text-tv-text-muted" />
         </button>
+        {/* Flag filter chips, as TradingView puts beside the list name.
+            Only the colours actually in use are offered — a row of eight
+            swatches where six match nothing is noise. */}
+        {flagsInUse.length > 0 && (
+          <div className="flex shrink-0 items-center gap-1 pr-1">
+            {flagsInUse.map((c) => {
+              const on = flagFilter.has(c);
+              return (
+                <button
+                  key={c}
+                  onClick={() =>
+                    setFlagFilter((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(c)) next.delete(c);
+                      else next.add(c);
+                      return next;
+                    })
+                  }
+                  aria-pressed={on}
+                  aria-label={on ? `Stop filtering by this flag` : `Filter by this flag`}
+                  className={cn(
+                    "flex h-7 w-6 items-center justify-center rounded",
+                    on ? "bg-tv-panel-hover ring-1 ring-tv-border" : "opacity-45",
+                  )}
+                >
+                  <FlagPennant color={c} height={15} />
+                </button>
+              );
+            })}
+          </div>
+        )}
         <button
           onClick={() => addLabelHere(undefined)}
           className="rounded p-1.5 text-tv-text-muted active:bg-tv-panel-hover"

@@ -33,6 +33,8 @@ import { getSymbolInfo } from "@/lib/trading/symbol-info";
 import { ema, rsi, macd, obv } from "@/lib/indicators";
 import { stochRsi } from "@/lib/indicators/stochrsi";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useFeedStatus } from "@/hooks/useFeedStatus";
+import { cn } from "@/lib/utils";
 import { barCloseTime } from "@/lib/chart/countdown";
 import {
   markChartTick,
@@ -250,6 +252,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
    * phone re-applies it.
    */
   const mainPaneStretch = isMobile ? 5 : 3;
+  /** Only surfaced on a phone: desktop has the same thing in `BottomPanel`,
+   *  which the mobile shell does not render at all. */
+  const feed = useFeedStatus(symbol);
   const containerRef = useRef<HTMLDivElement>(null);
   const outerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -4094,6 +4099,26 @@ export function PriceChart({ symbol, timeframe }: Props) {
             })()}
           </span>
             </>
+          )}
+          {/* Feed indicator.
+              Desktop shows this in the status bar at the bottom of the
+              window; the mobile shell has no such bar, so on a phone there
+              was no way at all to tell a live chart from a frozen one — the
+              exact question the status work was meant to answer. */}
+          {isMobile && feed.streaming && (
+            <span
+              title={feed.stale ? "No ticks" : feed.status}
+              className={cn(
+                "h-1.5 w-1.5 shrink-0 rounded-full",
+                feed.stale
+                  ? "bg-tv-yellow"
+                  : feed.status === "live"
+                    ? "animate-pulse bg-tv-green"
+                    : feed.status === "connecting"
+                      ? "animate-pulse bg-tv-yellow"
+                      : "bg-tv-red",
+              )}
+            />
           )}
           {!hover && lastPrice && (
             <>
