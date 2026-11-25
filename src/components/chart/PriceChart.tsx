@@ -344,6 +344,18 @@ export function PriceChart({ symbol, timeframe }: Props) {
   // Tracked Shift state — the chart's crosshair events don't reliably carry the
   // modifier while moving, so we key the axis-constrain off our own ref.
   const shiftHeldRef = useRef(false);
+  /**
+   * Tracked Ctrl/Cmd state, for exactly the same reason as Shift above — and
+   * it is the reason the magnet never answered to Ctrl while a drawing was
+   * being placed. Every decision on that path read `param.sourceEvent?.ctrlKey`
+   * off the `MouseEventParams`, but the click handler is not wired to
+   * lightweight-charts' `subscribeClick`: the app raises it itself from its own
+   * `pointerup` and builds the param by hand, so `sourceEvent` was simply
+   * absent and the test was `undefined` every single time. Holding Ctrl did
+   * nothing whatsoever. A tracked ref also answers when the key is pressed
+   * without the pointer moving, which no pointer event would report at all.
+   */
+  const ctrlHeldRef = useRef(false);
   const chartColorsRef = useRef(DEFAULT_CHART_COLORS);
 
   const indicators = useChartStore((s) => s.indicators);
@@ -430,7 +442,6 @@ export function PriceChart({ symbol, timeframe }: Props) {
     extra: Array<{ time: number; price: number }>;
     cursor: { time: number; price: number } | null;
   } | null>(null);
-  const [ctrlHeld, setCtrlHeld] = useState(false);
   const [magnetTarget, setMagnetTarget] = useState<{ time: number; price: number } | null>(null);
   const [squeezePts, setSqueezePts] = useState<SqueezePoint[]>([]);
   const measureRef = useRef(measure);
@@ -591,7 +602,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
       // Magnet: Ctrl held, or the persistent magnet-mode toggle → snap price
       // to the nearest candle OHLC or other drawing's level
       if (
-        (param.sourceEvent?.ctrlKey || useChartStore.getState().magnetMode) &&
+        (ctrlHeldRef.current ||
+          param.sourceEvent?.ctrlKey ||
+          param.sourceEvent?.metaKey ||
+          useChartStore.getState().magnetMode) &&
         resolvedTime !== null
       ) {
         const snapped = magnetSnap(
@@ -982,7 +996,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
         t !== "eraser" &&
         cursorTime !== null &&
         cursorPrice !== null;
-      const magnetActive = param.sourceEvent?.ctrlKey || useChartStore.getState().magnetMode;
+      const magnetActive =
+        ctrlHeldRef.current ||
+        param.sourceEvent?.ctrlKey ||
+        param.sourceEvent?.metaKey ||
+        useChartStore.getState().magnetMode;
       if (magnetActive && tracksMagnet) {
         const snapped = magnetSnap(
           cursorPrice!,
@@ -1372,7 +1390,39 @@ export function PriceChart({ symbol, timeframe }: Props) {
         logical !== null && bars.length > 0 && logical >= 0 && logical <= bars.length - 1
           ? bars[Math.round(logical)].time
           : undefined;
-      handleChartClick({ point: { x, y }, time } as unknown as MouseEventParams);
+      /*
+       * Hand the handler the originating event's modifier state.
+       *
+       * This param is built here rather than coming from the library, and it
+       * used to carry only the point and the time — so every
+       * `param.sourceEvent?.…` test downstream read `undefined`. Ctrl could
+       * not engage the magnet and Shift could not keep a finished measurement
+       * on screen, with nothing to show why. The shape mirrors
+       * lightweight-charts' own `TouchMouseEventData` so the handler cannot
+       * tell the difference; the coordinates are the ones actually used for
+       * the click, which while placing by touch is where the point was aimed,
+       * not where the finger happened to lift.
+       */
+      const clientX = wasPlacing ? placing.x : e.clientX;
+      const clientY = wasPlacing ? placing.y : e.clientY;
+      handleChartClick({
+        point: { x, y },
+        time,
+        sourceEvent: {
+          clientX,
+          clientY,
+          pageX: clientX + window.scrollX,
+          pageY: clientY + window.scrollY,
+          screenX: e.screenX,
+          screenY: e.screenY,
+          localX: x,
+          localY: y,
+          ctrlKey: e.ctrlKey,
+          altKey: e.altKey,
+          shiftKey: e.shiftKey,
+          metaKey: e.metaKey,
+        },
+      } as unknown as MouseEventParams);
     };
 
     containerRef.current.addEventListener("pointerdown", onClickDown, { capture: true });
@@ -2637,12 +2687,34 @@ export function PriceChart({ symbol, timeframe }: Props) {
   // Track Ctrl key globally for magnet visual + apply snap to preview
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Control" || e.key === "Meta") {
-        setCtrlHeld(e.type === "keydown");
-        if (e.type === "keyup") {
-          setMagnetTarget(null);
-        }
+      if (e.key !== "Control" && e.key !== "Meta") return;
+      const down = e.type === "keydown";
+      ctrlHeldRef.current = down;
+      if (!down) {
+        setMagnetTarget(null);
+        return;
       }
+      /*
+       * Show where it would snap straight away, from the last known cursor
+       * position, instead of waiting for the pointer to move.
+       *
+       * Pressing a key produces no pointer event, so every magnet decision
+       * here is recomputed on the next mouse move — press Ctrl while aiming
+       * and hold still, and nothing happens at all. That is indistinguishable
+       * from the magnet being broken, which is precisely how it was reported.
+       */
+      const series = candleSeriesRef.current;
+      const last = lastCursorRef.current;
+      if (!series || !last) return;
+      const y = series.priceToCoordinate(last.price);
+      const snapped = magnetSnap(
+        last.price,
+        last.time,
+        candlesRef.current,
+        undefined,
+        y === null ? undefined : magnetRadius(series, y as number),
+      );
+      setMagnetTarget({ time: last.time, price: snapped ?? last.price });
     }
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKey);
@@ -4289,7 +4361,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
           height={containerSize.height}
         />
       )}
-      {ctrlHeld && magnetTarget && (
+      {/* `magnetTarget` is only ever set while the magnet is engaged, so it is
+          the whole condition. It used to be gated on `ctrlHeld` as well, which
+          meant the one group of users who turn the magnet *on* and leave it on
+          never saw where it was about to snap. */}
+      {magnetTarget && (
         <MagnetIndicator
           target={magnetTarget}
           chart={chartRef.current}

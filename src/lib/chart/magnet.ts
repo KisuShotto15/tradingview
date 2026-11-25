@@ -5,20 +5,35 @@ import { useChartStore } from "@/lib/store/chart-store";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 
 /**
- * How close, in CSS pixels, the cursor has to be to a level for the magnet to
- * grab it.
+ * How close, in CSS pixels, the cursor has to be to a candle before the magnet
+ * will grab one of its levels.
  *
- * Without a radius the magnet always finds *a* nearest level and always fires,
- * which is a teleport rather than a snap: dragging a trend line's endpoint 70px
- * up could land it 175px down, on the far side of whichever candle's OHLC
- * happened to be nearest. The value is the one the venues use — close enough
- * that you have to aim at a level to get it, far enough that you do not have to
- * aim precisely, which matters most on a touch screen.
+ * This is a *reach beyond the candle*, not a distance to the level itself:
+ * `snapToOHLC` already treats anywhere inside the high–low span as a hit, and
+ * this widens that band at both ends. Without any bound the magnet always
+ * finds *a* nearest level and always fires, which is a teleport rather than a
+ * snap.
+ *
+ * It was 14px, and that is what made the magnet feel dead: on a dense chart a
+ * candle is only a few pixels tall, so the whole catchment was under 35px and
+ * you had to aim at the wick to get anything — the user's words were that you
+ * have to be practically on the point. 30px is a little over a finger-width of
+ * tolerance on either side of the candle, which is what the venues' own charts
+ * give you; a coarse pointer gets more, because a fingertip both aims worse
+ * and hides the very level it is aiming at.
  */
-export const MAGNET_RADIUS_PX = 14;
+export const MAGNET_RADIUS_PX = { fine: 30, coarse: 44 };
+
+/** The reach for the pointer currently in use. */
+function reachPx(): number {
+  if (typeof window === "undefined" || !window.matchMedia) return MAGNET_RADIUS_PX.fine;
+  return window.matchMedia("(pointer: coarse)").matches
+    ? MAGNET_RADIUS_PX.coarse
+    : MAGNET_RADIUS_PX.fine;
+}
 
 /**
- * `MAGNET_RADIUS_PX` expressed in price, at the series' current scale.
+ * The magnet's reach expressed in price, at the series' current scale.
  *
  * Measured locally around `y` rather than from the whole visible range, so it
  * stays correct on a logarithmic scale, where price per pixel is not constant.
@@ -32,7 +47,7 @@ export function magnetRadius(
 ): number | undefined {
   if (!series) return undefined;
   const a = series.coordinateToPrice(y);
-  const b = series.coordinateToPrice(y + MAGNET_RADIUS_PX);
+  const b = series.coordinateToPrice(y + reachPx());
   if (a === null || b === null) return undefined;
   const d = Math.abs((a as number) - (b as number));
   return Number.isFinite(d) && d > 0 ? d : undefined;

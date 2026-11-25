@@ -218,6 +218,9 @@ export function PositionDraw({
     },
   );
 
+  // Handles are grabbable exactly when they are visible — see the group below.
+  const handlesLive = hovered || selected;
+
   const left = Math.min(xA, xB);
   const right = Math.max(xA, xB);
   const zoneWidth = right - left;
@@ -390,17 +393,25 @@ export function PositionDraw({
       {/* Handles — always mounted (never unmounted/remounted on hover) so a
           fast hover-then-grab never races the state update that would
           otherwise need to land first for the handle to exist to click on.
-          Only their visibility is hover/selection-gated. */}
+          Only their visibility is hover/selection-gated.
+
+          `interactive` has to follow that same gate. Staying mounted is what
+          makes the grab reliable, but `opacity: 0` is purely visual: a faded
+          handle kept its full 32px grab circle, so on a phone — where there
+          is no hover, and an unselected box therefore shows no handles at all
+          — touching the box within reach of an invisible anchor resized the
+          position instead of selecting it. Nothing on screen explained it. */}
       <g style={{ opacity: hovered || selected ? 1 : 0, transition: "opacity 80ms" }}>
-        <DrawHandle x={left} y={yEntry} color={entryColor} selected={selected} onPointerDown={makeYDrag("entry")} />
-        <DrawHandle x={left} y={yStop} color={lossColor} selected={selected} shape="square" onPointerDown={makeYDrag("stop")} />
-        <DrawHandle x={left} y={yTarget} color={profitColor} selected={selected} shape="square" onPointerDown={makeYDrag("target")} />
+        <DrawHandle x={left} y={yEntry} color={entryColor} selected={selected} interactive={handlesLive} onPointerDown={makeYDrag("entry")} />
+        <DrawHandle x={left} y={yStop} color={lossColor} selected={selected} shape="square" interactive={handlesLive} onPointerDown={makeYDrag("stop")} />
+        <DrawHandle x={left} y={yTarget} color={profitColor} selected={selected} shape="square" interactive={handlesLive} onPointerDown={makeYDrag("target")} />
         <DrawHandle
           x={xB}
           y={(Math.min(profitY1, lossY1) + Math.max(profitY2, lossY2)) / 2}
           color={entryColor}
           selected={selected}
           shape="square"
+          interactive={handlesLive}
           onPointerDown={onRightHandleDrag}
         />
       </g>

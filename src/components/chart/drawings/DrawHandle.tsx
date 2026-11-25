@@ -16,6 +16,20 @@ interface Props {
   selected?: boolean;
   /** "square" for handles with resize-only behavior; default "circle". */
   shape?: "circle" | "square";
+  /**
+   * Whether the handle can be grabbed. Defaults to true.
+   *
+   * It exists for handles that are kept mounted but faded out: `opacity: 0`
+   * hides a handle visually and changes nothing about hit-testing, so an
+   * invisible anchor went on silently taking the gesture. On a long position —
+   * the only drawing that fades its handles rather than mounting them with the
+   * selection — touching the box anywhere near where a handle *would* be
+   * resized it instead of selecting it, which reads as the drawing doing
+   * something of its own accord. A parent `pointer-events: none` would not fix
+   * it either: the grab circle sets `all` on itself, and that wins over an
+   * ancestor.
+   */
+  interactive?: boolean;
   onPointerDown: (e: React.PointerEvent) => void;
 }
 
@@ -45,7 +59,13 @@ const VISUAL = { mouse: { r: 5, square: 9 }, touch: { r: 7, square: 13 } };
 const GRAB_R = { mouse: 8, touch: 16 };
 
 /** Small circle or square that the user can grab and drag. */
-export function DrawHandle({ x, y, shape = "circle", onPointerDown }: Props) {
+export function DrawHandle({
+  x,
+  y,
+  shape = "circle",
+  interactive = true,
+  onPointerDown,
+}: Props) {
   const coarse = useCoarsePointer();
   const visual = coarse ? VISUAL.touch : VISUAL.mouse;
   const grab = coarse ? GRAB_R.touch : GRAB_R.mouse;
@@ -81,8 +101,8 @@ export function DrawHandle({ x, y, shape = "circle", onPointerDown }: Props) {
         r={grab}
         fill="transparent"
         className="drawing-hit"
-        style={{ pointerEvents: "all", cursor: "grab" }}
-        onPointerDown={onPointerDown}
+        style={{ pointerEvents: interactive ? "all" : "none", cursor: "grab" }}
+        onPointerDown={interactive ? onPointerDown : undefined}
       />
       {shape === "square" ? (
         <rect
