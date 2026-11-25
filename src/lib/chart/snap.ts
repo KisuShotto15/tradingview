@@ -3,8 +3,18 @@ import type { Drawing, Point } from "@/lib/drawings/types";
 
 /**
  * Snap a price to the nearest OHLC level of the candle closest to the given
- * timestamp. Returns null if there are no candles, or if the nearest level is
- * further than `maxDistance` away in price (see `snapToLevels`).
+ * timestamp. Returns null if there are no candles, or if the cursor is nowhere
+ * near that candle.
+ *
+ * "Near" is the candle's own high–low span, widened by `maxDistance` at each
+ * end — not `maxDistance` from the nearest level. The difference is the whole
+ * behaviour: a pointer anywhere on the candle, body or wick, grabs the nearest
+ * of its four levels, which is what a magnet is for. Measuring from the levels
+ * instead meant that aiming at the middle of a long wick — the obvious place
+ * to aim — was too far from both ends to snap to either, so the magnet looked
+ * dead exactly where it was wanted. Outside the candle altogether it still
+ * declines, which is what keeps it from flinging a dragged point across the
+ * pane to the only level it could find.
  */
 export function snapToOHLC(
   price: number,
@@ -16,12 +26,15 @@ export function snapToOHLC(
   const candle = candles.reduce((best, c) =>
     Math.abs(c.time - time) < Math.abs(best.time - time) ? c : best,
   );
+  if (maxDistance !== undefined) {
+    const low = Math.min(candle.low, candle.open, candle.close, candle.high);
+    const high = Math.max(candle.low, candle.open, candle.close, candle.high);
+    if (price < low - maxDistance || price > high + maxDistance) return null;
+  }
   const levels = [candle.open, candle.high, candle.low, candle.close];
-  const best = levels.reduce((closest, level) =>
+  return levels.reduce((closest, level) =>
     Math.abs(level - price) < Math.abs(closest - price) ? level : closest,
   );
-  if (maxDistance !== undefined && Math.abs(best - price) > maxDistance) return null;
-  return best;
 }
 
 /** Price of the infinite line through `a` and `b`, evaluated at `time`. */
@@ -139,14 +152,15 @@ export function drawingPriceLevels(
  * nearest candle's OHLC and every level the other drawings expose at `time`.
  * Returns null when there is nothing to snap to.
  *
- * `maxDistance` is a **radius**, in price units, outside which nothing is
- * snapped. It is optional only so the pure tests can leave it out: every real
- * call site passes one, because without it there is always *some* nearest
- * level and the magnet therefore always fires. That is not a magnet, it is a
- * teleport — dragging a trend line's endpoint 70px up could land it 175px
- * down, on the far side of the candle whose OHLC happened to be nearest. The
- * caller converts a pixel radius into price through the series' own scale, so
- * the pull feels the same at any zoom level.
+ * `maxDistance` is a reach, in price units, beyond which nothing is snapped.
+ * It is optional only so the pure tests can leave it out: every real call site
+ * passes one, because without it there is always *some* nearest level and the
+ * magnet therefore always fires. That is not a magnet, it is a teleport —
+ * dragging a trend line's endpoint 70px up could land it 175px down, on the
+ * far side of the candle whose OHLC happened to be nearest. The caller
+ * converts a pixel reach into price through the series' own scale, so the pull
+ * feels the same at any zoom level. It is applied differently to the two kinds
+ * of candidate: see `snapToOHLC`.
  */
 export function snapToLevels(
   price: number,
@@ -156,13 +170,15 @@ export function snapToLevels(
   excludeId?: string,
   maxDistance?: number,
 ): number | null {
-  const candidates = drawingPriceLevels(drawings, time, excludeId);
-  const ohlc = snapToOHLC(price, time, candles);
+  // A drawing's level has no thickness, so it is taken on plain distance.
+  const candidates = drawingPriceLevels(drawings, time, excludeId).filter(
+    (level) => maxDistance === undefined || Math.abs(level - price) <= maxDistance,
+  );
+  // The candle is judged by its own span — see snapToOHLC.
+  const ohlc = snapToOHLC(price, time, candles, maxDistance);
   if (ohlc !== null) candidates.push(ohlc);
   if (candidates.length === 0) return null;
-  const best = candidates.reduce((closest, level) =>
+  return candidates.reduce((closest, level) =>
     Math.abs(level - price) < Math.abs(closest - price) ? level : closest,
   );
-  if (maxDistance !== undefined && Math.abs(best - price) > maxDistance) return null;
-  return best;
 }

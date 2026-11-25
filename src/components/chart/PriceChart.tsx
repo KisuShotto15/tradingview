@@ -251,6 +251,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
   // once and would otherwise close over the first render's `false`.
   /** Last legend key written, so an unchanged legend costs no render. */
   const hoverKeyRef = useRef<string | null>(null);
+  /** When the user last pressed on one of the chart's own canvases. */
+  const canvasGestureAtRef = useRef(0);
   const isMobileRef = useRef(isMobile);
   isMobileRef.current = isMobile;
   /**
@@ -1223,6 +1225,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
       }
       const target = e.target as Element | null;
       if (!target || target.tagName !== "CANVAS") return; // something above owns it
+      // Also the signal the price-axis "+" uses to tell a real gesture from
+      // the crosshair events the library emits on its own re-renders.
+      canvasGestureAtRef.current = Date.now();
       clickTrack.id = e.pointerId;
       clickTrack.x = e.clientX;
       clickTrack.y = e.clientY;
@@ -4201,6 +4206,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           candleSeries={candleSeriesRef.current}
           containerWidth={containerSize.width}
           mainPaneHeight={paneOffsets[0]?.height ?? containerSize.height}
+          gestureAt={() => canvasGestureAtRef.current}
           onPick={(price) => setQuickActionsPrice(price)}
         />
       )}
@@ -4258,12 +4264,23 @@ export function PriceChart({ symbol, timeframe }: Props) {
               .setIndicatorLogScale(key as IndicatorKey, !isLog);
           }
         };
-        const autoFit = () => {
+        /*
+         * Toggle, not a one-shot "fit".
+         *
+         * It always set `autoScale: true`, while rendering as a pressed
+         * toggle with `aria-pressed` — so it lit up, said it was on, and
+         * tapping it did nothing you could see. Auto-scale is on by default,
+         * which made it look permanently stuck. Turning it *off* is the half
+         * that matters: it is what lets the price axis be dragged to a scale
+         * of your own and have it stay there.
+         */
+        const toggleAutoScale = () => {
           if (!chartRef.current) return;
+          const next = !(autoScaleOn[key] ?? true);
           if (key === "main") {
-            // Rescale the price axis only — matching TradingView's "Auto"
-            // button, this must NOT touch pan/zoom (timeScale) at all.
-            candleSeriesRef.current?.priceScale().applyOptions({ autoScale: true });
+            // The price axis only — matching TradingView's "Auto" button,
+            // this must NOT touch pan/zoom (timeScale) at all.
+            candleSeriesRef.current?.priceScale().applyOptions({ autoScale: next });
           } else {
             // Reset just the price scale of the pane to auto
             const seriesByPane = {
@@ -4276,10 +4293,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
             } as const;
             const s = seriesByPane[key as keyof typeof seriesByPane];
             if (s) {
-              s.priceScale().applyOptions({ autoScale: true });
+              s.priceScale().applyOptions({ autoScale: next });
             }
           }
-          setAutoScaleOn((prev) => ({ ...prev, [key]: true }));
+          setAutoScaleOn((prev) => ({ ...prev, [key]: next }));
         };
         const autoScaleActive = autoScaleOn[key] ?? true;
         return (
@@ -4290,6 +4307,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
               right: 4,
             }}
             className="pointer-events-auto absolute z-10 flex items-center gap-0.5 [@media(hover:none)]:gap-1"
+            /* The cluster sits inside the element lightweight-charts was
+               built on, so a tap here also reaches the chart's own handlers
+               and leaves a crosshair stuck on screen — a scale button should
+               not be summoning a cursor. */
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerUp={(e) => e.stopPropagation()}
           >
             {/* Scale toggles.
                 These sit over the price axis, where every pixel competes with
@@ -4300,9 +4323,12 @@ export function PriceChart({ symbol, timeframe }: Props) {
                 dim text, and a solid light plate once the state is the
                 non-default one — the fill is the whole signal, so it has to
                 be unmistakable when it is there. */}
+            {/* `title` says what the tap will do, so it changes with the
+                state; `aria-label` is the control's stable name. */}
             <button
-              onClick={autoFit}
-              title="Auto scale"
+              onClick={toggleAutoScale}
+              title={autoScaleActive ? "Auto scale on — tap to set the scale yourself" : "Auto scale off — tap to fit the data"}
+              aria-label="Auto scale"
               aria-pressed={autoScaleActive}
               className={`flex h-[18px] w-[18px] [@media(hover:none)]:h-6 [@media(hover:none)]:w-6 items-center justify-center rounded-[3px] text-[9px] font-semibold leading-none transition-colors ${
                 autoScaleActive
@@ -4315,6 +4341,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
             <button
               onClick={toggleLog}
               title={isLog ? "Switch to linear" : "Switch to logarithmic"}
+              aria-label="Logarithmic scale"
               aria-pressed={isLog}
               className={`flex h-[18px] w-[18px] [@media(hover:none)]:h-6 [@media(hover:none)]:w-6 items-center justify-center rounded-[3px] text-[9px] font-semibold leading-none transition-colors ${
                 isLog

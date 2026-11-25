@@ -172,4 +172,20 @@ describe("snap radius", () => {
   it("stays unbounded when no radius is given", () => {
     expect(snapToLevels(20, 100, candles, [])).toBe(12);
   });
+
+  it("grabs anywhere on the candle, including the middle of a long wick", () => {
+    // The bug this covers: aiming at the middle of a wick is the obvious
+    // place to aim, and it is the furthest point from both of its ends. A
+    // reach measured from the levels found nothing there and the magnet
+    // looked dead. The candle below runs 8..12 with the body at 10..11, so
+    // 8.9 is a full 0.9 from the nearest level with a reach of only 0.5.
+    expect(snapToLevels(8.9, 100, [candle(100, 10, 12, 8, 11)], [], undefined, 0.5)).toBe(8);
+    expect(snapToLevels(11.6, 100, [candle(100, 10, 12, 8, 11)], [], undefined, 0.5)).toBe(12);
+  });
+
+  it("still declines once the cursor is off the candle", () => {
+    // Which is what stops a dragged point being flung across the pane.
+    expect(snapToLevels(7.4, 100, [candle(100, 10, 12, 8, 11)], [], undefined, 0.5)).toBe(null);
+    expect(snapToLevels(12.6, 100, [candle(100, 10, 12, 8, 11)], [], undefined, 0.5)).toBe(null);
+  });
 });

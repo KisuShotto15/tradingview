@@ -8,6 +8,13 @@ import type { IChartApi, ISeriesApi } from "lightweight-charts";
 const SIZE = 24;
 
 /**
+ * How long after a press on the chart a crosshair event still counts as that
+ * gesture's. Generous: a long press has to pass lightweight-charts' own delay
+ * before it moves the crosshair at all.
+ */
+const GESTURE_WINDOW_MS = 2000;
+
+/**
  * The touch-only "+" parked on the price scale at the crosshair's level.
  *
  * It is a component of its own, with its own crosshair subscription, for one
@@ -29,18 +36,25 @@ export function AxisPlusButton({
   candleSeries,
   containerWidth,
   mainPaneHeight,
+  gestureAt,
   onPick,
 }: {
   chart: IChartApi | null;
   candleSeries: ISeriesApi<"Candlestick"> | null;
   containerWidth: number;
   mainPaneHeight: number;
+  /** When the user last pressed on one of the chart's own canvases, in ms. */
+  gestureAt: () => number;
   onPick: (price: number) => void;
 }) {
   const btnRef = useRef<HTMLButtonElement>(null);
   /** Latest crosshair level. Written on every move, read on click. */
   const posRef = useRef<{ y: number; price: number } | null>(null);
   const [visible, setVisible] = useState(false);
+  const gestureAtRef = useRef(gestureAt);
+  useEffect(() => {
+    gestureAtRef.current = gestureAt;
+  });
   // Mirrors `visible` for the subscription, which is created once and would
   // otherwise close over the first render's value.
   const visibleRef = useRef(false);
@@ -59,12 +73,23 @@ export function AxisPlusButton({
         if (price === null || !isFinite(price as number)) return;
         posRef.current = { y: param.point.y, price: price as number };
         place(param.point.y);
-        // `sourceEvent` is what separates "the user put the crosshair here"
-        // from the crosshair events the library emits when the data changes
-        // under a stale position — dozens of those arrive at load, and
-        // showing the button for them would park it on a chart nobody has
-        // touched. Once it is up, those same events keep it in place.
-        if (!visibleRef.current && param.sourceEvent) {
+        /*
+         * Only a press on the chart itself may raise the button.
+         *
+         * `sourceEvent` is not the test it looks like: lightweight-charts
+         * fills it with a synthetic position object, not a DOM event, and
+         * emits one at (0, 0) whenever the chart re-renders — including the
+         * re-render caused by tapping the "A" scale button, which left a
+         * stray crosshair and this button pinned to the top edge of a chart
+         * the user had not touched. A recent press on one of the chart's own
+         * canvases is the real signal. Once the button is up, the library's
+         * own events keep it in place without needing one.
+         */
+        if (
+          !visibleRef.current &&
+          param.sourceEvent &&
+          Date.now() - gestureAtRef.current() < GESTURE_WINDOW_MS
+        ) {
           visibleRef.current = true;
           setVisible(true);
         }
