@@ -3247,6 +3247,19 @@ export function PriceChart({ symbol, timeframe }: Props) {
     }
   }
 
+  // The last-price block replaces lightweight-charts' own last-value label.
+  //
+  // `BarCountdown` draws price, change and countdown as one plate in the
+  // candle's colour; leaving the native label on stacked a second, grey box
+  // against it for the same number. Restored the moment the countdown is
+  // turned off in chart settings, since then the label is the only readout.
+  useEffect(() => {
+    const show = !(showBarCountdown && !replayActive);
+    for (const ref of [candleSeriesRef, lineSeriesRef, areaSeriesRef]) {
+      ref.current?.applyOptions({ lastValueVisible: show });
+    }
+  }, [showBarCountdown, replayActive, chartType]);
+
   // Re-apply the price pane's share whenever it changes.
   //
   // The sub-pane effects set it when they create their pane, but `useIsMobile`
@@ -3989,6 +4002,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           candleSeries={candleSeriesRef.current}
           timeframe={timeframe}
           lastPrice={lastPrice?.value ?? null}
+          lastPct={lastPrice?.pct ?? null}
           containerWidth={containerSize.width}
           mainPaneHeight={paneOffsets[0]?.height ?? containerSize.height}
           renderTick={renderTick}
@@ -4062,18 +4076,27 @@ export function PriceChart({ symbol, timeframe }: Props) {
           <div
             key={paneIdx}
             style={{
-              top: p.top + p.height - 26,
+              top: p.top + p.height - 23,
               right: 4,
             }}
             className="pointer-events-auto absolute z-10 flex items-center gap-0.5"
           >
+            {/* Scale toggles.
+                These sit over the price axis, where every pixel competes with
+                the axis labels, and auto-scale is on by default — so a filled
+                box for the *resting* state meant every pane carried two bright
+                blocks at all times. An outline at rest is only marginally
+                quieter: it is still a box. So: no box at all at rest, just dim
+                text, and a soft tint (not a solid plate) once the state is the
+                non-default one, which is the venue convention. */}
             <button
               onClick={autoFit}
               title="Auto scale"
-              className={`flex h-5 w-5 items-center justify-center rounded border border-tv-border text-[10px] font-semibold transition-colors ${
+              aria-pressed={autoScaleActive}
+              className={`flex h-[18px] w-[18px] items-center justify-center rounded-[3px] text-[9px] font-semibold leading-none transition-colors ${
                 autoScaleActive
-                  ? "bg-tv-blue/20 text-tv-blue"
-                  : "bg-tv-panel text-tv-text-muted hover:text-tv-text"
+                  ? "bg-tv-text/15 text-tv-text"
+                  : "text-tv-text-dim hover:text-tv-text"
               }`}
             >
               A
@@ -4081,10 +4104,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
             <button
               onClick={toggleLog}
               title={isLog ? "Switch to linear" : "Switch to logarithmic"}
-              className={`flex h-5 w-5 items-center justify-center rounded border border-tv-border text-[10px] font-semibold transition-colors ${
+              aria-pressed={isLog}
+              className={`flex h-[18px] w-[18px] items-center justify-center rounded-[3px] text-[9px] font-semibold leading-none transition-colors ${
                 isLog
-                  ? "bg-tv-blue/20 text-tv-blue"
-                  : "bg-tv-panel text-tv-text-muted hover:text-tv-text"
+                  ? "bg-tv-text/15 text-tv-text"
+                  : "text-tv-text-dim hover:text-tv-text"
               }`}
             >
               L

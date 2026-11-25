@@ -113,13 +113,34 @@ const OPTIONS: ChartTypeOption[] = [
 /** Subset of options shown as quick-toggle buttons before the dropdown chevron. */
 const QUICK_OPTIONS: ChartType[] = ["candles", "line", "area"];
 
-export function ChartTypeSelector() {
+interface Props {
+  /**
+   * Drop the three quick-toggle buttons and the frame around them, leaving a
+   * single icon button that opens the full menu.
+   *
+   * The mobile toolbar is one horizontally-scrolling row, so the trio plus a
+   * chevron inside its own bordered box was both the widest control in the bar
+   * and a second frame drawn inside a frame. Chart type is also the control a
+   * chart user reaches for least — candles are what the chart shows almost
+   * always — so it does not earn three permanent slots. The icon shown is the
+   * current type's, which is the state the quick toggles were conveying.
+   */
+  compact?: boolean;
+}
+
+export function ChartTypeSelector({ compact }: Props = {}) {
   const chartType = useChartStore((s) => s.chartType);
   const setChartType = useChartStore((s) => s.setChartType);
+  const CurrentIcon = (OPTIONS.find((o) => o.id === chartType) ?? OPTIONS[1]).Icon;
 
   return (
-    <div className="flex items-center gap-0.5 rounded border border-tv-border bg-tv-bg/50 px-0.5">
-      {QUICK_OPTIONS.map((id) => {
+    <div
+      className={cn(
+        "flex items-center",
+        compact ? "" : "gap-0.5 rounded border border-tv-border bg-tv-bg/50 px-0.5",
+      )}
+    >
+      {!compact && QUICK_OPTIONS.map((id) => {
         const opt = OPTIONS.find((o) => o.id === id);
         if (!opt) return null;
         const active = chartType === id;
@@ -143,9 +164,12 @@ export function ChartTypeSelector() {
       <DropdownMenu>
         <DropdownMenuTrigger
           aria-label="Chart type"
-          className="flex h-6 w-5 items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+          className={cn(
+            "flex items-center justify-center rounded text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
+            compact ? "h-7 w-7 active:bg-tv-panel-hover" : "h-6 w-5",
+          )}
         >
-          <ChevronDown className="h-3 w-3" />
+          {compact ? <CurrentIcon className="h-4 w-4" /> : <ChevronDown className="h-3 w-3" />}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-[180px] bg-tv-panel">
           {OPTIONS.map((opt, i) => {

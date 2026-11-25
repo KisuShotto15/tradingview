@@ -84,7 +84,7 @@ export function ChartScreen() {
 
       {/* Toolbar — scrolls horizontally rather than wrapping or clipping on a
           narrow phone, since it packs in every desktop header action. */}
-      <footer className="no-scrollbar flex shrink-0 items-center gap-1.5 overflow-x-auto border-t border-tv-border bg-tv-panel px-2 py-1.5 [@media(max-height:500px)]:py-0.5">
+      <footer className="no-scrollbar flex shrink-0 items-center gap-1 overflow-x-auto border-t border-tv-border bg-tv-panel px-1.5 py-1.5 [@media(max-height:500px)]:py-0.5">
         <SwipeChip
           label={symbol}
           onSwipe={nextSymbol}
@@ -123,12 +123,14 @@ export function ChartScreen() {
           <Layers className="h-4 w-4" />
         </button>
 
-        {/* Chart type lives here rather than in the primary group: candles
-            are what the chart shows almost always, and switching to a line
-            or area is a once-in-a-while decision — it does not earn a
-            permanent slot next to symbol and timeframe. */}
+        {/* Chart type: `compact`, so it is one icon button opening the full
+            menu rather than desktop's framed trio of quick toggles. Candles
+            are what the chart shows almost always, and switching to a line or
+            area is a once-in-a-while decision — it does not earn three
+            permanent slots, let alone a box of its own in a bar that is
+            already inside one. */}
         <div className="shrink-0">
-          <ChartTypeSelector />
+          <ChartTypeSelector compact />
         </div>
 
         {/* Secondary actions, after a divider. The bar scrolls, so ordering is
@@ -213,9 +215,14 @@ function SwipeChip({
       type="button"
       aria-label={ariaLabel}
       className={cn(
-        "relative shrink-0 select-none overflow-hidden rounded border border-tv-border bg-tv-bg text-sm font-semibold transition-colors",
-        compact ? "px-2 py-1 text-xs" : "px-2.5 py-1",
-        active && "bg-tv-panel-hover",
+        // No box. The toolbar sits on its own panel with a rule above it, so
+        // a border and a fill around each chip were a second frame inside a
+        // frame — the "tantos cuadros" effect. The values are the largest,
+        // boldest text down there; they do not need an outline to read as the
+        // things you act on. Pressing still gives feedback through the fill.
+        "relative shrink-0 select-none overflow-hidden rounded text-sm font-semibold transition-colors",
+        compact ? "px-1.5 py-1 text-xs" : "px-1.5 py-1",
+        active ? "bg-tv-panel-hover" : "bg-transparent",
       )}
       style={{ touchAction: "none" }}
       onPointerDown={(e) => {
