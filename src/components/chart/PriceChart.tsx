@@ -255,6 +255,9 @@ export function PriceChart({ symbol, timeframe }: Props) {
   /** Only surfaced on a phone: desktop has the same thing in `BottomPanel`,
    *  which the mobile shell does not render at all. */
   const feed = useFeedStatus(symbol);
+  /** Pointer type of the most recent press, so a `contextmenu` raised by a
+   *  touch long-press can be told apart from a real right-click. */
+  const lastPointerTypeRef = useRef<string>("mouse");
   const containerRef = useRef<HTMLDivElement>(null);
   const outerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -1112,8 +1115,23 @@ export function PriceChart({ symbol, timeframe }: Props) {
     containerRef.current.addEventListener("mouseup", onPaneMouseUp);
 
     // Right-click context menu — "Add alert at [price]"
+    //
+    // Touch is excluded, and that is the whole point of tracking the pointer
+    // type. A long press is how lightweight-charts summons the crosshair on a
+    // phone, and the browser raises `contextmenu` from that same gesture — so
+    // every attempt to read a price popped this menu over the chart instead.
+    // `preventDefault` still runs, to suppress the browser's own long-press
+    // callout; only our menu is skipped. Adding an alert from touch goes
+    // through the alerts sheet's "+", which opens the same dialog.
+    const onPointerTypeProbe = (e: PointerEvent) => {
+      lastPointerTypeRef.current = e.pointerType;
+    };
+    containerRef.current.addEventListener("pointerdown", onPointerTypeProbe, { capture: true });
+
     const onContextMenu = (e: MouseEvent) => {
       e.preventDefault();
+      const pt = lastPointerTypeRef.current;
+      if (pt === "touch" || pt === "pen") return;
       if (!candleSeriesRef.current || !containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -1125,6 +1143,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       setChartContextMenu({ x, y, price: price as number, region });
     };
     containerRef.current.addEventListener("contextmenu", onContextMenu);
+    const probeTarget = containerRef.current;
 
     recomputePaneOffsets();
     const initRect = containerRef.current.getBoundingClientRect();
@@ -1136,6 +1155,10 @@ export function PriceChart({ symbol, timeframe }: Props) {
       ro.disconnect();
       containerRef.current?.removeEventListener("mouseup", onPaneMouseUp);
       containerRef.current?.removeEventListener("contextmenu", onContextMenu);
+      // Captured target: the ref may already be null by teardown, and a
+      // capture-phase listener has to be removed with the same flag it was
+      // added with or it stays attached.
+      probeTarget.removeEventListener("pointerdown", onPointerTypeProbe, { capture: true });
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
