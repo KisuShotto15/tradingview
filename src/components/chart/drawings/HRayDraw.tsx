@@ -66,6 +66,10 @@ export function HRayDraw({
       onMove: (patch) => updateLive(drawing.id, patch as Partial<HRayDrawing>),
       onEnd: commitEnd,
     },
+    // The body of a horizontal line is the level itself, so a press on it is
+    // necessarily on the price being dragged: the magnet applies. See
+    // `use-drag-shape`, where it does not apply to a multi-point shape.
+    true,
   );
 
   return (
