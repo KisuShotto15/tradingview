@@ -77,7 +77,7 @@ export function HLineDraw({
           pointerEvents: "stroke",
           cursor: selected ? "ns-resize" : "pointer",
         }}
-        onMouseDown={(e) => {
+        onPointerDown={(e) => {
           if (selected) {
             dragLine(e);
           } else {

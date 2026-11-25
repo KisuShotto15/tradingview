@@ -108,7 +108,7 @@ export function PositionDraw({
    */
   function makeYDrag(field: "entry" | "stop" | "target") {
     const resizesWidth = field === "entry";
-    return (e: React.MouseEvent) => {
+    return (e: React.PointerEvent) => {
       if (!candleSeries || !container) return;
       if (resizesWidth && !chart) return;
       if (drawing.locked) return;
@@ -145,7 +145,7 @@ export function PositionDraw({
     };
   }
 
-  function onRightHandleDrag(e: React.MouseEvent) {
+  function onRightHandleDrag(e: React.PointerEvent) {
     if (!chart || !container) return;
     if (drawing.locked) return;
     e.preventDefault();
@@ -251,7 +251,7 @@ export function PositionDraw({
   const boundBottom = bottomY + pillH + handleR;
   const boundLeft = left - handleR;
 
-  function onZoneMouseDown(e: React.MouseEvent) {
+  function onZoneMouseDown(e: React.PointerEvent) {
     e.stopPropagation();
     onSelect();
     // Drag immediately — no need to click twice
@@ -270,7 +270,7 @@ export function PositionDraw({
         fill="transparent"
         className="drawing-hit"
         style={{ pointerEvents: "all", cursor: selected ? "move" : "pointer" }}
-        onMouseDown={onZoneMouseDown}
+        onPointerDown={onZoneMouseDown}
         onDoubleClick={(e) => { e.stopPropagation(); onEdit(); }}
       />
 
@@ -359,16 +359,16 @@ export function PositionDraw({
           otherwise need to land first for the handle to exist to click on.
           Only their visibility is hover/selection-gated. */}
       <g style={{ opacity: hovered || selected ? 1 : 0, transition: "opacity 80ms" }}>
-        <DrawHandle x={left} y={yEntry} color={entryColor} selected={selected} onMouseDown={makeYDrag("entry")} />
-        <DrawHandle x={left} y={yStop} color={lossColor} selected={selected} shape="square" onMouseDown={makeYDrag("stop")} />
-        <DrawHandle x={left} y={yTarget} color={profitColor} selected={selected} shape="square" onMouseDown={makeYDrag("target")} />
+        <DrawHandle x={left} y={yEntry} color={entryColor} selected={selected} onPointerDown={makeYDrag("entry")} />
+        <DrawHandle x={left} y={yStop} color={lossColor} selected={selected} shape="square" onPointerDown={makeYDrag("stop")} />
+        <DrawHandle x={left} y={yTarget} color={profitColor} selected={selected} shape="square" onPointerDown={makeYDrag("target")} />
         <DrawHandle
           x={xB}
           y={(Math.min(profitY1, lossY1) + Math.max(profitY2, lossY2)) / 2}
           color={entryColor}
           selected={selected}
           shape="square"
-          onMouseDown={onRightHandleDrag}
+          onPointerDown={onRightHandleDrag}
         />
       </g>
     </g>

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Layers, MoreHorizontal, Pencil, Redo2, Rewind, Undo2 } from "lucide-react";
+import { Layers, Magnet, MoreHorizontal, Pencil, Redo2, Rewind, Undo2 } from "lucide-react";
 import { useChartStore } from "@/lib/store/chart-store";
 import { useMobileStore } from "@/lib/store/mobile-store";
 import { useDrawings } from "@/lib/supabase/use-drawings";
+import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { useReplayStore } from "@/lib/replay/replay-store";
 import { PriceChart } from "@/components/chart/PriceChart";
 import { timeframeLabel } from "@/lib/chart/coords";
@@ -50,7 +51,23 @@ export function ChartScreen() {
   const watchlists = useChartStore((s) => s.watchlists);
   const activeWatchlistId = useChartStore((s) => s.activeWatchlistId);
   const openSheet = useMobileStore((s) => s.openSheet);
+  const tool = useChartStore((s) => s.tool);
+  const magnetMode = useChartStore((s) => s.magnetMode);
+  const toggleMagnetMode = useChartStore((s) => s.toggleMagnetMode);
+  const selectedDrawingId = useDrawingsStore((s) => s.selectedId);
   const { undo, redo } = useDrawings();
+
+  /**
+   * The magnet only earns a slot in the bar while it can do something: with a
+   * tool armed (it snaps each point as you place it) or with a drawing
+   * selected (it snaps while you drag). It lives in the drawing-tools sheet
+   * too, but that sheet closes the moment you pick a tool — so by the time
+   * the magnet matters, the only way to reach it there is to reopen the sheet
+   * and scroll back past the tool you just chose, which is how it came across
+   * as not existing at all.
+   */
+  const toolArmed = tool !== "cursor" && tool !== "eraser";
+  const showMagnet = toolArmed || selectedDrawingId !== null;
   const replayActive = useReplayStore((s) => s.active);
   const enterReplayPicking = useReplayStore((s) => s.enterPicking);
 
@@ -98,13 +115,32 @@ export function ChartScreen() {
           ariaLabel="Timeframe — tap to pick, swipe to cycle pinned"
           compact
         />
+        {/* Lit while a tool is armed: on a phone there is no Esc and no
+            cursor shape to tell you the next tap will draw something. */}
         <button
           onClick={() => openSheet("drawings")}
-          className="shrink-0 rounded p-1.5 text-tv-text-muted active:bg-tv-panel-hover"
+          className={cn(
+            "shrink-0 rounded p-1.5 active:bg-tv-panel-hover",
+            toolArmed ? "bg-tv-blue/15 text-tv-blue" : "text-tv-text-muted",
+          )}
           aria-label="Drawing tools"
+          aria-pressed={toolArmed}
         >
           <Pencil className="h-4 w-4" />
         </button>
+        {showMagnet && (
+          <button
+            onClick={toggleMagnetMode}
+            className={cn(
+              "shrink-0 rounded p-1.5 active:bg-tv-panel-hover",
+              magnetMode ? "bg-tv-blue/15 text-tv-blue" : "text-tv-text-muted",
+            )}
+            aria-label={magnetMode ? "Magnet on — snap to OHLC" : "Magnet off"}
+            aria-pressed={magnetMode}
+          >
+            <Magnet className="h-4 w-4" />
+          </button>
+        )}
         <button
           onClick={() => openSheet("indicators")}
           className="shrink-0 rounded p-1.5 text-tv-text-muted active:bg-tv-panel-hover"

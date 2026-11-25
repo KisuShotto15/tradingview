@@ -70,8 +70,8 @@ interface LineSpec {
   typeLabel?: string;
   /** Press-and-drag handlers for the TP/SL placement chips. Only set while the
    *  corresponding bracket is unset. */
-  onPlaceTp?: (e: React.MouseEvent) => void;
-  onPlaceSl?: (e: React.MouseEvent) => void;
+  onPlaceTp?: (e: React.PointerEvent) => void;
+  onPlaceSl?: (e: React.PointerEvent) => void;
   /** Dismiss the staged order (clears the preview line from the chart). */
   onCancel?: () => void;
   /** When true, render the line in a "modifying…" muted style. */
@@ -145,13 +145,13 @@ interface DragState {
 }
 
 function LineRow({
-  line, y, width, modifying, onMouseDown,
+  line, y, width, modifying, onPointerDown,
 }: {
   line: LineSpec;
   y: number;
   width: number;
   modifying: boolean;
-  onMouseDown: (e: React.MouseEvent) => void;
+  onPointerDown: (e: React.PointerEvent) => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const color = colorOf(line.kind);
@@ -192,7 +192,7 @@ function LineRow({
           pointerEvents: line.onDrag ? "stroke" : "none",
           cursor: line.onDrag ? "ns-resize" : "default",
         }}
-        onMouseDown={onMouseDown}
+        onPointerDown={onPointerDown}
       />
       {/* Visible line */}
       <line
@@ -264,7 +264,7 @@ function LineRow({
             fill="transparent"
             style={{ pointerEvents: "all", cursor: "pointer" }}
             onContextMenu={line.onContextMenu}
-            onMouseDown={(e) => {
+            onPointerDown={(e) => {
               e.preventDefault();
               e.stopPropagation();
             }}
@@ -308,7 +308,7 @@ function LineRow({
   );
 }
 
-function stopEvt(e: React.MouseEvent) {
+function stopEvt(e: React.SyntheticEvent) {
   e.preventDefault();
   e.stopPropagation();
 }
@@ -327,7 +327,7 @@ function bracketChip(
   y: number,
   yTop: number,
   h: number,
-  onMouseDown: (e: React.MouseEvent) => void,
+  onPointerDown: (e: React.PointerEvent) => void,
 ) {
   const w = chipWidth(label);
   return {
@@ -336,7 +336,7 @@ function bracketChip(
       <g
         key={key}
         style={{ pointerEvents: "all", cursor: "ns-resize" }}
-        onMouseDown={onMouseDown}
+        onPointerDown={onPointerDown}
       >
         <rect
           x={x} y={yTop} width={w} height={h} rx={3}
@@ -375,8 +375,8 @@ function EntryToolbarRow({
   onClose?: () => void;
   pending: PendingCtl | null;
   /** Present only while that bracket is unset — press-and-drag to place it. */
-  onPlaceTp?: (e: React.MouseEvent) => void;
-  onPlaceSl?: (e: React.MouseEvent) => void;
+  onPlaceTp?: (e: React.PointerEvent) => void;
+  onPlaceSl?: (e: React.PointerEvent) => void;
 }) {
   const H = 20;
   const GAP = 4;
@@ -409,7 +409,7 @@ function EntryToolbarRow({
           height={H}
           fill="transparent"
           style={{ pointerEvents: "all", cursor: "pointer" }}
-          onMouseDown={stopEvt}
+          onPointerDown={stopEvt}
           onClick={(e) => { stopEvt(e); onClose?.(); }}
         />
       </g>
@@ -448,7 +448,7 @@ function EntryToolbarRow({
     chips.push({
       w: 62,
       el: (x) => (
-        <g key="confirm" style={{ pointerEvents: "all", cursor: "pointer" }} onMouseDown={stopEvt}
+        <g key="confirm" style={{ pointerEvents: "all", cursor: "pointer" }} onPointerDown={stopEvt}
            onClick={(e) => { stopEvt(e); pending.onConfirm(); }}>
           <rect x={x} y={yTop} width={62} height={H} rx={3} fill={entryColor} />
           <text x={x + 31} y={y + 4} fill="#fff" fontSize={11} fontWeight="bold" textAnchor="middle">Confirm</text>
@@ -458,7 +458,7 @@ function EntryToolbarRow({
     chips.push({
       w: 62,
       el: (x) => (
-        <g key="discard" style={{ pointerEvents: "all", cursor: "pointer" }} onMouseDown={stopEvt}
+        <g key="discard" style={{ pointerEvents: "all", cursor: "pointer" }} onPointerDown={stopEvt}
            onClick={(e) => { stopEvt(e); pending.onDiscard(); }}>
           <rect x={x} y={yTop} width={62} height={H} rx={3} fill="#2a2e39" stroke="#434651" />
           <text x={x + 31} y={y + 4} fill="#d1d4dc" fontSize={11} textAnchor="middle">Discard</text>
@@ -493,7 +493,7 @@ function EntryToolbarRow({
  */
 function PreviewOrderRow({
   y, width, qty, side, typeLabel,
-  onPlaceTp, onPlaceSl, onCancel, onMouseDown,
+  onPlaceTp, onPlaceSl, onCancel, onPointerDown,
 }: {
   y: number;
   width: number;
@@ -501,10 +501,10 @@ function PreviewOrderRow({
   side: "BUY" | "SELL";
   typeLabel: string;
   /** Present only while that bracket is unset — press-and-drag to place it. */
-  onPlaceTp?: (e: React.MouseEvent) => void;
-  onPlaceSl?: (e: React.MouseEvent) => void;
+  onPlaceTp?: (e: React.PointerEvent) => void;
+  onPlaceSl?: (e: React.PointerEvent) => void;
   onCancel?: () => void;
-  onMouseDown: (e: React.MouseEvent) => void;
+  onPointerDown: (e: React.PointerEvent) => void;
 }) {
   const H = 20;
   const GAP = 4;
@@ -534,7 +534,7 @@ function PreviewOrderRow({
           height={H}
           fill="transparent"
           style={{ pointerEvents: "all", cursor: "pointer" }}
-          onMouseDown={stopEvt}
+          onPointerDown={stopEvt}
           onClick={(e) => { stopEvt(e); onCancel?.(); }}
         />
       </g>
@@ -576,7 +576,7 @@ function PreviewOrderRow({
         x1={0} x2={width} y1={y} y2={y}
         stroke="transparent" strokeWidth={10}
         style={{ pointerEvents: "stroke", cursor: "ns-resize" }}
-        onMouseDown={onMouseDown}
+        onPointerDown={onPointerDown}
       />
       <line
         x1={0} x2={lineEnd} y1={y} y2={y}
@@ -803,7 +803,7 @@ export function OrderLinesLayer({
   }, [candleSeries, container]);
 
   function startDrag(
-    e: React.MouseEvent,
+    e: React.PointerEvent,
     onDrag: (price: number) => void,
     onCommit?: (price: number) => void,
     /** Seeds `lastPrice` so a click that never moves still commits (used by the
@@ -982,7 +982,7 @@ export function OrderLinesLayer({
 
     // Press-and-drag placement for a bracket the position doesn't have yet.
     const startPlace = (id: string, pct: number, favourable: boolean) =>
-      (e: React.MouseEvent) => {
+      (e: React.PointerEvent) => {
         const dir = isLong === favourable ? 1 : -1;
         const dflt = pos.entryPrice * (1 + dir * pct);
         setPreview({ id, price: dflt });
@@ -1127,11 +1127,16 @@ export function OrderLinesLayer({
     }
   }
 
+  // `touchAction: "none"` below: see the note in DrawingsLayer. Same
+  // overlay-on-a-pan-surface problem (a finger dragging a TP/SL line was
+  // taken over by the chart's own pan a few pixels in), same fix, and the
+  // same reason it belongs on the <svg> root rather than on the hit shapes
+  // inside it — Chrome ignores touch-action on SVG shapes.
   return (
     <>
     <svg
       className="pointer-events-none absolute inset-0 z-20 h-full w-full"
-      style={{ overflow: "visible" }}
+      style={{ overflow: "visible", touchAction: "none" }}
     >
       <defs>
         <clipPath id="order-lines-clip">
@@ -1216,7 +1221,7 @@ export function OrderLinesLayer({
                   onPlaceTp={line.onPlaceTp}
                   onPlaceSl={line.onPlaceSl}
                   onCancel={line.onCancel}
-                  onMouseDown={(e) => {
+                  onPointerDown={(e) => {
                     if (line.onDrag) startDrag(e, line.onDrag, line.onCommit);
                   }}
                 />
@@ -1244,7 +1249,7 @@ export function OrderLinesLayer({
                 y={yPx}
                 width={plotW}
                 modifying={line.modifying ?? false}
-                onMouseDown={(e) => {
+                onPointerDown={(e) => {
                   if (line.onDrag) startDrag(e, line.onDrag, line.onCommit);
                 }}
               />

@@ -90,7 +90,7 @@ export function XabcdDraw({
         strokeWidth={strokeWidth}
         className="drawing-hit"
         style={{ pointerEvents: "stroke", cursor: selected ? "move" : "pointer" }}
-        onMouseDown={(e) => {
+        onPointerDown={(e) => {
           if (selected) {
             dragShape(e);
           } else {
@@ -113,7 +113,7 @@ export function XabcdDraw({
         </g>
       ))}
       {selected && pts.map((p, i) => (
-        <DrawHandle key={`h${i}`} x={p.x} y={p.y} color={color} selected onMouseDown={drags[i]} />
+        <DrawHandle key={`h${i}`} x={p.x} y={p.y} color={color} selected onPointerDown={drags[i]} />
       ))}
     </g>
   );

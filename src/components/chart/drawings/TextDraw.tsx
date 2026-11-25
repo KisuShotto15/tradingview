@@ -97,7 +97,7 @@ export function TextDraw({
             }
             e.stopPropagation();
           }}
-          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
           className="resize-none rounded border border-tv-blue bg-tv-panel px-1 py-0.5 outline-none"
           style={{
             pointerEvents: "auto",
@@ -125,7 +125,7 @@ export function TextDraw({
         fill="transparent"
         className="drawing-hit"
         style={{ pointerEvents: "all", cursor: selected ? "move" : "pointer" }}
-        onMouseDown={(e) => {
+        onPointerDown={(e) => {
           if (selected) {
             dragText(e);
           } else {

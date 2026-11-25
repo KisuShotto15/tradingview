@@ -72,10 +72,28 @@ export function DrawingsLayer({
 
   const clipH = mainPaneHeight ?? height;
   const clipW = chartAreaWidth && chartAreaWidth > 0 ? chartAreaWidth : width;
+  /*
+   * `touchAction: "none"` on the <svg> below is what makes a drawing
+   * draggable with a finger. This overlay sits on lightweight-charts, which
+   * is itself a pan/pinch surface, so without opting out the browser claims
+   * the gesture as a chart pan about three moves in and fires
+   * `pointercancel`: the drag starts and is then taken away, which looks
+   * exactly like it never worked.
+   *
+   * It has to go on the <svg>, not on the hit shapes. Chrome reads
+   * touch-action off the nearest ancestor that generates a CSS box, and SVG
+   * shapes generate none — a `.drawing-hit { touch-action: none }` rule
+   * reports `none` from getComputedStyle and is then ignored, which is a
+   * convincing way to look fixed while still cancelling every drag.
+   *
+   * Putting it on the root costs nothing: the <svg> is `pointer-events:
+   * none`, so it is never itself a hit target, and a touch aimed at the
+   * chart behind it keeps panning normally.
+   */
   return (
     <svg
       className="pointer-events-none absolute inset-0 z-10 h-full w-full"
-      style={{ overflow: "visible" }}
+      style={{ overflow: "visible", touchAction: "none" }}
     >
       <defs>
         <clipPath id="drawings-main-pane">

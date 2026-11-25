@@ -90,7 +90,7 @@ export function RectangleDraw({
         stroke="none"
         className="drawing-hit"
         style={{ cursor: selected ? "move" : "pointer", pointerEvents: "all" }}
-        onMouseDown={(e) => {
+        onPointerDown={(e) => {
           if (drawing.locked) return;
           if (selected) {
             dragRect(e);
@@ -121,13 +121,13 @@ export function RectangleDraw({
       {/* Corner handles */}
       {selected && (
         <>
-          <DrawHandle x={ax} y={ay} color={borderColor} selected onMouseDown={dragA} />
-          <DrawHandle x={bx} y={by} color={borderColor} selected onMouseDown={dragB} />
-          <DrawHandle x={bx} y={ay} color={borderColor} selected onMouseDown={(e) => {
+          <DrawHandle x={ax} y={ay} color={borderColor} selected onPointerDown={dragA} />
+          <DrawHandle x={bx} y={by} color={borderColor} selected onPointerDown={dragB} />
+          <DrawHandle x={bx} y={ay} color={borderColor} selected onPointerDown={(e) => {
             snap();
             dragB(e);
           }} />
-          <DrawHandle x={ax} y={by} color={borderColor} selected onMouseDown={(e) => {
+          <DrawHandle x={ax} y={by} color={borderColor} selected onPointerDown={(e) => {
             snap();
             dragA(e);
           }} />

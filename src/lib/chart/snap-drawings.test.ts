@@ -145,3 +145,31 @@ describe("snapToLevels", () => {
     expect(snapToLevels(30, 100, [], [])).toBeNull();
   });
 });
+
+describe("snap radius", () => {
+  const candles = [candle(100, 10, 12, 8, 11)];
+
+  it("snaps when the level is inside the radius", () => {
+    // 11.9 is 0.1 from the high (12); radius 0.5 covers it.
+    expect(snapToLevels(11.9, 100, candles, [], undefined, 0.5)).toBe(12);
+  });
+
+  it("leaves the price alone when every level is outside the radius", () => {
+    // The nearest level is the high at 12, a full 8 away — a magnet that
+    // fires here is a teleport, which is what dragging an endpoint used to do.
+    expect(snapToLevels(20, 100, candles, [], undefined, 0.5)).toBe(null);
+  });
+
+  it("measures the radius against the chosen candidate, drawings included", () => {
+    const d: Drawing = { ...base, id: "a", kind: "hline", price: 19.8 };
+    // The hline at 19.8 is nearer than the candle's high, and inside radius.
+    expect(snapToLevels(20, 100, candles, [d], undefined, 0.5)).toBe(19.8);
+    // Same level, tighter radius → nothing snaps, rather than falling back to
+    // the far-away OHLC.
+    expect(snapToLevels(20, 100, candles, [d], undefined, 0.1)).toBe(null);
+  });
+
+  it("stays unbounded when no radius is given", () => {
+    expect(snapToLevels(20, 100, candles, [])).toBe(12);
+  });
+});

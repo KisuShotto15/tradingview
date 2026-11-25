@@ -99,7 +99,7 @@ export function PriceRangeDraw({
         strokeDasharray={drawing.lineStyle === 1 ? "6 4" : drawing.lineStyle === 2 ? "2 4" : undefined}
         className="drawing-hit"
         style={{ pointerEvents: "all", cursor: selected ? "move" : "pointer" }}
-        onMouseDown={(e) => {
+        onPointerDown={(e) => {
           if (selected) {
             dragShape(e);
           } else {
@@ -122,8 +122,8 @@ export function PriceRangeDraw({
       </text>
       {selected && (
         <>
-          <DrawHandle x={xA} y={yA} color={baseColor} selected onMouseDown={dragA} />
-          <DrawHandle x={xB} y={yB} color={baseColor} selected onMouseDown={dragB} />
+          <DrawHandle x={xA} y={yA} color={baseColor} selected onPointerDown={dragA} />
+          <DrawHandle x={xB} y={yB} color={baseColor} selected onPointerDown={dragB} />
         </>
       )}
     </g>

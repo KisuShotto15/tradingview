@@ -6,7 +6,8 @@ import { useChartStore } from "@/lib/store/chart-store";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
-import { magnetSnapDragging } from "@/lib/chart/magnet";
+import { magnetRadius, magnetSnapDragging } from "@/lib/chart/magnet";
+import { DRAG_SLOP_PX, beginPointerDrag } from "./pointer-drag";
 
 /** True if the currently-selected drawing is locked (no drag allowed). */
 function selectedIsLocked(): boolean {
@@ -23,7 +24,7 @@ interface ShapeDragHandlers<T> {
 }
 
 /**
- * Drag the whole shape — captures the original drawing on mousedown, tracks
+ * Drag the whole shape — captures the original drawing on pointer down, tracks
  * cursor delta in (time, price) space, and emits a patch via applyDelta.
  */
 export function useDragShape<T>(
@@ -42,7 +43,7 @@ export function useDragShape<T>(
   getRef.current = getCurrent;
 
   return useCallback(
-    (e: React.MouseEvent) => {
+    (e: React.PointerEvent) => {
       if (!chart || !candleSeries || !container) return;
       if (selectedIsLocked()) return; // drawing is locked → no drag
       e.preventDefault();
@@ -62,35 +63,34 @@ export function useDragShape<T>(
 
       handlersRef.current.onStart?.();
 
-      function onMove(ev: MouseEvent) {
-        if (!chart || !candleSeries) return;
-        const x = ev.clientX - rect.left;
-        const y = ev.clientY - rect.top;
-        const t = xToTime(chart, x, globalCandlesRef.current, interval);
-        const rawP = candleSeries.coordinateToPrice(y);
-        if (t === null || rawP === null) return;
-        let p = rawP as number;
-        // Magnet snap: held Ctrl/Cmd, or the persistent magnet-mode toggle
-        if (ev.ctrlKey || ev.metaKey || useChartStore.getState().magnetMode) {
-          const snapped = magnetSnapDragging(p, t, globalCandlesRef.current);
-          if (snapped !== null) p = snapped;
-        }
-        const dt = t - startTime!;
-        const dp = p - startPrice;
-        const patch = applyRef.current(original!, dt, dp);
-        handlersRef.current.onMove(patch);
-      }
-
-      function onUp() {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-        document.body.style.cursor = "";
-        handlersRef.current.onEnd?.();
-      }
-
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-      document.body.style.cursor = "grabbing";
+      beginPointerDrag(e, {
+        onMove(ev) {
+          if (!chart || !candleSeries) return;
+          const x = ev.clientX - rect.left;
+          const y = ev.clientY - rect.top;
+          const t = xToTime(chart, x, globalCandlesRef.current, interval);
+          const rawP = candleSeries.coordinateToPrice(y);
+          if (t === null || rawP === null) return;
+          let p = rawP as number;
+          // Magnet snap: held Ctrl/Cmd, or the persistent magnet-mode toggle
+          if (ev.ctrlKey || ev.metaKey || useChartStore.getState().magnetMode) {
+            const snapped = magnetSnapDragging(
+              p,
+              t,
+              globalCandlesRef.current,
+              magnetRadius(candleSeries, y),
+            );
+            if (snapped !== null) p = snapped;
+          }
+          const dt = t - startTime;
+          const dp = p - startPrice;
+          handlersRef.current.onMove(applyRef.current(original, dt, dp));
+        },
+        onEnd(moved) {
+          if (moved) handlersRef.current.onEnd?.();
+        },
+        slop: DRAG_SLOP_PX,
+      });
     },
     [chart, candleSeries, container],
   );

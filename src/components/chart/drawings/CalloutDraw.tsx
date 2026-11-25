@@ -108,7 +108,7 @@ export function CalloutDraw({
               }
               e.stopPropagation();
             }}
-            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
             className="resize-none rounded border bg-tv-panel px-1.5 py-1 outline-none"
             style={{ pointerEvents: "auto", color, borderColor: color, fontSize, width: Math.max(boxW, 150), minHeight: boxH }}
           />
@@ -126,7 +126,7 @@ export function CalloutDraw({
             strokeWidth={selected ? 1.5 : 1}
             className="drawing-hit"
             style={{ pointerEvents: "all", cursor: selected ? "move" : "pointer" }}
-            onMouseDown={(e) => {
+            onPointerDown={(e) => {
               if (selected) {
                 dragTarget(e);
               } else {
@@ -152,8 +152,8 @@ export function CalloutDraw({
 
       {selected && !editing && (
         <>
-          <DrawHandle x={anchorX} y={anchorY} color={color} selected onMouseDown={dragAnchor} />
-          <DrawHandle x={targetX} y={targetY} color={color} selected onMouseDown={dragTarget} />
+          <DrawHandle x={anchorX} y={anchorY} color={color} selected onPointerDown={dragAnchor} />
+          <DrawHandle x={targetX} y={targetY} color={color} selected onPointerDown={dragTarget} />
         </>
       )}
     </g>

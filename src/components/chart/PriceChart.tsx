@@ -72,7 +72,7 @@ import { getTvColors } from "@/lib/chart/theme";
 import { useReplayStore } from "@/lib/replay/replay-store";
 import { ReplayToolbar } from "./ReplayToolbar";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
-import { magnetSnap } from "@/lib/chart/magnet";
+import { magnetRadius, magnetSnap } from "@/lib/chart/magnet";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { unifiedHistory, registerViewportApplier, isApplyingHistory } from "@/lib/history";
@@ -538,7 +538,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
     chartRef.current = chart;
 
     // Click handler — drawing tools
-    chart.subscribeClick((param) => {
+    const handleChartClick = (param: MouseEventParams) => {
       if (!param.point || !candleSeriesRef.current) return;
       const rawPrice = candleSeriesRef.current.coordinateToPrice(param.point.y);
       if (rawPrice === null || !isFinite(rawPrice as number)) return;
@@ -578,7 +578,13 @@ export function PriceChart({ symbol, timeframe }: Props) {
         (param.sourceEvent?.ctrlKey || useChartStore.getState().magnetMode) &&
         resolvedTime !== null
       ) {
-        const snapped = magnetSnap(price, resolvedTime, candlesRef.current);
+        const snapped = magnetSnap(
+          price,
+          resolvedTime,
+          candlesRef.current,
+          undefined,
+          magnetRadius(candleSeriesRef.current, param.point.y),
+        );
         if (snapped !== null) price = snapped;
       }
 
@@ -923,7 +929,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           });
         }
       }
-    });
+    };
 
     // Crosshair handler
     chart.subscribeCrosshairMove((param) => {
@@ -962,7 +968,13 @@ export function PriceChart({ symbol, timeframe }: Props) {
         cursorPrice !== null;
       const magnetActive = param.sourceEvent?.ctrlKey || useChartStore.getState().magnetMode;
       if (magnetActive && tracksMagnet) {
-        const snapped = magnetSnap(cursorPrice!, cursorTime!, candlesRef.current);
+        const snapped = magnetSnap(
+          cursorPrice!,
+          cursorTime!,
+          candlesRef.current,
+          undefined,
+          param.point ? magnetRadius(candleSeriesRef.current, param.point.y) : undefined,
+        );
         setMagnetTarget({ time: cursorTime!, price: snapped ?? cursorPrice! });
       } else {
         setMagnetTarget((prev) => (prev === null ? prev : null));
@@ -988,7 +1000,13 @@ export function PriceChart({ symbol, timeframe }: Props) {
         // Apply snap to preview cursor if Ctrl held
         let pc: { time: number; price: number } = { time: cursorTime, price: cursorPrice };
         if (magnetActive) {
-          const snapped = magnetSnap(cursorPrice, cursorTime, candlesRef.current);
+          const snapped = magnetSnap(
+            cursorPrice,
+            cursorTime,
+            candlesRef.current,
+            undefined,
+            param.point ? magnetRadius(candleSeriesRef.current, param.point.y) : undefined,
+          );
           if (snapped !== null) pc = { time: cursorTime, price: snapped };
         }
         // Shift held → constrain the preview to horizontal/vertical for line tools.
@@ -1128,6 +1146,79 @@ export function PriceChart({ symbol, timeframe }: Props) {
     };
     containerRef.current.addEventListener("pointerdown", onPointerTypeProbe, { capture: true });
 
+    /*
+     * Chart clicks and taps are recognised here rather than through
+     * `chart.subscribeClick`.
+     *
+     * lightweight-charts counts clicks itself, and a second one inside 500ms
+     * fires **no** click event at all unless it landed within a few pixels of
+     * the first (5px for a mouse, 30px for a tap) — it is being held as the
+     * possible second half of a double-click. Every two-point drawing — trend
+     * line, ray, arrow, rectangle, fib, channel, long/short, the ranges,
+     * XABCD, measure — is placed with two clicks that are deliberately far
+     * apart, so placing one at any natural speed silently lost the second
+     * point: the first stayed armed and nothing appeared. A one-click drawing
+     * such as a horizontal line never shows it, which is why this read as
+     * "some drawings don't work". It is worst on a phone, where the window is
+     * 500ms either way and tapping is quick, but a fast mouse does it too.
+     *
+     * A click here is: press and release with the same pointer, little
+     * movement (a bigger allowance for a finger than a mouse), not held long
+     * enough to be a long-press, and not starting on an overlay — the SVG
+     * layers above run their own selection and dragging, and a press that
+     * selects a drawing would otherwise bubble up here and deselect it on
+     * release.
+     */
+    const CLICK_SLOP_PX = { mouse: 5, touch: 12 };
+    const LONG_PRESS_MS = 600;
+    const clickTrack = { id: -1, x: 0, y: 0, t: 0, ok: false };
+
+    const onClickDown = (e: PointerEvent) => {
+      // A second pointer means a pinch or a multi-touch gesture, not a click.
+      if (clickTrack.ok && e.pointerId !== clickTrack.id) {
+        clickTrack.ok = false;
+        return;
+      }
+      const target = e.target as Element | null;
+      if (target && (target as SVGElement).ownerSVGElement) return; // overlay owns it
+      clickTrack.id = e.pointerId;
+      clickTrack.x = e.clientX;
+      clickTrack.y = e.clientY;
+      clickTrack.t = Date.now();
+      clickTrack.ok = true;
+    };
+
+    const onClickUp = (e: PointerEvent) => {
+      if (!clickTrack.ok || e.pointerId !== clickTrack.id) return;
+      clickTrack.ok = false;
+      const slop = e.pointerType === "mouse" ? CLICK_SLOP_PX.mouse : CLICK_SLOP_PX.touch;
+      // A drag is a pan, and a long press is the crosshair — neither clicks.
+      if (Math.abs(e.clientX - clickTrack.x) > slop) return;
+      if (Math.abs(e.clientY - clickTrack.y) > slop) return;
+      if (Date.now() - clickTrack.t > LONG_PRESS_MS) return;
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      // Past the time scale's width is the price axis, which is not a
+      // placement surface — lightweight-charts keeps its own gestures there.
+      if (x > chart.timeScale().width()) return;
+      // Match what the library's own param carried: the bar's timestamp while
+      // the click is over the data, and nothing past the last bar so the
+      // handler falls back to extrapolating.
+      const logical = chart.timeScale().coordinateToLogical(x);
+      const bars = candlesRef.current;
+      const time =
+        logical !== null && bars.length > 0 && logical >= 0 && logical <= bars.length - 1
+          ? bars[Math.round(logical)].time
+          : undefined;
+      handleChartClick({ point: { x, y }, time } as unknown as MouseEventParams);
+    };
+
+    containerRef.current.addEventListener("pointerdown", onClickDown, { capture: true });
+    containerRef.current.addEventListener("pointerup", onClickUp);
+
     const onContextMenu = (e: MouseEvent) => {
       e.preventDefault();
       const pt = lastPointerTypeRef.current;
@@ -1159,6 +1250,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
       // capture-phase listener has to be removed with the same flag it was
       // added with or it stays attached.
       probeTarget.removeEventListener("pointerdown", onPointerTypeProbe, { capture: true });
+      probeTarget.removeEventListener("pointerdown", onClickDown, { capture: true });
+      probeTarget.removeEventListener("pointerup", onClickUp);
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
@@ -2423,7 +2516,13 @@ export function PriceChart({ symbol, timeframe }: Props) {
       let price = rawPrice as number;
       const time = t;
       if (e.ctrlKey || e.metaKey || useChartStore.getState().magnetMode) {
-        const snapped = magnetSnap(price, time, candlesRef.current);
+        const snapped = magnetSnap(
+          price,
+          time,
+          candlesRef.current,
+          undefined,
+          magnetRadius(candleSeriesRef.current, y),
+        );
         if (snapped !== null) price = snapped;
         setMagnetTarget({ time, price });
       }
@@ -4086,16 +4185,17 @@ export function PriceChart({ symbol, timeframe }: Props) {
                 the axis labels, and auto-scale is on by default — so a filled
                 box for the *resting* state meant every pane carried two bright
                 blocks at all times. An outline at rest is only marginally
-                quieter: it is still a box. So: no box at all at rest, just dim
-                text, and a soft tint (not a solid plate) once the state is the
-                non-default one, which is the venue convention. */}
+                quieter: it is still a box. So: no box at all at rest, just
+                dim text, and a solid light plate once the state is the
+                non-default one — the fill is the whole signal, so it has to
+                be unmistakable when it is there. */}
             <button
               onClick={autoFit}
               title="Auto scale"
               aria-pressed={autoScaleActive}
               className={`flex h-[18px] w-[18px] items-center justify-center rounded-[3px] text-[9px] font-semibold leading-none transition-colors ${
                 autoScaleActive
-                  ? "bg-tv-text/15 text-tv-text"
+                  ? "bg-tv-text/90 text-tv-bg"
                   : "text-tv-text-dim hover:text-tv-text"
               }`}
             >
@@ -4107,7 +4207,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
               aria-pressed={isLog}
               className={`flex h-[18px] w-[18px] items-center justify-center rounded-[3px] text-[9px] font-semibold leading-none transition-colors ${
                 isLog
-                  ? "bg-tv-text/15 text-tv-text"
+                  ? "bg-tv-text/90 text-tv-bg"
                   : "text-tv-text-dim hover:text-tv-text"
               }`}
             >

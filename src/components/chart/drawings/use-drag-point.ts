@@ -7,7 +7,8 @@ import { useChartStore } from "@/lib/store/chart-store";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
-import { magnetSnapDragging } from "@/lib/chart/magnet";
+import { magnetRadius, magnetSnapDragging } from "@/lib/chart/magnet";
+import { beginPointerDrag } from "./pointer-drag";
 
 /** True if the currently-selected drawing is locked. */
 function selectedIsLocked(): boolean {
@@ -24,9 +25,9 @@ interface DragHandlers {
 }
 
 /**
- * Returns a starter that begins dragging on mouse down. While dragging,
- * converts pixel coords back to (time, price) and calls onMove.
- * Supports timestamps past the last candle via xToTime extrapolation.
+ * Returns a starter that begins dragging a single anchor on pointer down.
+ * While dragging, converts pixel coords back to (time, price) and calls
+ * onMove. Supports timestamps past the last candle via xToTime extrapolation.
  */
 export function useDragPoint(
   chart: IChartApi | null,
@@ -35,7 +36,7 @@ export function useDragPoint(
   handlers: DragHandlers,
 ) {
   return useCallback(
-    (e: React.MouseEvent) => {
+    (e: React.PointerEvent) => {
       if (!chart || !candleSeries || !container) return;
       if (selectedIsLocked()) return; // drawing is locked → no drag
       e.preventDefault();
@@ -58,28 +59,27 @@ export function useDragPoint(
         if (time === null) return null;
         let price = rawPrice as number;
         if (snap) {
-          const snapped = magnetSnapDragging(price, time, globalCandlesRef.current);
+          const snapped = magnetSnapDragging(
+            price,
+            time,
+            globalCandlesRef.current,
+            magnetRadius(candleSeries, y),
+          );
           if (snapped !== null) price = snapped;
         }
         return { time, price };
       }
 
-      function onMove(ev: MouseEvent) {
-        const snap = ev.ctrlKey || ev.metaKey || useChartStore.getState().magnetMode;
-        const pt = toPoint(ev.clientX, ev.clientY, snap);
-        if (pt) handlers.onMove(pt);
-      }
-
-      function onUp() {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-        document.body.style.cursor = "";
-        if (handlers.onEnd) handlers.onEnd();
-      }
-
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-      document.body.style.cursor = "grabbing";
+      beginPointerDrag(e, {
+        onMove(ev) {
+          const snap = ev.ctrlKey || ev.metaKey || useChartStore.getState().magnetMode;
+          const pt = toPoint(ev.clientX, ev.clientY, snap);
+          if (pt) handlers.onMove(pt);
+        },
+        onEnd(moved) {
+          if (moved && handlers.onEnd) handlers.onEnd();
+        },
+      });
     },
     [chart, candleSeries, container, handlers],
   );

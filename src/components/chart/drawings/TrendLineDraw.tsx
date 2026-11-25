@@ -98,7 +98,7 @@ export function TrendLineDraw({
           pointerEvents: "stroke",
           cursor: selected ? "move" : "pointer",
         }}
-        onMouseDown={(e) => {
+        onPointerDown={(e) => {
           if (selected) {
             dragLine(e);
           } else {
@@ -120,8 +120,8 @@ export function TrendLineDraw({
       />
       {selected && (
         <>
-          <DrawHandle x={ax} y={ay} color={color} selected onMouseDown={dragA} />
-          <DrawHandle x={bx} y={by} color={color} selected onMouseDown={dragB} />
+          <DrawHandle x={ax} y={ay} color={color} selected onPointerDown={dragA} />
+          <DrawHandle x={bx} y={by} color={color} selected onPointerDown={dragB} />
         </>
       )}
     </g>
