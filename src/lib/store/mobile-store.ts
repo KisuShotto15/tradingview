@@ -20,7 +20,8 @@ interface MobileState {
     | "chartSettings"
     | "alerts"
     | "apiKey"
-    | "journal";
+    | "journal"
+    | "objects";
   openSheet: (s: NonNullable<MobileState["sheet"]>) => void;
   closeSheet: () => void;
 }

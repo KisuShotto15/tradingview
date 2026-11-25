@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Pencil, MoreHorizontal, Redo2, Rewind, Undo2 } from "lucide-react";
+import { Layers, MoreHorizontal, Pencil, Redo2, Rewind, Undo2 } from "lucide-react";
 import { useChartStore } from "@/lib/store/chart-store";
 import { useMobileStore } from "@/lib/store/mobile-store";
 import { useDrawings } from "@/lib/supabase/use-drawings";
@@ -110,6 +110,16 @@ export function ChartScreen() {
           aria-label="Indicators"
         >
           <MoreHorizontal className="h-4 w-4" />
+        </button>
+        {/* Objects — the drawings list. Next to the drawing tool because that
+            is where it is wanted: once a chart carries a dozen shapes, finding
+            one by tapping the canvas stops working. */}
+        <button
+          onClick={() => openSheet("objects")}
+          className="shrink-0 rounded p-1.5 text-tv-text-muted active:bg-tv-panel-hover"
+          aria-label="Objects"
+        >
+          <Layers className="h-4 w-4" />
         </button>
 
         {/* Chart type lives here rather than in the primary group: candles
