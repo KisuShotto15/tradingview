@@ -65,6 +65,7 @@ import { BuySellOverlay } from "@/components/trading/BuySellOverlay";
 import { FloatingContextToolbar } from "./FloatingContextToolbar";
 import { BarCountdown } from "./BarCountdown";
 import { ChartQuickActionsSheet } from "@/components/mobile/ChartQuickActionsSheet";
+import { AxisPlusButton } from "./AxisPlusButton";
 import { KeyLevelsOverlay } from "./KeyLevelsOverlay";
 import { computeKeyLevels } from "@/lib/indicators/keylevels";
 import type { SqueezePoint } from "@/lib/indicators/squeeze";
@@ -245,6 +246,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
   const isMobile = useIsMobile();
   // Read from inside the chart's long-lived event handlers, which are created
   // once and would otherwise close over the first render's `false`.
+  /** Last legend key written, so an unchanged legend costs no render. */
+  const hoverKeyRef = useRef<string | null>(null);
   const isMobileRef = useRef(isMobile);
   isMobileRef.current = isMobile;
   /**
@@ -395,15 +398,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
   configRef.current = config;
 
   const [chartContextMenu, setChartContextMenu] = useState<{ x: number; y: number; price: number; region: "chart" | "scale" } | null>(null);
-  /**
-   * Price the touch-only "+" on the price axis is parked at, and its y.
-   *
-   * It follows the crosshair and then *stays* where the crosshair left it,
-   * which is what the venues do: on a phone the crosshair is a long press, so
-   * a button that vanished with it could never be tapped.
-   */
-  const [axisPlus, setAxisPlus] = useState<{ y: number; price: number } | null>(null);
-  const [quickActionsOpen, setQuickActionsOpen] = useState(false);
+  /** Price the touch "+" was tapped at; non-null while its sheet is open. */
+  const [quickActionsPrice, setQuickActionsPrice] = useState<number | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [lastPrice, setLastPrice] = useState<{ value: number; pct: number } | null>(null);
   const [lastValues, setLastValues] = useState<LastValues>({});
@@ -1038,18 +1034,11 @@ export function PriceChart({ symbol, timeframe }: Props) {
         setPreviewState((prev) => (prev ? { ...prev, cursor: pc } : prev));
       }
 
-      // Park the touch "+" on the price axis at the crosshair's level.
-      // Guarded on the ref so a desktop chart pays nothing for it: the
-      // crosshair fires on every mouse move.
-      if (isMobileRef.current && param.point && cursorPrice !== null) {
-        const py = param.point.y;
-        setAxisPlus((prev) =>
-          prev && Math.abs(prev.y - py) < 0.5 ? prev : { y: py, price: cursorPrice as number },
-        );
-      }
-
       if (!param.time || !candleSeriesRef.current) {
-        setHover(null);
+        if (hoverKeyRef.current !== null) {
+          hoverKeyRef.current = null;
+          setHover(null);
+        }
         return;
       }
       const data = param.seriesData.get(candleSeriesRef.current);
@@ -1059,6 +1048,20 @@ export function PriceChart({ symbol, timeframe }: Props) {
       if (data && "open" in data) {
         const o = data.open as number;
         const c = data.close as number;
+        /*
+         * Only re-render when the legend would actually read differently.
+         *
+         * This fires on every pointer move, and on a phone that is a touch
+         * stream at the display's refresh rate — each one was re-rendering
+         * the whole chart component and its overlays, which is what made the
+         * crosshair lag behind the finger and then jump. Within one candle
+         * the OHLC line is identical, so the only move worth a render is one
+         * that crosses into another bar (or a tick that changes the live
+         * bar's close, which arrives about once a second, not per pixel).
+         */
+        const key = `${param.time}:${c}:${vol && "value" in vol ? vol.value : 0}`;
+        if (hoverKeyRef.current === key) return;
+        hoverKeyRef.current = key;
         setHover({
           o,
           h: data.high as number,
@@ -4136,45 +4139,27 @@ export function PriceChart({ symbol, timeframe }: Props) {
       )}
 
       {/*
-        Touch-only "+" on the price axis.
-        It parks where the crosshair last was, and defaults to the middle of
-        the pane before the crosshair has ever been used, so it is reachable
-        from the first tap. The sheet it opens is everything a desktop
-        right-click at a price offers — an alert, a line, an order — which on
-        a phone had no way in at all.
+        Touch-only "+" on the price axis — the way in to everything a
+        right-click at a price offers on desktop, which a phone has no gesture
+        for. It owns its own crosshair subscription so that following the
+        finger costs a style write rather than a re-render of this component.
       */}
-      {isMobile && !replayActive && (() => {
-        const mainH = paneOffsets[0]?.height ?? containerSize.height;
-        const plotW = chartRef.current?.timeScale().width() ?? 0;
-        if (plotW <= 0 || mainH <= 0) return null;
-        const fallbackY = mainH / 2;
-        const y = axisPlus ? Math.min(Math.max(axisPlus.y, 14), mainH - 14) : fallbackY;
-        const price =
-          axisPlus?.price ??
-          (candleSeriesRef.current?.coordinateToPrice(fallbackY) as number | null | undefined) ??
-          null;
-        if (price === null || !isFinite(price)) return null;
-        return (
-          <>
-            <button
-              type="button"
-              aria-label={`Actions at ${formatPrice(price)}`}
-              onClick={() => setQuickActionsOpen(true)}
-              className="pointer-events-auto absolute z-20 flex h-8 w-8 items-center justify-center rounded-full border border-tv-border bg-tv-panel/95 text-tv-text shadow-lg active:bg-tv-panel-hover"
-              style={{ left: plotW - 34, top: y - 16 }}
-            >
-              <Plus className="h-4 w-4" />
-            </button>
-            {quickActionsOpen && (
-              <ChartQuickActionsSheet
-                price={price}
-                time={candlesRef.current[candlesRef.current.length - 1]?.time ?? null}
-                onClose={() => setQuickActionsOpen(false)}
-              />
-            )}
-          </>
-        );
-      })()}
+      {isMobile && !replayActive && (
+        <AxisPlusButton
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          containerWidth={containerSize.width}
+          mainPaneHeight={paneOffsets[0]?.height ?? containerSize.height}
+          onPick={(price) => setQuickActionsPrice(price)}
+        />
+      )}
+      {quickActionsPrice !== null && (
+        <ChartQuickActionsSheet
+          price={quickActionsPrice}
+          time={candlesRef.current[candlesRef.current.length - 1]?.time ?? null}
+          onClose={() => setQuickActionsPrice(null)}
+        />
+      )}
 
       <FloatingContextToolbar
         containerSize={containerSize}
