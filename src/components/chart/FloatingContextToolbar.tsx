@@ -5,6 +5,7 @@ import { Bookmark, BookmarkPlus, Check, Copy, Eye, EyeOff, Lock, Pin, RotateCcw,
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useChartStore, type DrawingTool } from "@/lib/store/chart-store";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { useTradingStore } from "@/lib/store/trading-store";
 import { ColorPicker } from "@/components/ui/color-picker";
 import {
@@ -36,17 +37,34 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
 
   const { update, remove, duplicate } = useDrawings();
 
+  const isMobile = useIsMobile();
   const [pos, setPos] = useState({ x: -9999, y: 8 });
   const dragRef = useRef<{ ox: number; oy: number; px: number; py: number } | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const prevIdRef = useRef<string | null>(null);
 
-  // Snap to top-right on new selection (after layout so width is known)
+  /*
+   * Snap on a new selection, after layout so the size is known.
+   *
+   * Top-right with a mouse; bottom-centre on touch. The top of a phone screen
+   * is both where the legend already is — the bar at full touch size covers
+   * the whole OHLC row — and the one place a thumb cannot reach without
+   * shifting grip, which is the same reason the chart toolbar sits at the
+   * bottom. It is still draggable from either starting point.
+   */
   useLayoutEffect(() => {
     if (!selectedId || selectedId === prevIdRef.current) return;
     prevIdRef.current = selectedId;
     const tw = toolbarRef.current?.offsetWidth ?? 0;
-    setPos({ x: Math.max(0, containerSize.width - tw - 16), y: 8 });
+    const th = toolbarRef.current?.offsetHeight ?? 0;
+    setPos(
+      isMobile
+        ? {
+            x: Math.max(0, (containerSize.width - tw) / 2),
+            y: Math.max(0, containerSize.height - th - 12),
+          }
+        : { x: Math.max(0, containerSize.width - tw - 16), y: 8 },
+    );
   });
 
   // Clamp inside container on resize
@@ -91,14 +109,14 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
   return (
     <div
       ref={toolbarRef}
-      className="pointer-events-auto absolute z-30 flex h-7 items-stretch overflow-visible rounded border border-tv-border bg-tv-panel shadow-lg"
+      className="pointer-events-auto absolute z-30 flex h-7 [@media(hover:none)]:h-11 items-stretch overflow-visible rounded border border-tv-border bg-tv-panel shadow-lg"
       style={{ left: pos.x, top: pos.y, userSelect: "none" }}
-      onMouseDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
       {/* Drag handle */}
       <div
-        className="flex cursor-grab items-center px-1.5 text-[11px] text-tv-text-muted/50 hover:text-tv-text-muted active:cursor-grabbing"
+        className="flex cursor-grab items-center px-1.5 [@media(hover:none)]:px-2.5 text-[11px] text-tv-text-muted/50 hover:text-tv-text-muted active:cursor-grabbing"
         onPointerDown={startDrag}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -127,7 +145,7 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
                     onClick={() => patch({ lineWidth: w })}
                     title={`Width ${w}`}
                     className={cn(
-                      "flex h-5 w-5 items-center justify-center rounded text-[9px] font-bold",
+                      "flex h-5 w-5 [@media(hover:none)]:h-8 [@media(hover:none)]:w-8 items-center justify-center rounded text-[9px] font-bold",
                       (drawing.lineWidth ?? 1) === w
                         ? "bg-tv-blue/20 text-tv-blue"
                         : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
@@ -171,12 +189,12 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
       {/* Common actions */}
       <Seg>
         <Btn title="Settings" onClick={onOpenSettings}>
-          <Settings2 className="h-3.5 w-3.5" />
+          <Settings2 className="h-3.5 w-3.5 [@media(hover:none)]:h-[18px] [@media(hover:none)]:w-[18px]" />
         </Btn>
         <VisBtn drawing={drawing} onPatch={patch} />
         <LockBtn drawing={drawing} onPatch={patch} />
         <Btn title="Duplicate (Ctrl+D)" onClick={() => void duplicate(drawing.id)}>
-          <Copy className="h-3.5 w-3.5" />
+          <Copy className="h-3.5 w-3.5 [@media(hover:none)]:h-[18px] [@media(hover:none)]:w-[18px]" />
         </Btn>
         <SaveAsDefaultButton drawing={drawing} />
         <TemplatesButton drawing={drawing} onApply={patch} />
@@ -184,7 +202,7 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
           void remove(drawing.id);
           useDrawingsStore.getState().setSelected(null);
         }}>
-          <Trash2 className="h-3.5 w-3.5" />
+          <Trash2 className="h-3.5 w-3.5 [@media(hover:none)]:h-[18px] [@media(hover:none)]:w-[18px]" />
         </Btn>
       </Seg>
 
@@ -202,7 +220,7 @@ function Sep() {
 
 function Seg({ children, gap }: { children: React.ReactNode; gap?: boolean }) {
   return (
-    <div className={cn("flex items-center px-1", gap && "gap-1.5")}>
+    <div className={cn("flex items-center px-1 [@media(hover:none)]:px-1.5", gap && "gap-1.5")}>
       {children}
     </div>
   );
@@ -218,7 +236,7 @@ function Btn({
       title={title}
       onClick={onClick}
       className={cn(
-        "flex h-5 w-5 items-center justify-center rounded transition-colors",
+        "flex h-5 w-5 [@media(hover:none)]:h-8 [@media(hover:none)]:w-8 items-center justify-center rounded transition-colors",
         danger
           ? "text-tv-text-muted hover:bg-tv-red/15 hover:text-tv-red"
           : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
@@ -235,9 +253,9 @@ function VisBtn({ drawing, onPatch }: { drawing: Drawing; onPatch: (p: Partial<D
     <button
       title={hidden ? "Show" : "Hide"}
       onClick={() => onPatch({ hidden: !hidden })}
-      className="flex h-5 w-5 items-center justify-center rounded text-tv-text-muted transition-colors hover:bg-tv-panel-hover hover:text-tv-text"
+      className="flex h-5 w-5 [@media(hover:none)]:h-8 [@media(hover:none)]:w-8 items-center justify-center rounded text-tv-text-muted transition-colors hover:bg-tv-panel-hover hover:text-tv-text"
     >
-      {hidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+      {hidden ? <EyeOff className="h-3.5 w-3.5 [@media(hover:none)]:h-[18px] [@media(hover:none)]:w-[18px]" /> : <Eye className="h-3.5 w-3.5 [@media(hover:none)]:h-[18px] [@media(hover:none)]:w-[18px]" />}
     </button>
   );
 }
@@ -249,13 +267,13 @@ function LockBtn({ drawing, onPatch }: { drawing: Drawing; onPatch: (p: Partial<
       title={locked ? "Unlock — allow moving" : "Lock — prevent moving"}
       onClick={() => onPatch({ locked: !locked })}
       className={cn(
-        "flex h-5 w-5 items-center justify-center rounded transition-colors",
+        "flex h-5 w-5 [@media(hover:none)]:h-8 [@media(hover:none)]:w-8 items-center justify-center rounded transition-colors",
         locked
           ? "text-tv-blue hover:bg-tv-blue/15"
           : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
       )}
     >
-      {locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+      {locked ? <Lock className="h-3.5 w-3.5 [@media(hover:none)]:h-[18px] [@media(hover:none)]:w-[18px]" /> : <Unlock className="h-3.5 w-3.5 [@media(hover:none)]:h-[18px] [@media(hover:none)]:w-[18px]" />}
     </button>
   );
 }
@@ -270,11 +288,13 @@ function MiniColorLabel({ label, children }: { label: string; children: React.Re
 }
 
 /**
- * Wraps ColorPicker in a scaled-down container so the swatch fits the compact bar height.
+ * Wraps ColorPicker in a scaled-down container so the swatch fits the compact
+ * bar height — but only where there is a mouse. A touch device gets the bar at
+ * full size, so the swatch stays unscaled there too.
  */
 function SwatchPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <div style={{ transform: "scale(0.78)", transformOrigin: "center" }}>
+    <div className="scale-[0.78] [@media(hover:none)]:scale-100" style={{ transformOrigin: "center" }}>
       <ColorPicker value={value} onChange={onChange} />
     </div>
   );
@@ -346,13 +366,13 @@ function SaveAsDefaultButton({ drawing }: { drawing: Drawing }) {
         setSaved(true);
       }}
       className={cn(
-        "flex h-5 w-5 items-center justify-center rounded transition-colors",
+        "flex h-5 w-5 [@media(hover:none)]:h-8 [@media(hover:none)]:w-8 items-center justify-center rounded transition-colors",
         saved
           ? "text-tv-green"
           : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
       )}
     >
-      {saved ? <Check className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+      {saved ? <Check className="h-3.5 w-3.5 [@media(hover:none)]:h-[18px] [@media(hover:none)]:w-[18px]" /> : <Pin className="h-3.5 w-3.5 [@media(hover:none)]:h-[18px] [@media(hover:none)]:w-[18px]" />}
     </button>
   );
 }
@@ -386,20 +406,20 @@ function TemplatesButton({
     <DropdownMenu>
       <DropdownMenuTrigger
         title="Templates"
-        className="flex h-5 w-5 items-center justify-center rounded text-tv-text-muted transition-colors hover:bg-tv-panel-hover hover:text-tv-text"
+        className="flex h-5 w-5 [@media(hover:none)]:h-8 [@media(hover:none)]:w-8 items-center justify-center rounded text-tv-text-muted transition-colors hover:bg-tv-panel-hover hover:text-tv-text"
       >
-        <Bookmark className="h-3.5 w-3.5" />
+        <Bookmark className="h-3.5 w-3.5 [@media(hover:none)]:h-[18px] [@media(hover:none)]:w-[18px]" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="min-w-48 bg-tv-panel">
         <DropdownMenuItem onClick={saveTemplate} className="text-xs">
-          <BookmarkPlus className="h-3.5 w-3.5" />
+          <BookmarkPlus className="h-3.5 w-3.5 [@media(hover:none)]:h-[18px] [@media(hover:none)]:w-[18px]" />
           <span>Save as template…</span>
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => clearToolDefault(drawing.kind)}
           className="text-xs"
         >
-          <RotateCcw className="h-3.5 w-3.5" />
+          <RotateCcw className="h-3.5 w-3.5 [@media(hover:none)]:h-[18px] [@media(hover:none)]:w-[18px]" />
           <span>Reset default style</span>
         </DropdownMenuItem>
         {templates.length > 0 && <DropdownMenuSeparator />}

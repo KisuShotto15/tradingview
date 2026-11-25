@@ -1164,10 +1164,13 @@ export function PriceChart({ symbol, timeframe }: Props) {
      *
      * A click here is: press and release with the same pointer, little
      * movement (a bigger allowance for a finger than a mouse), not held long
-     * enough to be a long-press, and not starting on an overlay — the SVG
-     * layers above run their own selection and dragging, and a press that
-     * selects a drawing would otherwise bubble up here and deselect it on
-     * release.
+     * enough to be a long-press, and starting on one of the chart's own
+     * canvases. That last condition is what the library gave us for free: it
+     * listens on its canvas, so anything stacked above — the drawings and
+     * order-line SVGs, the indicator pills, the floating toolbar, the price
+     * chip — never reached it. Without the check a tap on a drawing would
+     * bubble up here and deselect it on release, and a tap on a toolbar
+     * button would drop a drawing behind it.
      */
     const CLICK_SLOP_PX = { mouse: 5, touch: 12 };
     const LONG_PRESS_MS = 600;
@@ -1180,7 +1183,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         return;
       }
       const target = e.target as Element | null;
-      if (target && (target as SVGElement).ownerSVGElement) return; // overlay owns it
+      if (!target || target.tagName !== "CANVAS") return; // something above owns it
       clickTrack.id = e.pointerId;
       clickTrack.x = e.clientX;
       clickTrack.y = e.clientY;
