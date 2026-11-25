@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
+  ArrowUpDown,
   Bell,
   ChevronDown,
   ChevronRight,
@@ -103,6 +104,15 @@ export function WatchlistScreen() {
    * filter you forget you left on, and the list then looks like symbols went
    * missing. TradingView's flag chips behave the same way.
    */
+  /**
+   * Whether the reorder handles are showing.
+   *
+   * Off by default, so a row is content edge to edge the way TradingView's
+   * is. A permanent handle column costs width on every row to serve an
+   * action taken once in a while, and the same objection already got the
+   * drag dots removed from the desktop list.
+   */
+  const [reorderMode, setReorderMode] = useState(false);
   const [flagFilter, setFlagFilter] = useState<Set<string>>(new Set());
   const alerts = useAlertsStore((st) => st.alerts);
   const drawingsForAlerts = useDrawingsStore((st) => st.drawings);
@@ -426,6 +436,21 @@ export function WatchlistScreen() {
             })}
           </div>
         )}
+        {/* Reorder toggle. Sorting the list by a column already disables
+            manual order, so the control would do nothing there. */}
+        {!isSorted && (
+          <button
+            onClick={() => setReorderMode((v) => !v)}
+            aria-pressed={reorderMode}
+            aria-label={reorderMode ? "Done reordering" : "Reorder symbols"}
+            className={cn(
+              "rounded p-1.5 active:bg-tv-panel-hover",
+              reorderMode ? "bg-tv-panel-hover text-tv-blue" : "text-tv-text-muted",
+            )}
+          >
+            <ArrowUpDown className="h-4 w-4" />
+          </button>
+        )}
         <button
           onClick={() => addLabelHere(undefined)}
           className="rounded p-1.5 text-tv-text-muted active:bg-tv-panel-hover"
@@ -522,7 +547,7 @@ export function WatchlistScreen() {
         ) : (
           displayItems.map((item) => {
             const isDragTarget = dragOverId === item.id && draggingId.current !== item.id;
-            const showHandle = !isSorted && !selectMode;
+            const showHandle = reorderMode && !isSorted && !selectMode;
 
             if (item.type === "label") {
               const isCollapsed = collapsed.has(item.id);

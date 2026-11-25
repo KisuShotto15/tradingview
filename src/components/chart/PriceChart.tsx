@@ -54,7 +54,7 @@ import {
   type IndicatorKey,
   DEFAULT_CHART_COLORS,
 } from "@/lib/store/chart-store";
-import { formatPrice, formatVolume, priceFormatFor } from "@/lib/format";
+import { formatPrice, formatVolume, priceFormatFor, axisPriceFormatter } from "@/lib/format";
 import { ArrowUpDown, Bell, ChevronUp, Maximize2, Settings2 } from "lucide-react";
 import { IndicatorPill } from "./IndicatorPill";
 import { MeasureOverlay } from "./MeasureOverlay";
@@ -2858,7 +2858,15 @@ export function PriceChart({ symbol, timeframe }: Props) {
         if (klines.length > 0) {
           const lastClose = klines[klines.length - 1].close;
           const applyPrecision = (precision: number, minMove: number) => {
-            const priceFormat = { type: "price" as const, precision, minMove };
+            // `custom` rather than `price`, only to add the thousands
+            // separator; `minMove` still drives the scale's own step, so the
+            // levels drawn are unchanged — just written the way the rest of
+            // the app writes a price.
+            const priceFormat = {
+              type: "custom" as const,
+              formatter: axisPriceFormatter(precision),
+              minMove,
+            };
             candleSeriesRef.current?.applyOptions({ priceFormat });
             lineSeriesRef.current?.applyOptions({ priceFormat });
             areaSeriesRef.current?.applyOptions({ priceFormat });

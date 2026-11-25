@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pencil, MoreHorizontal, Redo2, Rewind, Undo2 } from "lucide-react";
 import { useChartStore } from "@/lib/store/chart-store";
 import { useMobileStore } from "@/lib/store/mobile-store";
@@ -10,6 +10,10 @@ import { PriceChart } from "@/components/chart/PriceChart";
 import { ChartTypeSelector } from "@/components/chart/ChartTypeSelector";
 import { SnapshotButton } from "@/components/chart/SnapshotButton";
 import { cn } from "@/lib/utils";
+
+/** Long enough to read as motion, short enough not to delay a fast series of
+ *  swipes through a watchlist. */
+const SWIPE_ANIM_MS = 180;
 
 /**
  * Mobile chart screen.
@@ -79,7 +83,7 @@ export function ChartScreen() {
 
       {/* Toolbar — scrolls horizontally rather than wrapping or clipping on a
           narrow phone, since it packs in every desktop header action. */}
-      <footer className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-t border-tv-border bg-tv-panel px-2 py-1.5 [@media(max-height:500px)]:py-0.5">
+      <footer className="no-scrollbar flex shrink-0 items-center gap-1.5 overflow-x-auto border-t border-tv-border bg-tv-panel px-2 py-1.5 [@media(max-height:500px)]:py-0.5">
         <SwipeChip
           label={symbol}
           onSwipe={nextSymbol}
@@ -93,9 +97,6 @@ export function ChartScreen() {
           ariaLabel="Timeframe — tap to pick, swipe to cycle pinned"
           compact
         />
-        <div className="shrink-0">
-          <ChartTypeSelector />
-        </div>
         <button
           onClick={() => openSheet("drawings")}
           className="shrink-0 rounded p-1.5 text-tv-text-muted active:bg-tv-panel-hover"
@@ -110,6 +111,14 @@ export function ChartScreen() {
         >
           <MoreHorizontal className="h-4 w-4" />
         </button>
+
+        {/* Chart type lives here rather than in the primary group: candles
+            are what the chart shows almost always, and switching to a line
+            or area is a once-in-a-while decision — it does not earn a
+            permanent slot next to symbol and timeframe. */}
+        <div className="shrink-0">
+          <ChartTypeSelector />
+        </div>
 
         {/* Secondary actions, after a divider. The bar scrolls, so ordering is
             what decides which controls are reachable without a swipe — symbol,
@@ -163,12 +172,37 @@ function SwipeChip({
   const startRef = useRef<{ x: number; y: number; t: number } | null>(null);
   const [active, setActive] = useState(false);
 
+  /**
+   * Direction-aware slide between values.
+   *
+   * A swipe that silently replaces the text gives no sense of having moved
+   * through a list — the chip just blinks and you check the label to find
+   * out whether anything happened. Sliding the old value out the way the
+   * thumb went and the new one in behind it is what makes the gesture read
+   * as scrolling a wheel, which is how it behaves.
+   *
+   * `prev` holds the value being replaced and is cleared when the animation
+   * ends, so only one label is in the DOM at rest.
+   */
+  const [prev, setPrev] = useState<{ label: string; dir: 1 | -1 } | null>(null);
+  const dirRef = useRef<1 | -1>(1);
+  const labelRef = useRef(label);
+
+  useEffect(() => {
+    if (label === labelRef.current) return;
+    const outgoing = labelRef.current;
+    labelRef.current = label;
+    setPrev({ label: outgoing, dir: dirRef.current });
+    const id = setTimeout(() => setPrev(null), SWIPE_ANIM_MS);
+    return () => clearTimeout(id);
+  }, [label]);
+
   return (
     <button
       type="button"
       aria-label={ariaLabel}
       className={cn(
-        "shrink-0 select-none rounded border border-tv-border bg-tv-bg text-sm font-semibold transition-colors",
+        "relative shrink-0 select-none overflow-hidden rounded border border-tv-border bg-tv-bg text-sm font-semibold transition-colors",
         compact ? "px-2 py-1 text-xs" : "px-2.5 py-1",
         active && "bg-tv-panel-hover",
       )}
@@ -189,7 +223,12 @@ function SwipeChip({
         // Vertical swipe wins — sign convention: swipe DOWN (positive dy) = previous,
         // swipe UP (negative dy) = next, matching how a wheel feels.
         if (Math.abs(dy) > SWIPE_PX && Math.abs(dy) > Math.abs(dx)) {
-          onSwipe(dy < 0 ? 1 : -1);
+          const dir: 1 | -1 = dy < 0 ? 1 : -1;
+          // Recorded before the value changes, so the effect above knows
+          // which way to animate; a tap-driven change keeps the last
+          // direction, which reads fine because it has no direction of its own.
+          dirRef.current = dir;
+          onSwipe(dir);
         } else if (Math.abs(dx) < 8 && Math.abs(dy) < 8 && dt < 400) {
           onTap();
         }
@@ -199,7 +238,26 @@ function SwipeChip({
         setActive(false);
       }}
     >
-      {label}
+      {/* Keeps the chip's width while the two labels are absolutely
+          positioned, so the toolbar doesn't jump as values change length
+          ("1M" to "15M"). Invisible, but it is what holds the box open. */}
+      <span className="invisible block whitespace-nowrap">{label}</span>
+      {prev && (
+        <span
+          key={prev.label}
+          className="absolute inset-0 flex items-center justify-center whitespace-nowrap"
+          style={{ animation: `swipe-out-${prev.dir === 1 ? "up" : "down"} ${SWIPE_ANIM_MS}ms ease-out forwards` }}
+        >
+          {prev.label}
+        </span>
+      )}
+      <span
+        key={label}
+        className="absolute inset-0 flex items-center justify-center whitespace-nowrap"
+        style={prev ? { animation: `swipe-in-${prev.dir === 1 ? "up" : "down"} ${SWIPE_ANIM_MS}ms ease-out forwards` } : undefined}
+      >
+        {label}
+      </span>
     </button>
   );
 }

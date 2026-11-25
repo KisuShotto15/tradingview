@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import { expect } from "@/test-utils/expect";
-import { formatPrice, formatPct, formatVolume, pricePrecisionFor, priceFormatFor, changeFromPct, formatChange } from "./format";
+import { formatPrice, formatPct, formatVolume, pricePrecisionFor, priceFormatFor, axisPriceFormatter, changeFromPct, formatChange } from "./format";
 
 describe("formatPrice", () => {
   it("uses thousands separators above 1000", () => {
@@ -84,5 +84,26 @@ describe("formatChange", () => {
   it("always carries an explicit sign", () => {
     expect(formatChange(1420.33)).toBe("+1,420.33");
     expect(formatChange(-1420.33)).toBe("−1,420.33");
+  });
+});
+
+describe("axisPriceFormatter", () => {
+  it("groups thousands at the precision it is given", () => {
+    expect(axisPriceFormatter(1)(61450.5)).toBe("61,450.5");
+    expect(axisPriceFormatter(2)(67440.03)).toBe("67,440.03");
+  });
+
+  it("keeps a sub-cent instrument's digits", () => {
+    expect(axisPriceFormatter(6)(0.000123)).toBe("0.000123");
+  });
+
+  it("pads to the precision rather than dropping trailing zeros", () => {
+    // The axis must not print 61,450 next to 61,450.5 — the steps would
+    // look uneven.
+    expect(axisPriceFormatter(1)(61450)).toBe("61,450.0");
+  });
+
+  it("does not crash on a non-finite price", () => {
+    expect(axisPriceFormatter(2)(NaN)).toBe("—");
   });
 });

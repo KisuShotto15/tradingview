@@ -111,6 +111,45 @@
 .text-\[11px\],
 .text-\[12px\] { font-size: 13px; }
 
+/* Swipe-through animation for the mobile chart's symbol / timeframe chips.
+   The outgoing value leaves the way the thumb went and the new one arrives
+   behind it, so the gesture reads as scrolling a wheel rather than as the
+   label blinking. Respecting `prefers-reduced-motion` matters here because
+   the motion is decorative: the value is already correct without it. */
+@keyframes swipe-out-up {
+  to { transform: translateY(-100%); opacity: 0; }
+}
+@keyframes swipe-in-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes swipe-out-down {
+  to { transform: translateY(100%); opacity: 0; }
+}
+@keyframes swipe-in-down {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [style*="swipe-out-"],
+  [style*="swipe-in-"] {
+    animation: none !important;
+  }
+}
+
+/* Horizontal bars that are swiped, not dragged by a bar. The mobile chart
+   toolbar scrolls sideways under a thumb, so a visible scrollbar is a strip
+   of chrome marking an affordance nobody uses there. Unlayered, like the
+   type overrides above, so it beats the generated utilities regardless of
+   source order. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

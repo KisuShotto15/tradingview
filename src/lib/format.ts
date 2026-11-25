@@ -57,6 +57,29 @@ export function formatChange(n: number): string {
   return `${n >= 0 ? "+" : "−"}${formatPrice(Math.abs(n))}`;
 }
 
+/**
+ * Axis/label formatter for the chart's own price scale.
+ *
+ * lightweight-charts' built-in price format writes a 5-figure price as
+ * "61450.5", with no group separator — readable on a wide desktop axis, much
+ * less so on a phone where that column is a sliver. Grouping is what every
+ * charting app does there, this one included everywhere else (`formatPrice`).
+ *
+ * The decimal count is passed in rather than guessed, because it comes from
+ * the instrument's real tick size; a formatter that re-derived it would
+ * quietly disagree with the scale's own step and print levels that never
+ * occur.
+ */
+export function axisPriceFormatter(precision: number): (p: number) => string {
+  return (p: number) => {
+    if (!isFinite(p)) return "—";
+    return p.toLocaleString("en-US", {
+      minimumFractionDigits: precision,
+      maximumFractionDigits: precision,
+    });
+  };
+}
+
 export function formatVolume(n: number): string {
   if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
   if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
