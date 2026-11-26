@@ -56,7 +56,7 @@ import {
   DEFAULT_CHART_COLORS,
 } from "@/lib/store/chart-store";
 import { formatPrice, formatVolume, priceFormatFor, axisPriceFormatter } from "@/lib/format";
-import { ArrowUpDown, Bell, Check, ChevronUp, Maximize2, Plus, Settings2, X } from "lucide-react";
+import { ArrowUpDown, Bell, ChevronUp, Maximize2, Plus, Settings2 } from "lucide-react";
 import { IndicatorPill } from "./IndicatorPill";
 import { MeasureOverlay } from "./MeasureOverlay";
 import { DrawingsLayer } from "./drawings/DrawingsLayer";
@@ -407,10 +407,8 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
    * the aim, in container coordinates, for as long as a point-click tool is
    * armed on a touch device; the confirm button is what places the point.
    */
-  const [touchAim, setTouchAim] = useState<{ x: number; y: number } | null>(null);
   const touchAimRef = useRef<{ x: number; y: number } | null>(null);
   const setAimRef = useRef<((clientX: number, clientY: number, withPuck: boolean) => void) | null>(null);
-  const commitAimRef = useRef<((clientX: number, clientY: number) => void) | null>(null);
   // Shape of the current view (bar span + offset from the last bar), kept fresh
   // as the user pans/zooms so it survives a symbol change and can be reapplied
   // to keep the same zoom + scroll position on the next symbol.
@@ -1459,7 +1457,11 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
      * pointer capture, so the chart's canvas never sees the moves and its
      * crosshair would otherwise stay frozen where the drag started.
      */
-    const placeCrosshair = (clientX: number, clientY: number): boolean => {
+    const placeCrosshair = (
+      clientX: number,
+      clientY: number,
+      excludeId?: string,
+    ): boolean => {
       const el = containerRef.current;
       const series = candleSeriesRef.current;
       if (!el || !series) return false;
@@ -1492,7 +1494,7 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
           price as number,
           time,
           bars,
-          useDrawingsStore.getState().selectedId ?? undefined,
+          excludeId,
           magnetRadius(series, y),
           magnet.strength,
         );
@@ -1538,7 +1540,16 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       // Every drawing drag routes through here (see `crosshair.ts`), so the
       // puck follows a dragged shape as well as a point being placed.
       movePuck(cx, cy);
-      return placeCrosshair(cx, cy);
+      /*
+       * A shape that can snap to its own levels sticks to where it started,
+       * so a drag excludes the drawing being dragged — which is the selected
+       * one. Placing a NEW point excludes nothing, and must not: the aim and
+       * the click have to answer from the same set of levels or the
+       * crosshair projects one price and the point takes another. That is
+       * exactly what happened with a drawing left selected — the crosshair
+       * skipped its level and the click snapped straight to it.
+       */
+      return placeCrosshair(cx, cy, useDrawingsStore.getState().selectedId ?? undefined);
     };
 
     const aimCrosshair = (clientX: number, clientY: number) => {
@@ -1560,9 +1571,7 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       const el = containerRef.current;
       if (el) {
         const rect = el.getBoundingClientRect();
-        const aim = { x: clientX - rect.left, y: clientY - rect.top };
-        touchAimRef.current = aim;
-        setTouchAim(aim);
+        touchAimRef.current = { x: clientX - rect.left, y: clientY - rect.top };
       }
     };
     setAimRef.current = setAim;
@@ -1683,7 +1692,6 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
         },
       } as unknown as MouseEventParams);
     };
-    commitAimRef.current = (cx: number, cy: number) => commitAt(cx, cy);
 
     const onClickUp = (e: PointerEvent) => {
       hidePuckRef.current?.();
@@ -1691,17 +1699,17 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       clickTrack.ok = false;
       if (placing.active) {
         /*
-         * Lifting the finger aims; it does not place.
+         * Placing is over; give panning and zooming back. Whether this also
+         * placed the point is decided below, by the same tap test a click
+         * goes through: a tap places, a drag or a hold only moves the aim.
          *
-         * It used to place, which meant a point landed wherever the finger
-         * happened to come off the glass — there was no way to let go, look
-         * at where the crosshair had settled, and only then commit. The
-         * crosshair and the confirm bar stay up; the button below is what
-         * places the point.
+         * It used to place unconditionally, so a point landed wherever the
+         * finger came off the glass — press to bring the cursor up, slide to
+         * read a level, and a drawing appeared on release without anyone
+         * asking for one.
          */
         placing.active = false;
         chart.applyOptions({ handleScroll: true, handleScale: true });
-        return;
       }
       const slop = e.pointerType === "mouse" ? CLICK_SLOP_PX.mouse : CLICK_SLOP_PX.touch;
       // A drag is a pan, and a long press is the crosshair — neither clicks.
@@ -3494,7 +3502,6 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
     if (!armed || !coarse) {
       if (touchAimRef.current) {
         touchAimRef.current = null;
-        setTouchAim(null);
         chartRef.current?.clearCrosshairPosition();
       }
       return;
@@ -4750,46 +4757,6 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
         aria-hidden
         className="pointer-events-none absolute left-0 top-0 z-30 -ml-[11px] -mt-[11px] h-[22px] w-[22px] rounded-full border-2 border-white bg-white/50 opacity-0 shadow-[0_1px_4px_rgba(0,0,0,0.55)]"
       />
-      {/*
-        Confirm-to-place bar: the second half of touch placement.
-        A point used to land wherever the finger came off the glass, so there
-        was no moment between aiming and committing — and nothing on screen
-        said a tool was even armed until something had already been drawn.
-        The crosshair above is the aim (press and slide anywhere on the plot
-        to move it); this places it. TradingView's mobile app is the same
-        shape. Desktop never sees it: a mouse clicks where it points.
-      */}
-      {touchAim && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-3 z-40 flex justify-center">
-          <div className="pointer-events-auto flex items-center gap-1 rounded-lg border border-tv-border bg-tv-panel/95 p-1 shadow-lg backdrop-blur">
-            <button
-              type="button"
-              className="flex h-9 items-center gap-1.5 rounded-md bg-white px-3 text-xs font-semibold text-black active:opacity-80"
-              onClick={() => {
-                const el = containerRef.current;
-                const aim = touchAimRef.current;
-                if (!el || !aim) return;
-                const rect = el.getBoundingClientRect();
-                commitAimRef.current?.(rect.left + aim.x, rect.top + aim.y);
-              }}
-            >
-              <Check className="h-4 w-4" />
-              Place
-            </button>
-            <button
-              type="button"
-              aria-label="Cancel"
-              className="flex h-9 w-9 items-center justify-center rounded-md text-tv-text-muted active:bg-tv-panel-hover"
-              onClick={() => {
-                useDrawingsStore.getState().resetPlacement();
-                setTool("cursor");
-              }}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
       <DrawingsLayer
         symbol={symbol}
         chart={chartRef.current}
@@ -4872,11 +4839,21 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
           height={containerSize.height}
         />
       )}
-      {/* `magnetTarget` is only ever set while the magnet is engaged, so it is
-          the whole condition. It used to be gated on `ctrlHeld` as well, which
-          meant the one group of users who turn the magnet *on* and leave it on
-          never saw where it was about to snap. */}
-      {magnetTarget && (
+      {/*
+        `magnetTarget` is only ever set while the magnet is engaged, so it is
+        the whole condition on desktop. It used to be gated on `ctrlHeld` as
+        well, which meant the one group of users who turn the magnet *on* and
+        leave it on never saw where it was about to snap.
+
+        On touch it is not drawn at all. There the crosshair itself already
+        sits on the snapped point (`placeCrosshair`), which is what
+        TradingView's mobile app does — the dashed lines move to where the
+        drawing will go — so a second marker beside it says nothing new and,
+        being two separate paths to the same answer, could disagree with the
+        line that eventually lands. The mouse keeps it, because there the
+        crosshair follows the pointer rather than the snap.
+      */}
+      {magnetTarget && !isMobile && (
         <MagnetIndicator
           target={magnetTarget}
           chart={chartRef.current}
