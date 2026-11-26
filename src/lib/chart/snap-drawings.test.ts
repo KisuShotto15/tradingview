@@ -150,15 +150,13 @@ describe("the magnet's reach", () => {
   const candles = [candle(100, 10, 12, 8, 11)];
 
   /*
-   * The record of a contract that has been wrong in both directions. The reach
-   * used to be measured from the candle's *levels*, so the magnet went quiet
-   * whenever you aimed anywhere but close to one — which read as broken. It
-   * was then dropped for the candle altogether, on the reasoning that the
-   * bar's column already says which candle: true, but nothing was left to say
-   * whether the cursor was anywhere near that candle, and the snap became a
-   * teleport. It is now gated by both: the column picks the candle, and the
-   * candle's whole high–low span widened by `maxDistance` decides whether it
-   * is within reach.
+   * These are the **weak** magnet, which is what `snapToLevels` does unless a
+   * strength is passed. The reach used to be measured from the candle's four
+   * *levels*, so it went quiet whenever you aimed anywhere but close to one —
+   * which read as broken. It is now measured from the whole high–low span: the
+   * column picks the candle, and the span widened by `maxDistance` decides
+   * whether it is within reach. Dropping that second gate entirely is the
+   * strong magnet, a setting rather than a fix — see `magnet-strength.test.ts`.
    */
 
   it("lets go when the cursor is nowhere near the bar", () => {

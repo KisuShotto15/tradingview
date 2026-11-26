@@ -11,7 +11,7 @@ import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { DrawHandle } from "./DrawHandle";
 import { useDragShape } from "./use-drag-shape";
 import { beginPointerDrag } from "./pointer-drag";
-import { magnetRadius, magnetSnapDragging } from "@/lib/chart/magnet";
+import { magnetFor, magnetRadius, magnetSnapDragging } from "@/lib/chart/magnet";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { formatPrice } from "@/lib/format";
 import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
@@ -146,15 +146,14 @@ export function PositionDraw({
             // Magnet: the same rule the other drawings' anchors follow, so a
             // stop dropped with the magnet on lands on the wick it was aimed
             // at rather than a pixel beside it.
-            if (
-              t !== null &&
-              (ev.ctrlKey || ev.metaKey || useChartStore.getState().magnetMode)
-            ) {
+            const magnet = magnetFor(ev);
+            if (t !== null && magnet.on) {
               const snapped = magnetSnapDragging(
                 price,
                 t,
                 globalCandlesRef.current,
                 magnetRadius(candleSeries!, y),
+                magnet.strength,
               );
               if (snapped !== null) price = snapped;
             }

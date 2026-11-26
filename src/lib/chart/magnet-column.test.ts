@@ -8,14 +8,19 @@ import type { Candle } from "@/lib/binance/types";
 /**
  * The magnet, stated in the units the user feels.
  *
- * Two gates, pinned here at a realistic scale: the bar's column decides *which*
- * candle, and the candle's own span widened by the pixel reach decides whether
- * the cursor is near enough to grab it at all. Each has been wrong on its own.
- * A reach measured from the *levels* (14px, then 30px) left the magnet silent
- * wherever you were not already on one — on a zoomed-out chart a whole bar is
- * a few pixels tall, so that is almost everywhere. Dropping the vertical gate
- * instead turned the snap into a teleport: a finger aiming at empty space on a
- * phone was pulled 147px to a bar's extreme at the top of the screen.
+ * These cases are the **weak** magnet, at a realistic scale: the bar's column
+ * decides *which* candle, and the candle's own span widened by the pixel reach
+ * decides whether the cursor is near enough to grab it. Measuring that reach
+ * from the four *levels* instead (14px, then 30px) left it silent wherever you
+ * were not already on one — on a zoomed-out chart a whole bar is a few pixels
+ * tall, so that is almost everywhere.
+ *
+ * Dropping the vertical gate is not a bug fix in the other direction, it is
+ * the **strong** magnet, and it belongs to the user's choice rather than to
+ * this file's judgement — `magnet-strength.test.ts` covers that half. The
+ * pull it produces is enormous on a phone (147px to a wick at the top of the
+ * screen), which is exactly what it says on the tin and exactly what someone
+ * expecting the weak one reports as broken.
  */
 
 /** A price scale with a fixed price-per-pixel, as a candlestick series. */
@@ -74,7 +79,7 @@ describe("the magnet over a dense chart", () => {
     }
   });
 
-  it("lets go past the reach, so the cursor is never dragged across the pane", () => {
+  it("lets go past the reach, so the weak magnet never drags across the pane", () => {
     for (const offsetPx of [MAGNET_RADIUS_PX.fine + 1, 100, 400]) {
       expect(snapToOHLC(bar.low - px(offsetPx), 300, bars, reach)).toBe(null);
       expect(snapToOHLC(bar.high + px(offsetPx), 300, bars, reach)).toBe(null);
@@ -84,6 +89,12 @@ describe("the magnet over a dense chart", () => {
   it("picks the nearest of the four levels", () => {
     expect(snapToOHLC(bar.low + px(2), 300, bars, reach)).toBe(bar.low);
     expect(snapToOHLC(bar.high - px(2), 300, bars, reach)).toBe(bar.high);
+  });
+
+  it("the strong magnet grabs the same bar from right across the pane", () => {
+    // Same scale, no reach: 400px above the high still lands on the high.
+    expect(snapToOHLC(bar.high + px(400), 300, bars)).toBe(bar.high);
+    expect(snapToOHLC(bar.low - px(400), 300, bars)).toBe(bar.low);
   });
 
   it("lets the cursor move freely past the last bar", () => {

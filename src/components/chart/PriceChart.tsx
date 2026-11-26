@@ -76,7 +76,12 @@ import { getTvColors } from "@/lib/chart/theme";
 import { useReplayStore } from "@/lib/replay/replay-store";
 import { ReplayToolbar } from "./ReplayToolbar";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
-import { magnetRadius, magnetSnap } from "@/lib/chart/magnet";
+import { magnetFor, magnetRadius, magnetSnap } from "@/lib/chart/magnet";
+import {
+  registerIndicatorLevels,
+  valueAtTime,
+  type LevelSeries,
+} from "@/lib/chart/indicator-levels";
 import { registerCrosshairAimer } from "@/lib/chart/crosshair";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
@@ -296,6 +301,17 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   /** Per-user EMA instance: id → series */
   const emaSeriesMapRef = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
+  /**
+   * The price pane's overlay lines as plain arrays, for the magnet to snap to
+   * ("Snap to indicators").
+   *
+   * Captured where each study is computed rather than read back off the
+   * series: `ISeriesApi.data()` rebuilds its array on every call, and this is
+   * asked on every pointer move over the chart, times however many studies
+   * are on. A key is dropped when its study is turned off or hidden, so the
+   * magnet never offers a level that is not on screen.
+   */
+  const overlayLevelsRef = useRef<Map<string, LevelSeries[]>>(new Map());
   const rsiRef = useRef<ISeriesApi<"Line"> | null>(null);
   const stochRsiKRef = useRef<ISeriesApi<"Line"> | null>(null);
   const stochRsiDRef = useRef<ISeriesApi<"Line"> | null>(null);
@@ -396,6 +412,19 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
    * without the pointer moving, which no pointer event would report at all.
    */
   const ctrlHeldRef = useRef(false);
+  /*
+   * The magnet for a gesture on this chart. Ctrl/Cmd is tracked by key as well
+   * as read off the event, because the chart's own crosshair events do not
+   * reliably carry the modifier, and because a key press produces no pointer
+   * event at all — the preview has to update from the last known position.
+   * `magnetFor` applies TradingView's rule that the modifier *inverts* the
+   * toolbar setting rather than adding to it.
+   */
+  const magnetNow = (e?: { ctrlKey?: boolean; metaKey?: boolean } | null) =>
+    magnetFor({
+      ctrlKey: ctrlHeldRef.current || Boolean(e?.ctrlKey),
+      metaKey: Boolean(e?.metaKey),
+    });
   const chartColorsRef = useRef(DEFAULT_CHART_COLORS);
 
   const indicators = useChartStore((s) => s.indicators);
@@ -525,6 +554,14 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
     if (chartCaptureRef.current) registerChartCapture(chartCaptureRef.current);
     if (pricePerPixelRef.current) registerPricePerPixel(pricePerPixelRef.current);
     if (crosshairAimerRef.current) registerCrosshairAimer(crosshairAimerRef.current);
+    registerIndicatorLevels((time) => {
+      const out: number[] = [];
+      for (const serie of overlayLevelsRef.current.values()) {
+        const v = valueAtTime(serie, time);
+        if (v !== null) out.push(v);
+      }
+      return out;
+    });
     // The candle ref means "the focused chart's candles", so it moves too.
     globalCandlesRef.current = candlesRef.current;
   }, [active, renderTick]);
@@ -567,6 +604,9 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
   useEffect(() => {
     if (!containerRef.current) return;
 
+    // Captured for the cleanup: the ref object never changes, but the lint
+    // rule cannot know that and the warning is worth not carrying.
+    const overlayLevels = overlayLevelsRef.current;
     const initColors = chartColorsRef.current;
     const chart = createChart(containerRef.current, {
       layout: {
@@ -674,19 +714,15 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
 
       // Magnet: Ctrl held, or the persistent magnet-mode toggle → snap price
       // to the nearest candle OHLC or other drawing's level
-      if (
-        (ctrlHeldRef.current ||
-          param.sourceEvent?.ctrlKey ||
-          param.sourceEvent?.metaKey ||
-          useChartStore.getState().magnetMode) &&
-        resolvedTime !== null
-      ) {
+      const clickMagnet = magnetNow(param.sourceEvent);
+      if (clickMagnet.on && resolvedTime !== null) {
         const snapped = magnetSnap(
           price,
           resolvedTime,
           candlesRef.current,
           undefined,
           magnetRadius(candleSeriesRef.current, param.point.y),
+          clickMagnet.strength,
         );
         if (snapped !== null) price = snapped;
       }
@@ -1069,18 +1105,15 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
         t !== "eraser" &&
         cursorTime !== null &&
         cursorPrice !== null;
-      const magnetActive =
-        ctrlHeldRef.current ||
-        param.sourceEvent?.ctrlKey ||
-        param.sourceEvent?.metaKey ||
-        useChartStore.getState().magnetMode;
-      if (magnetActive && tracksMagnet) {
+      const magnet = magnetNow(param.sourceEvent);
+      if (magnet.on && tracksMagnet) {
         const snapped = magnetSnap(
           cursorPrice!,
           cursorTime!,
           candlesRef.current,
           undefined,
           param.point ? magnetRadius(candleSeriesRef.current, param.point.y) : undefined,
+          magnet.strength,
         );
         setMagnetTarget({ time: cursorTime!, price: snapped ?? cursorPrice! });
       } else {
@@ -1106,13 +1139,14 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
         lastCursorRef.current = { time: cursorTime, price: cursorPrice };
         // Apply snap to preview cursor if Ctrl held
         let pc: { time: number; price: number } = { time: cursorTime, price: cursorPrice };
-        if (magnetActive) {
+        if (magnet.on) {
           const snapped = magnetSnap(
             cursorPrice,
             cursorTime,
             candlesRef.current,
             undefined,
             param.point ? magnetRadius(candleSeriesRef.current, param.point.y) : undefined,
+            magnet.strength,
           );
           if (snapped !== null) pc = { time: cursorTime, price: snapped };
         }
@@ -1560,7 +1594,11 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       probeTarget.removeEventListener("pointerup", onAnyUp, { capture: true });
       probeTarget.removeEventListener("pointercancel", onAnyUp, { capture: true });
       crosshairAimerRef.current = null;
-      if (activeRef.current) registerCrosshairAimer(null);
+      overlayLevels.clear();
+      if (activeRef.current) {
+        registerCrosshairAimer(null);
+        registerIndicatorLevels(null);
+      }
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
@@ -2534,6 +2572,9 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
         }
         vwapRef.current = null;
       }
+      for (const k of [...overlayLevelsRef.current.keys()]) {
+        if (k.startsWith("vwap:")) overlayLevelsRef.current.delete(k);
+      }
       return;
     }
 
@@ -2798,6 +2839,13 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       const series = candleSeriesRef.current;
       const last = lastCursorRef.current;
       if (!series || !last) return;
+      // With the toolbar magnet already on, holding the key turns it *off*,
+      // so the target goes away rather than appearing.
+      const held = magnetNow();
+      if (!held.on) {
+        setMagnetTarget(null);
+        return;
+      }
       const y = series.priceToCoordinate(last.price);
       const snapped = magnetSnap(
         last.price,
@@ -2805,6 +2853,7 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
         candlesRef.current,
         undefined,
         y === null ? undefined : magnetRadius(series, y as number),
+        held.strength,
       );
       setMagnetTarget({ time: last.time, price: snapped ?? last.price });
     }
@@ -2846,13 +2895,15 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       if (t === null) return;
       let price = rawPrice as number;
       const time = t;
-      if (e.ctrlKey || e.metaKey || useChartStore.getState().magnetMode) {
+      const moveMagnet = magnetNow(e);
+      if (moveMagnet.on) {
         const snapped = magnetSnap(
           price,
           time,
           candlesRef.current,
           undefined,
           magnetRadius(candleSeriesRef.current, y),
+          moveMagnet.strength,
         );
         if (snapped !== null) price = snapped;
         setMagnetTarget({ time, price });
@@ -2886,6 +2937,9 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
     const c = candlesRef.current;
     if (c.length === 0) return;
     const emas = useChartStore.getState().userEMAs;
+    for (const k of [...overlayLevelsRef.current.keys()]) {
+      if (k.startsWith("ema:")) overlayLevelsRef.current.delete(k);
+    }
     for (const e of emas) {
       const series = emaSeriesMapRef.current.get(e.id);
       if (!series) continue;
@@ -2893,6 +2947,9 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       series.setData(
         data.map((p) => ({ time: p.time as UTCTimestamp, value: p.value })),
       );
+      // A hidden EMA is still a series, but it is not on screen, so the
+      // magnet must not pull to it.
+      if (!e.hidden) overlayLevelsRef.current.set("ema:" + e.id, data);
     }
     const lastVol = c.at(-1)?.volume;
     setLastValues((prev) => ({ ...prev, volume: lastVol }));
@@ -2927,6 +2984,15 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       up.setData(line((p) => p.vwap + n * p.sd));
       dn.setData(line((p) => p.vwap - n * p.sd));
     });
+
+    // The same seven lines, for the magnet.
+    const levels = (value: (p: (typeof pts)[number]) => number) =>
+      pts.map((p) => ({ time: p.time, value: value(p) }));
+    overlayLevelsRef.current.set("vwap:mean", levels((p) => p.vwap));
+    for (const n of [1, 2, 3]) {
+      overlayLevelsRef.current.set("vwap:+" + n, levels((p) => p.vwap + n * p.sd));
+      overlayLevelsRef.current.set("vwap:-" + n, levels((p) => p.vwap - n * p.sd));
+    }
   }
 
   function updateOBV() {

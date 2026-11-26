@@ -1,23 +1,25 @@
 import type { ISeriesApi } from "lightweight-charts";
 import type { Candle } from "@/lib/binance/types";
-import { snapToLevels } from "@/lib/chart/snap";
+import { snapToLevels, type MagnetStrength } from "@/lib/chart/snap";
+import { indicatorLevelsAt } from "@/lib/chart/indicator-levels";
 import { useChartStore } from "@/lib/store/chart-store";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 
 /**
- * How far, in CSS pixels, the magnet reaches beyond the thing it snaps to.
+ * How far, in CSS pixels, the weak magnet reaches beyond the thing it snaps
+ * to — TradingView's "when you are drawing near them", given a number.
  *
  * It is measured from a drawing's level, which has no thickness, but from a
- * candle's whole high–low span — a pointer anywhere on the candle grabs it
- * with no reach needed, and this only decides how far *outside* a candle the
- * pull still works. That distinction is the whole difference between a magnet
- * that feels dead and one that feels right: measured from the levels, aiming
- * at the middle of a long wick was too far from both ends to snap to either.
+ * candle's whole high–low span, so a pointer anywhere on the candle grabs it
+ * and this only decides how far *outside* one the pull still works. That
+ * distinction is the difference between a magnet that feels dead and one that
+ * feels right: measured from the levels, aiming at the middle of a long wick
+ * was too far from both ends to snap to either.
  *
- * It cannot be dropped for the candle, which was tried: the column already
- * says which candle, but nothing then said whether the cursor was anywhere
- * near it, and the snap became a teleport — on a phone a finger aiming at
- * empty space was pulled 147px to a bar's extreme at the top of the screen.
+ * The strong magnet ignores it for the candle, by design — see
+ * `MagnetStrength`. It still bounds the drawings' levels there, since those
+ * have no column to own the aim and there is always *some* nearest one.
+ *
  * A coarse pointer gets more room, because a fingertip both aims worse and
  * hides the level it is aiming at.
  */
@@ -70,12 +72,24 @@ export function magnetSnap(
   candles: Candle[],
   excludeId?: string,
   maxDistance?: number,
+  strength: MagnetStrength = "weak",
 ): number | null {
-  const symbol = useChartStore.getState().symbol;
+  const { symbol, magnetIndicators } = useChartStore.getState();
   const drawings = useDrawingsStore
     .getState()
     .drawings.filter((d) => d.symbol === symbol);
-  return snapToLevels(price, time, candles, drawings, excludeId, maxDistance);
+  // The price pane's own studies, when the user has asked for them.
+  const extra = magnetIndicators ? indicatorLevelsAt(time) : [];
+  return snapToLevels(
+    price,
+    time,
+    candles,
+    drawings,
+    excludeId,
+    maxDistance,
+    strength,
+    extra,
+  );
 }
 
 /** Convenience for drag handlers: the drawing under the drag is the selected one. */
@@ -84,6 +98,7 @@ export function magnetSnapDragging(
   time: number,
   candles: Candle[],
   maxDistance?: number,
+  strength: MagnetStrength = "weak",
 ): number | null {
   return magnetSnap(
     price,
@@ -91,5 +106,37 @@ export function magnetSnapDragging(
     candles,
     useDrawingsStore.getState().selectedId ?? undefined,
     maxDistance,
+    strength,
   );
+}
+
+/** What a modifier key says about the magnet; any event with the two flags. */
+export interface MagnetModifiers {
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+}
+
+/**
+ * What the magnet should do for this gesture: whether it is on at all, and how
+ * hard it pulls.
+ *
+ * Ctrl/Cmd **inverts** the setting, which is TradingView's rule and not the
+ * `||` every call site used to spell out: "You can temporarily turn the strong
+ * magnet feature on by [...] holding CTRL/Command", and "if the magnet mode is
+ * on you can temporarily turn it off by holding CTRL/Command". So the modifier
+ * is how you get the other behaviour for one gesture without going to the
+ * toolbar, in both directions — and the one it summons is always the strong
+ * one, whatever the toolbar is set to.
+ *
+ * Every snap call site asks this, so the rule lives in one place; a handler
+ * that reimplements `ctrlKey || magnetMode` loses the "off" half of it.
+ */
+export function magnetFor(ev?: MagnetModifiers | null): {
+  on: boolean;
+  strength: MagnetStrength;
+} {
+  const held = Boolean(ev?.ctrlKey || ev?.metaKey);
+  const { magnetMode, magnetStrength } = useChartStore.getState();
+  if (magnetMode) return { on: !held, strength: magnetStrength };
+  return { on: held, strength: "strong" };
 }

@@ -6,7 +6,7 @@ import { useChartStore } from "@/lib/store/chart-store";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
-import { magnetRadius, magnetSnapDragging } from "@/lib/chart/magnet";
+import { magnetFor, magnetRadius, magnetSnapDragging } from "@/lib/chart/magnet";
 import { DRAG_SLOP_PX, beginPointerDrag } from "./pointer-drag";
 
 /** True if the currently-selected drawing is locked (no drag allowed). */
@@ -103,15 +103,14 @@ export function useDragShape<T>(
            * (`use-drag-point`, and the long/short's entry/stop/target), all of
            * which resolve to an absolute snapped price rather than a delta.
            */
-          if (
-            grabIsOnLevel &&
-            (ev.ctrlKey || ev.metaKey || useChartStore.getState().magnetMode)
-          ) {
+          const magnet = magnetFor(ev);
+          if (grabIsOnLevel && magnet.on) {
             const snapped = magnetSnapDragging(
               p,
               t,
               globalCandlesRef.current,
               magnetRadius(candleSeries, y),
+              magnet.strength,
             );
             if (snapped !== null) p = snapped;
           }

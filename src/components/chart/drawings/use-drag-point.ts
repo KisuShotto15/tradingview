@@ -7,7 +7,8 @@ import { useChartStore } from "@/lib/store/chart-store";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { xToTime, timeframeToSeconds } from "@/lib/chart/coords";
 import { candlesRef as globalCandlesRef } from "@/lib/chart/candles-ref";
-import { magnetRadius, magnetSnapDragging } from "@/lib/chart/magnet";
+import { magnetFor, magnetRadius, magnetSnapDragging } from "@/lib/chart/magnet";
+import type { MagnetStrength } from "@/lib/chart/snap";
 import { beginPointerDrag } from "./pointer-drag";
 
 /** True if the currently-selected drawing is locked. */
@@ -47,7 +48,7 @@ export function useDragPoint(
       function toPoint(
         clientX: number,
         clientY: number,
-        snap: boolean,
+        magnet: { on: boolean; strength: MagnetStrength },
       ): Point | null {
         const rect = container!.getBoundingClientRect();
         const x = clientX - rect.left;
@@ -58,12 +59,13 @@ export function useDragPoint(
         const time = xToTime(chart!, x, globalCandlesRef.current, intervalSec);
         if (time === null) return null;
         let price = rawPrice as number;
-        if (snap) {
+        if (magnet.on) {
           const snapped = magnetSnapDragging(
             price,
             time,
             globalCandlesRef.current,
             magnetRadius(candleSeries, y),
+            magnet.strength,
           );
           if (snapped !== null) price = snapped;
         }
@@ -72,8 +74,7 @@ export function useDragPoint(
 
       beginPointerDrag(e, {
         onMove(ev) {
-          const snap = ev.ctrlKey || ev.metaKey || useChartStore.getState().magnetMode;
-          const pt = toPoint(ev.clientX, ev.clientY, snap);
+          const pt = toPoint(ev.clientX, ev.clientY, magnetFor(ev));
           if (pt) handlers.onMove(pt);
         },
         onEnd(moved) {

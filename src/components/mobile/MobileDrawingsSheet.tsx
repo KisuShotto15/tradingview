@@ -33,6 +33,10 @@ export function MobileDrawingsSheet() {
   const toggleFavoriteTool = useChartStore((s) => s.toggleFavoriteTool);
   const magnetMode = useChartStore((s) => s.magnetMode);
   const toggleMagnetMode = useChartStore((s) => s.toggleMagnetMode);
+  const magnetStrength = useChartStore((s) => s.magnetStrength);
+  const setMagnetStrength = useChartStore((s) => s.setMagnetStrength);
+  const magnetIndicators = useChartStore((s) => s.magnetIndicators);
+  const toggleMagnetIndicators = useChartStore((s) => s.toggleMagnetIndicators);
   const selectedId = useDrawingsStore((s) => s.selectedId);
   const drawings = useDrawingsStore((s) => s.drawings);
   const { clear: clearDrawings, update } = useDrawings();
@@ -69,9 +73,40 @@ export function MobileDrawingsSheet() {
         <UtilityRow
           icon={Magnet}
           label="Magnet mode"
-          hint="Always snap to OHLC while placing/dragging"
+          hint={
+            magnetStrength === "strong"
+              ? "Snaps to the bar under your finger, however far"
+              : "Snaps only when you aim near a bar"
+          }
           active={magnetMode}
           onClick={toggleMagnetMode}
+        />
+        {/*
+          * The strength, which desktop puts behind the magnet's chevron.
+          * There is no Ctrl key on a phone, so this is the only way to reach
+          * the other behaviour — and on a small screen with a fingertip it is
+          * the setting that decides whether the magnet is usable at all.
+          */}
+        <UtilityRow
+          icon={Magnet}
+          label="Strong magnet"
+          hint="Always snaps to the bar under the cursor"
+          active={magnetMode && magnetStrength === "strong"}
+          onClick={() => setMagnetStrength("strong")}
+        />
+        <UtilityRow
+          icon={Magnet}
+          label="Weak magnet"
+          hint="Snaps only when you aim near a bar"
+          active={magnetMode && magnetStrength === "weak"}
+          onClick={() => setMagnetStrength("weak")}
+        />
+        <UtilityRow
+          icon={Magnet}
+          label="Snap to indicators"
+          hint="Also pull to EMA and VWAP lines, not just candles"
+          active={magnetIndicators}
+          onClick={toggleMagnetIndicators}
         />
         <UtilityRow
           icon={alertOn ? Bell : BellOff}

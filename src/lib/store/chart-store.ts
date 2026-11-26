@@ -7,6 +7,7 @@ import {
   applyCandlePalette,
 } from "@/lib/chart/candle-palette";
 import type { Timeframe } from "@/lib/binance/types";
+import type { MagnetStrength } from "@/lib/chart/snap";
 import { DEFAULT_FLAG_COLOR } from "@/lib/watchlist/flags";
 import {
   DEFAULT_LAYOUT,
@@ -404,6 +405,20 @@ interface ChartState {
   subPanesHidden: boolean;
   /** Persistent OHLC snap — same effect as holding Ctrl/Cmd while dragging */
   magnetMode: boolean;
+  /**
+   * How hard the magnet pulls when it is on, with TradingView's two settings.
+   * `strong` snaps to the bar under the cursor whatever the distance; `weak`
+   * only when the aim is near it. Defaults to strong, which is the one people
+   * mean when they ask why a line did not stick to the wick.
+   */
+  magnetStrength: MagnetStrength;
+  /**
+   * Whether the magnet also snaps to the price pane's indicator lines — an
+   * EMA, a VWAP band — and not only to the candles and the other drawings.
+   * TradingView's "Snap to indicators", on by default here because a line
+   * drawn off an EMA is the case it was added for.
+   */
+  magnetIndicators: boolean;
   /** Show the countdown to the current bar's close on the price axis. */
   showBarCountdown: boolean;
   /**
@@ -524,6 +539,8 @@ interface ChartState {
   setSubPanesHidden: (v: boolean) => void;
   toggleSubPanesHidden: () => void;
   toggleMagnetMode: () => void;
+  setMagnetStrength: (s: MagnetStrength) => void;
+  toggleMagnetIndicators: () => void;
   setShowBarCountdown: (v: boolean) => void;
   setIndicatorOverlay: (key: IndicatorKey, target: IndicatorKey | "own") => void;
   setPaneZOrder: (host: IndicatorKey, order: IndicatorKey[]) => void;
@@ -650,6 +667,8 @@ export const useChartStore = create<ChartState>()(
       pillsCollapsed: false,
       subPanesHidden: false,
       magnetMode: false,
+      magnetStrength: "strong" as MagnetStrength,
+      magnetIndicators: true,
       showBarCountdown: true,
       indicatorOverlays: {},
       paneZOrder: {},
@@ -976,6 +995,11 @@ export const useChartStore = create<ChartState>()(
       setSubPanesHidden: (subPanesHidden) => set({ subPanesHidden }),
       toggleSubPanesHidden: () => set((s) => ({ subPanesHidden: !s.subPanesHidden })),
       toggleMagnetMode: () => set((s) => ({ magnetMode: !s.magnetMode })),
+      /** Picking a strength also turns the magnet on — that is what the click meant. */
+      setMagnetStrength: (magnetStrength: MagnetStrength) =>
+        set({ magnetStrength, magnetMode: true }),
+      toggleMagnetIndicators: () =>
+        set((s) => ({ magnetIndicators: !s.magnetIndicators })),
       setShowBarCountdown: (showBarCountdown) => set({ showBarCountdown }),
 
       setIndicatorOverlay: (key, target) => {
@@ -1407,6 +1431,8 @@ export const useChartStore = create<ChartState>()(
         pillsCollapsed: s.pillsCollapsed,
         subPanesHidden: s.subPanesHidden,
         magnetMode: s.magnetMode,
+        magnetStrength: s.magnetStrength,
+        magnetIndicators: s.magnetIndicators,
         showBarCountdown: s.showBarCountdown,
         indicatorOverlays: s.indicatorOverlays,
         paneZOrder: s.paneZOrder,

@@ -53,6 +53,7 @@ export function ChartScreen() {
   const openSheet = useMobileStore((s) => s.openSheet);
   const tool = useChartStore((s) => s.tool);
   const magnetMode = useChartStore((s) => s.magnetMode);
+  const magnetStrength = useChartStore((s) => s.magnetStrength);
   const toggleMagnetMode = useChartStore((s) => s.toggleMagnetMode);
   const selectedDrawingId = useDrawingsStore((s) => s.selectedId);
   const { undo, redo } = useDrawings();
@@ -135,7 +136,7 @@ export function ChartScreen() {
               "shrink-0 rounded p-1.5 active:bg-tv-panel-hover",
               magnetMode ? "bg-tv-text text-tv-bg" : "text-tv-text-muted",
             )}
-            aria-label={magnetMode ? "Magnet on — snap to OHLC" : "Magnet off"}
+            aria-label={magnetMode ? `Magnet on — ${magnetStrength} snap to OHLC` : "Magnet off"}
             aria-pressed={magnetMode}
           >
             <Magnet className="h-4 w-4" />

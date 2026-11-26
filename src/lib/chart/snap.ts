@@ -15,10 +15,29 @@ function barSpan(candles: Candle[]): number | null {
 }
 
 /**
+ * How hard the magnet pulls, with TradingView's own two settings and its own
+ * definitions of them:
+ *
+ * - `strong` — "pulls the drawing points to chart values (bars), regardless of
+ *   the distance between the points and chart values". Anywhere in a bar's
+ *   column lands on one of its four prices, however far away the aim was.
+ * - `weak` — "pulls the drawing points to chart values (bars) when you are
+ *   drawing near them". Near is `MAGNET_RADIUS_PX` around the bar.
+ *
+ * They are a choice the user makes, not a bug to be split the difference on,
+ * which is what this code did for a while: strong alone reads as a teleport to
+ * someone who wanted weak, and weak alone reads as dead to someone who wanted
+ * strong. Ctrl/Cmd inverts whichever is set, rather than adding to it: with
+ * the magnet off it gives the strong one for a single gesture, and with the
+ * magnet on it gives a free point — see `magnetFor`.
+ */
+export type MagnetStrength = "weak" | "strong";
+
+/**
  * Snap a price to the nearest OHLC level of the bar the cursor is over.
  * Returns null when there are no candles, or when the cursor is not over one.
  *
- * Two gates, and both are needed.
+ * Two gates, one of which the user controls.
  *
  * **Horizontal: the bar's own column.** Only one bar can be under the cursor,
  * so within its column there is exactly one candle to snap to and nothing to
@@ -27,19 +46,19 @@ function barSpan(candles: Candle[]): number | null {
  * and it is what keeps the magnet from reaching into the empty space past the
  * last bar, where there is no candle to grab.
  *
- * **Vertical: the candle's own span, widened by `maxDistance`.** A pointer
- * anywhere on the candle, body or wick, grabs the nearest of its four levels —
- * that part needs no reach, and measuring from the *levels* instead is what
- * made the magnet feel dead: aiming at the middle of a long wick, the obvious
- * place to aim, was too far from both ends to snap to either.
+ * **Vertical: `maxDistance` around the candle's own span.** Passing it is the
+ * weak magnet, leaving it out is the strong one, and the reach is measured
+ * from the high–low span rather than from the four levels: a pointer anywhere
+ * on the candle, body or wick, grabs the nearest level with no reach needed.
+ * Measuring from the levels instead is what made the magnet feel dead — the
+ * middle of a long wick, the obvious place to aim, was too far from both ends
+ * to snap to either.
  *
- * Outside the candle it has to decline, and this is the gate that was briefly
- * dropped altogether on the reasoning that the column already answers "which
- * candle". It does — but it does not answer "is the cursor anywhere near that
- * candle", and without it the snap is a teleport rather than a magnet: a bar's
- * wick is a few pixels of a phone's ~500px plot, so a finger aiming at empty
- * space was pulled to that bar's extreme 147px away, at the top of the screen.
- * The magnet was working and unusable at the same time.
+ * Which of the two is right is not for this function to decide. Unbounded, a
+ * bar's wick is a few pixels of a phone's ~500px plot, so a finger aiming at
+ * empty space is pulled 147px to that bar's extreme at the top of the screen:
+ * exactly what the strong magnet is specified to do, and exactly what someone
+ * who wanted the weak one reports as broken.
  */
 export function snapToOHLC(
   price: number,
@@ -181,12 +200,13 @@ export function drawingPriceLevels(
  *
  * `maxDistance` is a reach in price units, beyond which nothing is snapped.
  * The caller converts a pixel reach through the series' own scale, so the pull
- * feels the same at any zoom level. It is applied differently to the two kinds
- * of candidate: a drawing's level has no thickness, so the reach is measured
- * straight from it, while a candle is measured from its whole high–low span —
- * see `snapToOHLC`. Without it on either, the magnet is a teleport: it would
- * fling a dragged point across the pane to whichever fib rung or wick happened
- * to be nearest, since there is always *some* nearest level.
+ * feels the same at any zoom level. It bounds a drawing's level always, and
+ * the candle only on the weak setting — see `MagnetStrength`.
+ *
+ * `extraLevels` are prices some other source offers at `time` — in practice
+ * the indicator lines on the price pane, which the chart publishes through
+ * `indicator-levels.ts`. They are treated exactly like a drawing's level: no
+ * thickness, so plain distance, bounded by the reach under either strength.
  */
 export function snapToLevels(
   price: number,
@@ -195,14 +215,23 @@ export function snapToLevels(
   drawings: Drawing[],
   excludeId?: string,
   maxDistance?: number,
+  strength: MagnetStrength = "weak",
+  extraLevels: readonly number[] = [],
 ): number | null {
-  // A drawing's level has no thickness, so it is taken on plain distance.
-  const candidates = drawingPriceLevels(drawings, time, excludeId).filter(
+  // A drawing's level has no thickness, so it is taken on plain distance —
+  // and it keeps its reach even on the strong setting. "Regardless of the
+  // distance" is answerable for a candle, which owns the column under the
+  // cursor; for the levels it would mean dragging the point to whichever fib
+  // rung on the pane happened to be nearest, which is not a snap at all.
+  const candidates = [...drawingPriceLevels(drawings, time, excludeId), ...extraLevels].filter(
     (level) => maxDistance === undefined || Math.abs(level - price) <= maxDistance,
   );
-  // The candle is judged by its column *and* by its own span widened by the
-  // reach, not by distance from its levels — see snapToOHLC.
-  const ohlc = snapToOHLC(price, time, candles, maxDistance);
+  const ohlc = snapToOHLC(
+    price,
+    time,
+    candles,
+    strength === "strong" ? undefined : maxDistance,
+  );
   if (ohlc !== null) candidates.push(ohlc);
   if (candidates.length === 0) return null;
   return candidates.reduce((closest, level) =>

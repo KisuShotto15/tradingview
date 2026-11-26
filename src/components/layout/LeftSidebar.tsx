@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Bell, BellOff, ChevronRight, Magnet, Star, Trash2 } from "lucide-react";
+import { Bell, BellOff, Check, ChevronRight, Magnet, Star, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +21,24 @@ import {
   CURSOR_TOOLS,
   LABELED_GROUPS,
 } from "./drawing-tools";
+
+/**
+ * TradingView's two magnet settings, in its own words: strong "pulls the
+ * drawing points to chart values (bars), regardless of the distance", weak
+ * "when you are drawing near them".
+ */
+const MAGNET_STRENGTHS = [
+  {
+    value: "weak" as const,
+    label: "Weak magnet",
+    hint: "Snaps only when you aim near a bar",
+  },
+  {
+    value: "strong" as const,
+    label: "Strong magnet",
+    hint: "Always snaps to the bar under the cursor",
+  },
+];
 
 /**
  * A single tool button. Right-click toggles favorite (works for every tool,
@@ -77,6 +95,10 @@ export function LeftSidebar() {
   const selectedId = useDrawingsStore((s) => s.selectedId);
   const drawings = useDrawingsStore((s) => s.drawings);
   const magnetMode = useChartStore((s) => s.magnetMode);
+  const magnetStrength = useChartStore((s) => s.magnetStrength);
+  const setMagnetStrength = useChartStore((s) => s.setMagnetStrength);
+  const magnetIndicators = useChartStore((s) => s.magnetIndicators);
+  const toggleMagnetIndicators = useChartStore((s) => s.toggleMagnetIndicators);
   const toggleMagnetMode = useChartStore((s) => s.toggleMagnetMode);
   const { clear: clearDrawings, update } = useDrawings();
 
@@ -220,26 +242,91 @@ export function LeftSidebar() {
       <div className="mt-auto flex w-full flex-col items-center gap-0.5 pb-0.5">
         <div className="my-1 h-px w-6 bg-tv-border" />
 
-        <Tooltip>
-          <TooltipTrigger
-            onClick={toggleMagnetMode}
-            aria-label="Toggle magnet mode"
-            className={cn(
-              "flex h-10 w-10 items-center justify-center rounded transition-colors",
-              magnetMode
-                ? "bg-tv-blue/15 text-tv-blue"
-                : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
-            )}
-          >
-            <Magnet className="h-7 w-7" />
-          </TooltipTrigger>
-          <TooltipContent side="right" className="text-xs">
-            <div className="font-medium">{magnetMode ? "Disable magnet" : "Enable magnet"}</div>
-            <div className="mt-0.5 text-[10px] text-tv-text-muted">
-              Always snap to OHLC while placing/dragging (same as holding Ctrl)
-            </div>
-          </TooltipContent>
-        </Tooltip>
+        {/*
+          * The magnet, with TradingView's two strengths behind the same
+          * chevron the tool groups use. The button toggles it; the chevron
+          * chooses how hard it pulls, because "it does not snap" and "it
+          * snaps from too far" are the same control set two different ways,
+          * and a single on/off cannot answer both.
+          */}
+        <div className="relative">
+          <Tooltip>
+            <TooltipTrigger
+              onClick={toggleMagnetMode}
+              aria-label="Toggle magnet mode"
+              aria-pressed={magnetMode}
+              className={cn(
+                "flex h-10 w-10 items-center justify-center rounded transition-colors",
+                magnetMode
+                  ? "bg-tv-blue/15 text-tv-blue"
+                  : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
+              )}
+            >
+              <Magnet className="h-7 w-7" />
+            </TooltipTrigger>
+            <TooltipContent side="right" className="text-xs">
+              <div className="font-medium">{magnetMode ? "Disable magnet" : "Enable magnet"}</div>
+              <div className="mt-0.5 text-[10px] text-tv-text-muted">
+                {magnetStrength === "strong"
+                  ? "Strong: snaps to the bar under the cursor, however far"
+                  : "Weak: snaps only when you aim near a bar"}
+              </div>
+              <div className="mt-0.5 text-[10px] text-tv-text-muted">
+                Hold Ctrl to {magnetMode ? "turn it off" : "use the strong magnet"}
+              </div>
+            </TooltipContent>
+          </Tooltip>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label="Magnet strength"
+              className="absolute -right-0 bottom-0 flex h-3 w-3 items-center justify-center rounded-tl-[2px] text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text"
+            >
+              <ChevronRight className="h-2.5 w-2.5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="right" align="end" sideOffset={4} className="min-w-52 bg-tv-panel">
+              {MAGNET_STRENGTHS.map((m) => (
+                <DropdownMenuItem
+                  key={m.value}
+                  onClick={() => setMagnetStrength(m.value)}
+                  aria-label={m.label}
+                  className={cn(
+                    "flex items-start gap-2 text-xs",
+                    magnetMode && magnetStrength === m.value && "bg-tv-panel-hover",
+                  )}
+                >
+                  {/* A tick, not the magnet icon: on this panel the active
+                      row's tint is almost invisible, and which of the two
+                      strengths is in force is the whole point of the menu. */}
+                  <Check
+                    className={cn(
+                      "mt-0.5 h-3.5 w-3.5 shrink-0",
+                      magnetMode && magnetStrength === m.value ? "text-tv-text" : "opacity-0",
+                    )}
+                  />
+                  <span className="flex min-w-0 flex-col">
+                    <span className="font-medium">{m.label}</span>
+                    <span className="text-[10px] text-tv-text-muted">{m.hint}</span>
+                  </span>
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuItem
+                onClick={toggleMagnetIndicators}
+                aria-label="Snap to indicators"
+                className={cn("flex items-start gap-2 text-xs", magnetIndicators && "bg-tv-panel-hover")}
+              >
+                <Check
+                  className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", magnetIndicators ? "text-tv-text" : "opacity-0")}
+                />
+                <span className="flex min-w-0 flex-col">
+                  <span className="font-medium">Snap to indicators</span>
+                  <span className="text-[10px] text-tv-text-muted">
+                    Also pull to EMA and VWAP lines, not just candles
+                  </span>
+                </span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
 
         <Tooltip>
           <TooltipTrigger
