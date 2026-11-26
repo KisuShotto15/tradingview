@@ -56,7 +56,7 @@ import {
   DEFAULT_CHART_COLORS,
 } from "@/lib/store/chart-store";
 import { formatPrice, formatVolume, priceFormatFor, axisPriceFormatter } from "@/lib/format";
-import { ArrowUpDown, Bell, ChevronUp, Maximize2, Plus, Settings2 } from "lucide-react";
+import { ArrowUpDown, Bell, Check, ChevronUp, Maximize2, Plus, Settings2, X } from "lucide-react";
 import { IndicatorPill } from "./IndicatorPill";
 import { MeasureOverlay } from "./MeasureOverlay";
 import { DrawingsLayer } from "./drawings/DrawingsLayer";
@@ -398,6 +398,19 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
   /** The touch cursor puck (see `movePuck`), moved imperatively. */
   const puckRef = useRef<HTMLDivElement>(null);
   const hidePuckRef = useRef<(() => void) | null>(null);
+  /*
+   * Touch placement: aim first, confirm second.
+   *
+   * On a phone a tool used to arm with nothing on screen, and the point
+   * landed wherever the finger lifted — so there was no way to see where it
+   * would go before committing it, and no way to let go and look. This holds
+   * the aim, in container coordinates, for as long as a point-click tool is
+   * armed on a touch device; the confirm button is what places the point.
+   */
+  const [touchAim, setTouchAim] = useState<{ x: number; y: number } | null>(null);
+  const touchAimRef = useRef<{ x: number; y: number } | null>(null);
+  const setAimRef = useRef<((clientX: number, clientY: number, withPuck: boolean) => void) | null>(null);
+  const commitAimRef = useRef<((clientX: number, clientY: number) => void) | null>(null);
   // Shape of the current view (bar span + offset from the last bar), kept fresh
   // as the user pans/zooms so it survives a symbol change and can be reapplied
   // to keep the same zoom + scroll position on the next symbol.
@@ -1411,6 +1424,16 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       const held = Date.now() - pressTrack.t >= TAP_MS;
       // A drag is a pan or a scale drag; leave whatever the library did.
       if (moved) return;
+      /*
+       * A placement gesture is the one tap that *should* leave a crosshair
+       * behind: it is the aim, and the confirm bar is about to be shown
+       * against it. This runs in the capture phase, before `onClickUp`
+       * clears the flag.
+       */
+      if (placing.active) return;
+      // Same for an aim that is already placed: a tap on the price scale
+      // must not take the armed cursor away with it.
+      if (touchAimRef.current) return;
       if (pressTrack.onScale || !held) chart.clearCrosshairPosition();
     };
 
@@ -1519,11 +1542,30 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
     };
 
     const aimCrosshair = (clientX: number, clientY: number) => {
+      setAim(clientX, clientY, true);
+    };
+
+    /**
+     * Put the aim somewhere and remember it.
+     *
+     * `withPuck` is false when nothing is touching the screen — arming a tool
+     * seeds the aim in the middle of the plot, and a puck with no finger
+     * under it would be a lie.
+     */
+    const setAim = (clientX: number, clientY: number, withPuck: boolean) => {
       if (!placeCrosshair(clientX, clientY)) return;
-      movePuck(clientX, clientY);
+      if (withPuck) movePuck(clientX, clientY);
       placing.x = clientX;
       placing.y = clientY;
+      const el = containerRef.current;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const aim = { x: clientX - rect.left, y: clientY - rect.top };
+        touchAimRef.current = aim;
+        setTouchAim(aim);
+      }
     };
+    setAimRef.current = setAim;
 
     const onPlaceMove = (e: PointerEvent) => {
       if (!placing.active || e.pointerId !== clickTrack.id) return;
@@ -1535,6 +1577,16 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       // A second pointer means a pinch or a multi-touch gesture, not a click.
       if (clickTrack.ok && e.pointerId !== clickTrack.id) {
         clickTrack.ok = false;
+        /*
+         * And it ends the placement gesture, which is the only thing that
+         * ever gives panning and zooming back: `onClickUp` bails on an
+         * unknown pointer, so without this a pinch while a tool was armed
+         * left the chart unable to scroll or scale for good.
+         */
+        if (placing.active) {
+          placing.active = false;
+          chart.applyOptions({ handleScroll: true, handleScale: true });
+        }
         return;
       }
       const target = e.target as Element | null;
@@ -1548,7 +1600,16 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       clickTrack.t = Date.now();
       clickTrack.ok = true;
 
-      const armed = toolRef.current !== "cursor" && toolRef.current !== "eraser";
+      /*
+       * `brush` and `highlighter` draw freehand from their own drag handler
+       * (below), so they are not point-click tools: routing them through the
+       * aim/confirm path would leave a confirm bar up after every stroke.
+       */
+      const armed =
+        toolRef.current !== "cursor" &&
+        toolRef.current !== "eraser" &&
+        toolRef.current !== "brush" &&
+        toolRef.current !== "highlighter";
       if (armed && e.pointerType !== "mouse" && !useReplayStore.getState().picking) {
         placing.active = true;
         // Seeded here, not only in `aimCrosshair`: that bails out over the
@@ -1561,28 +1622,28 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       }
     };
 
-    const onClickUp = (e: PointerEvent) => {
-      hidePuckRef.current?.();
-      if (!clickTrack.ok || e.pointerId !== clickTrack.id) return;
-      clickTrack.ok = false;
-      const wasPlacing = placing.active;
-      if (wasPlacing) {
-        placing.active = false;
-        chart.applyOptions({ handleScroll: true, handleScale: true });
-      }
-      const slop = e.pointerType === "mouse" ? CLICK_SLOP_PX.mouse : CLICK_SLOP_PX.touch;
-      // A drag is a pan, and a long press is the crosshair — neither clicks.
-      // While placing, both are how the point is aimed, so neither applies.
-      if (!wasPlacing) {
-        if (Math.abs(e.clientX - clickTrack.x) > slop) return;
-        if (Math.abs(e.clientY - clickTrack.y) > slop) return;
-        if (Date.now() - clickTrack.t > LONG_PRESS_MS) return;
-      }
+    /**
+     * Place a point at a viewport position, through the same handler a mouse
+     * click goes through.
+     *
+     * Factored out of the pointer-up path because touch placement no longer
+     * commits on release: the confirm button calls this instead.
+     */
+    const commitAt = (
+      clientX: number,
+      clientY: number,
+      mods: { ctrlKey: boolean; altKey: boolean; shiftKey: boolean; metaKey: boolean } = {
+        ctrlKey: false,
+        altKey: false,
+        shiftKey: false,
+        metaKey: false,
+      },
+    ) => {
       const el = containerRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
-      const x = (wasPlacing ? placing.x : e.clientX) - rect.left;
-      const y = (wasPlacing ? placing.y : e.clientY) - rect.top;
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
       // Past the time scale's width is the price axis, which is not a
       // placement surface — lightweight-charts keeps its own gestures there.
       if (x > chart.timeScale().width()) return;
@@ -1604,12 +1665,8 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
        * not engage the magnet and Shift could not keep a finished measurement
        * on screen, with nothing to show why. The shape mirrors
        * lightweight-charts' own `TouchMouseEventData` so the handler cannot
-       * tell the difference; the coordinates are the ones actually used for
-       * the click, which while placing by touch is where the point was aimed,
-       * not where the finger happened to lift.
+       * tell the difference.
        */
-      const clientX = wasPlacing ? placing.x : e.clientX;
-      const clientY = wasPlacing ? placing.y : e.clientY;
       handleChartClick({
         point: { x, y },
         time,
@@ -1618,16 +1675,45 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
           clientY,
           pageX: clientX + window.scrollX,
           pageY: clientY + window.scrollY,
-          screenX: e.screenX,
-          screenY: e.screenY,
+          screenX: clientX,
+          screenY: clientY,
           localX: x,
           localY: y,
-          ctrlKey: e.ctrlKey,
-          altKey: e.altKey,
-          shiftKey: e.shiftKey,
-          metaKey: e.metaKey,
+          ...mods,
         },
       } as unknown as MouseEventParams);
+    };
+    commitAimRef.current = (cx: number, cy: number) => commitAt(cx, cy);
+
+    const onClickUp = (e: PointerEvent) => {
+      hidePuckRef.current?.();
+      if (!clickTrack.ok || e.pointerId !== clickTrack.id) return;
+      clickTrack.ok = false;
+      if (placing.active) {
+        /*
+         * Lifting the finger aims; it does not place.
+         *
+         * It used to place, which meant a point landed wherever the finger
+         * happened to come off the glass — there was no way to let go, look
+         * at where the crosshair had settled, and only then commit. The
+         * crosshair and the confirm bar stay up; the button below is what
+         * places the point.
+         */
+        placing.active = false;
+        chart.applyOptions({ handleScroll: true, handleScale: true });
+        return;
+      }
+      const slop = e.pointerType === "mouse" ? CLICK_SLOP_PX.mouse : CLICK_SLOP_PX.touch;
+      // A drag is a pan, and a long press is the crosshair — neither clicks.
+      if (Math.abs(e.clientX - clickTrack.x) > slop) return;
+      if (Math.abs(e.clientY - clickTrack.y) > slop) return;
+      if (Date.now() - clickTrack.t > LONG_PRESS_MS) return;
+      commitAt(e.clientX, e.clientY, {
+        ctrlKey: e.ctrlKey,
+        altKey: e.altKey,
+        shiftKey: e.shiftKey,
+        metaKey: e.metaKey,
+      });
     };
 
     containerRef.current.addEventListener("pointerdown", onClickDown, { capture: true });
@@ -3387,6 +3473,67 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
     }
   }
 
+  /*
+   * Arming a tool on a touch device puts the cursor on screen straight away.
+   *
+   * It used to show nothing until a finger touched the glass, so there was no
+   * cursor to position and no sign the tool was live — and because the point
+   * then landed where the finger lifted, the first touch *was* the placement.
+   * TradingView's mobile app arms with the crosshair already on the chart and
+   * a confirm button under it; this is that. The aim starts in the middle of
+   * the plot, a little above centre so it is clear of the confirm bar.
+   *
+   * `brush` and `highlighter` are freehand and have their own drag handler,
+   * so they are not point-click tools and get none of this.
+   */
+  useEffect(() => {
+    const armed =
+      tool !== "cursor" && tool !== "eraser" && tool !== "brush" && tool !== "highlighter";
+    const coarse =
+      typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+    if (!armed || !coarse) {
+      if (touchAimRef.current) {
+        touchAimRef.current = null;
+        setTouchAim(null);
+        chartRef.current?.clearCrosshairPosition();
+      }
+      return;
+    }
+    // Keep an aim that is already placed — the second point of a two-point
+    // drawing must not throw the cursor back to the middle.
+    if (touchAimRef.current) return;
+    const el = containerRef.current;
+    const chart = chartRef.current;
+    if (!el || !chart) return;
+    const rect = el.getBoundingClientRect();
+    const plotW = Math.min(rect.width, chart.timeScale().width());
+    /*
+     * Against the PRICE pane's height, not the container's.
+     * The container also holds the indicator sub-panes, so a fraction of its
+     * height lands below the candles — and the crosshair belongs to the
+     * candle series' pane, so a position outside that pane is clipped away
+     * and nothing is drawn at all. Measured: 42% of a 740px container put the
+     * aim at y=311 in a 296px price pane, and the cursor never appeared.
+     */
+    const paneH = paneOffsetsRef.current[0]?.height ?? rect.height;
+    /*
+     * On the next frame, not in this commit.
+     *
+     * Seeding it synchronously here set the crosshair and drew nothing — the
+     * call reported success, the model held the position, nothing cleared it,
+     * and it stayed invisible for as long as the tool was armed, while the
+     * identical call a frame later drew it every time. Whatever React's
+     * commit sets off in lightweight-charts (an option apply, the autoSize
+     * observer) lands between the set and the first paint and takes the
+     * crosshair with it. One frame is enough and is not perceptible.
+     */
+    const frame = requestAnimationFrame(() => {
+      setAimRef.current?.(rect.left + plotW * 0.5, rect.top + paneH * 0.45, false);
+    });
+    return () => cancelAnimationFrame(frame);
+
+  }, [tool, isMobile]);
+
   // Load historical data + subscribe live
   useEffect(() => {
     let unsub: (() => void) | null = null;
@@ -4603,6 +4750,46 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
         aria-hidden
         className="pointer-events-none absolute left-0 top-0 z-30 -ml-[11px] -mt-[11px] h-[22px] w-[22px] rounded-full border-2 border-white bg-white/50 opacity-0 shadow-[0_1px_4px_rgba(0,0,0,0.55)]"
       />
+      {/*
+        Confirm-to-place bar: the second half of touch placement.
+        A point used to land wherever the finger came off the glass, so there
+        was no moment between aiming and committing — and nothing on screen
+        said a tool was even armed until something had already been drawn.
+        The crosshair above is the aim (press and slide anywhere on the plot
+        to move it); this places it. TradingView's mobile app is the same
+        shape. Desktop never sees it: a mouse clicks where it points.
+      */}
+      {touchAim && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 z-40 flex justify-center">
+          <div className="pointer-events-auto flex items-center gap-1 rounded-lg border border-tv-border bg-tv-panel/95 p-1 shadow-lg backdrop-blur">
+            <button
+              type="button"
+              className="flex h-9 items-center gap-1.5 rounded-md bg-white px-3 text-xs font-semibold text-black active:opacity-80"
+              onClick={() => {
+                const el = containerRef.current;
+                const aim = touchAimRef.current;
+                if (!el || !aim) return;
+                const rect = el.getBoundingClientRect();
+                commitAimRef.current?.(rect.left + aim.x, rect.top + aim.y);
+              }}
+            >
+              <Check className="h-4 w-4" />
+              Place
+            </button>
+            <button
+              type="button"
+              aria-label="Cancel"
+              className="flex h-9 w-9 items-center justify-center rounded-md text-tv-text-muted active:bg-tv-panel-hover"
+              onClick={() => {
+                useDrawingsStore.getState().resetPlacement();
+                setTool("cursor");
+              }}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
       <DrawingsLayer
         symbol={symbol}
         chart={chartRef.current}
