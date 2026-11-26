@@ -4,6 +4,7 @@ import { Bell, Code2, LogOut, Redo2, Rewind, Settings2, Undo2 } from "lucide-rea
 import { SymbolSelector } from "@/components/chart/SymbolSelector";
 import { TimeframeSelector } from "@/components/chart/TimeframeSelector";
 import { ChartTypeSelector } from "@/components/chart/ChartTypeSelector";
+import { LayoutSelector } from "@/components/chart/LayoutSelector";
 import { IndicatorMenu } from "@/components/chart/IndicatorMenu";
 import { SnapshotButton } from "@/components/chart/SnapshotButton";
 import { Separator } from "@/components/ui/separator";
@@ -38,6 +39,8 @@ export function Header() {
         <TimeframeSelector />
         <Separator orientation="vertical" className="mx-1 h-6 bg-tv-border" />
         <ChartTypeSelector />
+        <Separator orientation="vertical" className="mx-1 h-6 bg-tv-border" />
+        <LayoutSelector />
         <Separator orientation="vertical" className="mx-1 h-6 bg-tv-border" />
         <IndicatorMenu />
         <Separator orientation="vertical" className="mx-1 h-6 bg-tv-border" />

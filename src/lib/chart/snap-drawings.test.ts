@@ -150,20 +150,27 @@ describe("the magnet's reach", () => {
   const candles = [candle(100, 10, 12, 8, 11)];
 
   /*
-   * The contract changed, and these cases are the record of it. The candle
-   * used to be gated vertically — a reach in price beyond its high–low span —
-   * and the magnet therefore went quiet whenever you aimed anywhere but close
-   * to a level, which read as it being broken. It is now gated by the bar's
-   * column instead: only one candle can be under the cursor, so there is
-   * nothing for a vertical test to disambiguate. `maxDistance` survives for
-   * the drawings' levels, which genuinely can be anywhere.
+   * The record of a contract that has been wrong in both directions. The reach
+   * used to be measured from the candle's *levels*, so the magnet went quiet
+   * whenever you aimed anywhere but close to one — which read as broken. It
+   * was then dropped for the candle altogether, on the reasoning that the
+   * bar's column already says which candle: true, but nothing was left to say
+   * whether the cursor was anywhere near that candle, and the snap became a
+   * teleport. It is now gated by both: the column picks the candle, and the
+   * candle's whole high–low span widened by `maxDistance` decides whether it
+   * is within reach.
    */
 
-  it("grabs the bar's level however far above or below the cursor is", () => {
-    // Formerly null with this reach: the nearest level is the high at 12, a
-    // full 8 away. Over this bar's column, 12 is the only sensible answer.
-    expect(snapToLevels(20, 100, candles, [], undefined, 0.5)).toBe(12);
-    expect(snapToLevels(-5, 100, candles, [], undefined, 0.5)).toBe(8);
+  it("lets go when the cursor is nowhere near the bar", () => {
+    // The nearest level is the high at 12, a full 8 away — about 16 times
+    // this reach. Snapping there would fling the point across the pane.
+    expect(snapToLevels(20, 100, candles, [], undefined, 0.5)).toBeNull();
+    expect(snapToLevels(-5, 100, candles, [], undefined, 0.5)).toBeNull();
+  });
+
+  it("keeps pulling for the reach beyond the span, at either end", () => {
+    expect(snapToLevels(12.4, 100, candles, [], undefined, 0.5)).toBe(12);
+    expect(snapToLevels(7.6, 100, candles, [], undefined, 0.5)).toBe(8);
   });
 
   it("grabs anywhere on the candle, including the middle of a long wick", () => {
@@ -188,9 +195,9 @@ describe("the magnet's reach", () => {
     const d: Drawing = { ...base, id: "a", kind: "hline", price: 19.8 };
     // Inside the reach and nearer than the candle's high → it wins.
     expect(snapToLevels(20, 100, candles, [d], undefined, 0.5)).toBe(19.8);
-    // Outside it → the line is discarded and the bar's own level answers,
-    // rather than the magnet flinging the point to a distant fib rung.
-    expect(snapToLevels(20, 100, candles, [d], undefined, 0.1)).toBe(12);
+    // Outside it → the line is discarded, and the bar is out of reach too, so
+    // the magnet declines rather than flinging the point to a distant level.
+    expect(snapToLevels(20, 100, candles, [d], undefined, 0.1)).toBeNull();
   });
 
   it("falls back to the drawings alone when no candle is under the cursor", () => {

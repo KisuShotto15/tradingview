@@ -8,6 +8,13 @@ import {
 } from "@/lib/chart/candle-palette";
 import type { Timeframe } from "@/lib/binance/types";
 import { DEFAULT_FLAG_COLOR } from "@/lib/watchlist/flags";
+import {
+  DEFAULT_LAYOUT,
+  reconcilePanes,
+  resolveActivePane,
+  type ChartPane,
+  type LayoutKind,
+} from "@/lib/chart/layouts";
 import { unifiedHistory, isApplyingHistory, withoutHistory } from "@/lib/history";
 import type { ChartStateSnapshot } from "@/lib/history";
 import type { WatchSort } from "@/lib/watchlist/sort";
@@ -344,9 +351,26 @@ const SYMBOL_DEFAULTS: Partial<Record<string, { timeframe?: Timeframe; chartType
   TOTAL3:   { timeframe: "1d", chartType: "line" },
 };
 
+export type { ChartPane };
+
 interface ChartState {
+  /**
+   * The **active pane's** symbol and timeframe.
+   *
+   * Kept as plain top-level fields, and mirrored from `panes[activePaneId]`,
+   * because everything else in the app — the watchlist, the trading panels,
+   * the alert monitor, the drawings filter — asks "which symbol is charted?"
+   * and there is exactly one answer at a time: the pane you last clicked.
+   * Making every one of those pane-aware would be a far larger change for no
+   * gain, and the mirror keeps a single-chart layout behaving exactly as it
+   * did before layouts existed.
+   */
   symbol: string;
   timeframe: Timeframe;
+  /** The chart grid, and one entry per cell in reading order. */
+  layout: LayoutKind;
+  panes: ChartPane[];
+  activePaneId: string;
   /** Main pane price series rendering style. */
   chartType: ChartType;
   /** Indicator is added to the chart (appears in pill + renders unless hidden) */
@@ -473,6 +497,10 @@ interface ChartState {
   // Actions
   setSymbol: (s: string) => void;
   setTimeframe: (t: Timeframe) => void;
+  setLayout: (kind: LayoutKind) => void;
+  setActivePane: (id: string) => void;
+  setPaneSymbol: (id: string, symbol: string) => void;
+  setPaneTimeframe: (id: string, timeframe: Timeframe) => void;
   setChartType: (t: ChartType) => void;
   setChartColors: (patch: Partial<ChartColors>) => void;
   toggleIndicator: (key: IndicatorKey) => void;
@@ -578,6 +606,9 @@ export const useChartStore = create<ChartState>()(
       symbol: "BTCUSDT",
       chartType: "candles" as ChartType,
       timeframe: "15m" as Timeframe,
+      layout: DEFAULT_LAYOUT,
+      panes: [{ id: "p1", symbol: "BTCUSDT", timeframe: "15m" as Timeframe }],
+      activePaneId: "p1",
       indicators: {
         rsi: true,
         stochrsi: false,
@@ -648,13 +679,71 @@ export const useChartStore = create<ChartState>()(
 
       setSymbol: (symbol) => {
         const defaults = SYMBOL_DEFAULTS[symbol.toUpperCase()];
-        set({
+        const timeframe = defaults?.timeframe;
+        set((st) => ({
           symbol,
-          ...(defaults?.timeframe !== undefined && { timeframe: defaults.timeframe }),
+          ...(timeframe !== undefined && { timeframe }),
           ...(defaults?.chartType !== undefined && { chartType: defaults.chartType }),
-        });
+          // The top-level pair is the active pane's, so it moves with it.
+          panes: st.panes.map((p) =>
+            p.id === st.activePaneId
+              ? { ...p, symbol, ...(timeframe !== undefined && { timeframe }) }
+              : p,
+          ),
+        }));
       },
-      setTimeframe: (timeframe) => set({ timeframe }),
+      setTimeframe: (timeframe) =>
+        set((st) => ({
+          timeframe,
+          panes: st.panes.map((p) =>
+            p.id === st.activePaneId ? { ...p, timeframe } : p,
+          ),
+        })),
+
+      /**
+       * Switch the grid, growing or shrinking the pane list to fit.
+       *
+       * New panes are seeded from the active one rather than from the default
+       * symbol: splitting a chart to compare two timeframes of what you are
+       * already looking at is the common case, and arriving at BTCUSDT when
+       * you were on something else is never what was meant. Shrinking keeps
+       * the first panes, and the active pane follows if it was cut.
+       */
+      setLayout: (layout) =>
+        set((st) => {
+          const active = st.panes.find((p) => p.id === st.activePaneId) ?? st.panes[0];
+          // The same reconciliation rehydration uses: keep what fits, top up
+          // the rest from the pane you were on.
+          const panes = reconcilePanes(
+            layout,
+            st.panes,
+            active?.symbol ?? st.symbol,
+            active?.timeframe ?? st.timeframe,
+          );
+          const activePaneId = resolveActivePane(panes, st.activePaneId);
+          const now = panes.find((p) => p.id === activePaneId)!;
+          return { layout, panes, activePaneId, symbol: now.symbol, timeframe: now.timeframe };
+        }),
+
+      /** Focus a pane: the toolbars, the watchlist and the panels follow it. */
+      setActivePane: (id) =>
+        set((st) => {
+          const pane = st.panes.find((p) => p.id === id);
+          if (!pane || id === st.activePaneId) return {};
+          return { activePaneId: id, symbol: pane.symbol, timeframe: pane.timeframe };
+        }),
+
+      setPaneSymbol: (id, symbol) =>
+        set((st) => ({
+          panes: st.panes.map((p) => (p.id === id ? { ...p, symbol } : p)),
+          ...(id === st.activePaneId && { symbol }),
+        })),
+
+      setPaneTimeframe: (id, timeframe) =>
+        set((st) => ({
+          panes: st.panes.map((p) => (p.id === id ? { ...p, timeframe } : p)),
+          ...(id === st.activePaneId && { timeframe }),
+        })),
       setChartType: (chartType) => set({ chartType }),
 
       toggleIndicator: (key) => {
@@ -1266,10 +1355,37 @@ export const useChartStore = create<ChartState>()(
        */
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<ChartState>;
-        return {
+        const merged = {
           ...current,
           ...p,
           config: { ...DEFAULT_CONFIG, ...(p.config ?? {}) },
+        };
+        /*
+         * Panes are reconciled against the layout rather than trusted, and
+         * from `p` rather than from `merged`.
+         *
+         * `merged` is the defaults with the persisted state laid over the top,
+         * so for anyone who has no saved panes — everyone who used the app
+         * before layouts existed — `merged.panes` is the *default* pane,
+         * BTCUSDT. Seeding from that would hand it to them and then, through
+         * the mirror below, overwrite the symbol they actually had persisted.
+         * The question here is "what did this user save?", and only `p` can
+         * answer it. The pane list is also the one piece of persisted state
+         * whose *length* has to agree with another field, and a layout saved
+         * on one device can arrive at a build that no longer has it.
+         */
+        const layout: LayoutKind = p.layout ?? DEFAULT_LAYOUT;
+        const panes = reconcilePanes(layout, p.panes, merged.symbol, merged.timeframe);
+        const activePaneId = resolveActivePane(panes, p.activePaneId);
+        const active = panes.find((x) => x.id === activePaneId)!;
+        return {
+          ...merged,
+          layout,
+          panes,
+          activePaneId,
+          // The top-level pair always *is* the active pane's.
+          symbol: active.symbol,
+          timeframe: active.timeframe,
         };
       },
       partialize: (s) => ({
@@ -1308,6 +1424,9 @@ export const useChartStore = create<ChartState>()(
         watchlistCollapsedLabels: s.watchlistCollapsedLabels,
         lastFlagColor: s.lastFlagColor,
         chartColors: s.chartColors,
+        layout: s.layout,
+        panes: s.panes,
+        activePaneId: s.activePaneId,
       }),
     },
   ),

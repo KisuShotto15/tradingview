@@ -5,20 +5,21 @@ import { useChartStore } from "@/lib/store/chart-store";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 
 /**
- * How close, in CSS pixels, the cursor has to be to **another drawing's**
- * level for the magnet to grab it.
+ * How far, in CSS pixels, the magnet reaches beyond the thing it snaps to.
  *
- * It does not apply to the candle. A bar owns a column and only one bar is
- * ever under the cursor, so `snapToOHLC` answers from the column alone and
- * needs no reach — this value started life gating that too, at 14px and then
- * 30px, and both made the magnet go quiet wherever the aim was not already
- * close to a level.
+ * It is measured from a drawing's level, which has no thickness, but from a
+ * candle's whole high–low span — a pointer anywhere on the candle grabs it
+ * with no reach needed, and this only decides how far *outside* a candle the
+ * pull still works. That distinction is the whole difference between a magnet
+ * that feels dead and one that feels right: measured from the levels, aiming
+ * at the middle of a long wick was too far from both ends to snap to either.
  *
- * The drawings' levels are the opposite case: there can be any number of them
- * at any price, with no thickness to be "on", so without a bound the magnet
- * would fling a dragged point across the pane to whichever fib rung happened
- * to be nearest. A coarse pointer gets more room, because a fingertip both
- * aims worse and hides the level it is aiming at.
+ * It cannot be dropped for the candle, which was tried: the column already
+ * says which candle, but nothing then said whether the cursor was anywhere
+ * near it, and the snap became a teleport — on a phone a finger aiming at
+ * empty space was pulled 147px to a bar's extreme at the top of the screen.
+ * A coarse pointer gets more room, because a fingertip both aims worse and
+ * hides the level it is aiming at.
  */
 export const MAGNET_RADIUS_PX = { fine: 30, coarse: 44 };
 

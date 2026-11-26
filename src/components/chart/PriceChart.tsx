@@ -113,6 +113,20 @@ function durationLabel(aTime: number, bTime: number): string {
 interface Props {
   symbol: string;
   timeframe: Timeframe;
+  /**
+   * Whether this chart is the focused pane of the layout. The single-chart
+   * layout passes nothing and is always active.
+   *
+   * Several things in the app are, by design, about "the chart" rather than
+   * "a chart": the global `candlesRef` that drawing drags extrapolate from,
+   * the undo/redo viewport applier, the snapshot capture, the crosshair aimer,
+   * the nudge probe, the feed's chart-tick watchdog and the alert monitor.
+   * They are single-slot on purpose — there is one symbol you are working on —
+   * so in a multi-chart layout exactly one pane owns them: this one. The
+   * others still draw, stream and update; they just do not claim the slots,
+   * and they take them over the moment they are clicked.
+   */
+  active?: boolean;
 }
 
 // Palette lives in globals.css (`--color-tv-*`); read it once so the chart
@@ -247,7 +261,7 @@ interface PaneOffset {
   height: number;
 }
 
-export function PriceChart({ symbol, timeframe }: Props) {
+export function PriceChart({ symbol, timeframe, active = true }: Props) {
   const isMobile = useIsMobile();
   // Read from inside the chart's long-lived event handlers, which are created
   // once and would otherwise close over the first render's `false`.
@@ -326,6 +340,31 @@ export function PriceChart({ symbol, timeframe }: Props) {
     bands: [ISeriesApi<"Line">, ISeriesApi<"Line">][];
   } | null>(null);
   const candlesRef = useRef<Candle[]>([]);
+  /**
+   * `active` for the callbacks, which are registered once and outlive the
+   * render that created them.
+   */
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  /**
+   * Set this chart's candles, and mirror them to the module-level ref only
+   * while this pane is the focused one — that ref means "the candles of the
+   * chart you are working on", and in a multi-chart layout the panes would
+   * otherwise overwrite each other on every tick, so a drag on one chart
+   * would extrapolate times from another's bars.
+   */
+  const publishCandles = (arr: Candle[]) => {
+    candlesRef.current = arr;
+    if (activeRef.current) globalCandlesRef.current = arr;
+  };
+  /**
+   * What this chart can lend the app, built in the chart-creation effect and
+   * handed to the single-slot registries only while this pane is focused.
+   */
+  const viewportApplierRef = useRef<((r: { from: number; to: number }) => void) | null>(null);
+  const chartCaptureRef = useRef<(() => Promise<Blob | null>) | null>(null);
+  const pricePerPixelRef = useRef<(() => number | null) | null>(null);
+  const crosshairAimerRef = useRef<((x: number, y: number) => boolean) | null>(null);
   // Shape of the current view (bar span + offset from the last bar), kept fresh
   // as the user pans/zooms so it survives a symbol change and can be reapplied
   // to keep the same zoom + scroll position on the next symbol.
@@ -454,8 +493,41 @@ export function PriceChart({ symbol, timeframe }: Props) {
     { rsi: 1, stochrsi: 2, macd: 3, adx: 4, squeeze: 5, vumanchu: 6 },
   );
 
-  // Drive alerts off the live price tick
-  useAlertMonitor(symbol, lastPrice?.value ?? null);
+  /*
+   * Drive alerts off the live price tick — from the focused pane only.
+   *
+   * The monitor reads the module-level candle ref for its RSI and MACD
+   * conditions and for interpolating a sloped line to "now", and that ref
+   * belongs to the focused pane. An unfocused pane running the monitor would
+   * evaluate *its* symbol's alerts against *another* chart's candles, which is
+   * worse than not evaluating them: a wrong fire cannot be told from a right
+   * one. A null price is the hook's own "do nothing" input.
+   *
+   * The cost is that alerts only fire for the pane you are working on, which
+   * is what the app did before layouts existed. Firing for every open pane
+   * means giving the monitor its own candles per symbol, not relaxing this.
+   */
+  useAlertMonitor(symbol, active ? (lastPrice?.value ?? null) : null);
+
+  /*
+   * Claim the single-slot registries while this pane is the focused one.
+   *
+   * Registered from here rather than from the chart-creation effect so the
+   * hand-over happens on every focus change, not once per mount: with two
+   * charts up, whichever mounted last would otherwise own undo's viewport,
+   * the snapshot button and the crosshair aimer forever. `renderTick` is in
+   * the deps so a pane that is focused before its chart exists still claims
+   * them on the next repaint.
+   */
+  useEffect(() => {
+    if (!active) return;
+    if (viewportApplierRef.current) registerViewportApplier(viewportApplierRef.current);
+    if (chartCaptureRef.current) registerChartCapture(chartCaptureRef.current);
+    if (pricePerPixelRef.current) registerPricePerPixel(pricePerPixelRef.current);
+    if (crosshairAimerRef.current) registerCrosshairAimer(crosshairAimerRef.current);
+    // The candle ref means "the focused chart's candles", so it moves too.
+    globalCandlesRef.current = candlesRef.current;
+  }, [active, renderTick]);
 
   // Helper — compute pane top offsets from chart layout
   function recomputePaneOffsets() {
@@ -1109,22 +1181,27 @@ export function PriceChart({ symbol, timeframe }: Props) {
     const bumpRenderTick = () => flushSync(() => setRenderTick((t) => t + 1));
     const tsRangeHandler = () => bumpRenderTick();
     chart.timeScale().subscribeVisibleTimeRangeChange(tsRangeHandler);
-    // Register viewport applier so undo/redo can restore pan/zoom
-    registerViewportApplier((range) => {
+    /*
+     * The capabilities this chart can lend the rest of the app are built here,
+     * where the chart object is in scope, but *registered* by the effect below
+     * — each registry holds one function, and in a multi-chart layout they
+     * belong to the focused pane. Registering here would give them to whichever
+     * pane happened to mount last, so undo would pan someone else's chart.
+     */
+    // Undo/redo restoring pan/zoom.
+    viewportApplierRef.current = (range) => {
       chart.timeScale().setVisibleLogicalRange({ from: range.from, to: range.to });
-    });
-
-    // Expose a snapshot capture that composites the chart canvas with the SVG
-    // overlays, so UI elsewhere (the header button) can grab the annotated view.
-    registerChartCapture(async () => {
+    };
+    // A snapshot compositing the chart canvas with the SVG overlays, so UI
+    // elsewhere (the header button) can grab the annotated view.
+    chartCaptureRef.current = async () => {
       const root = outerRef.current;
       if (!root) return null;
       return composeChartPng(chart, root);
-    });
-
-    // Expose the vertical scale so keyboard nudging can move a drawing by whole
+    };
+    // The vertical scale, so keyboard nudging can move a drawing by whole
     // pixels regardless of the symbol's price magnitude.
-    registerPricePerPixel(() => {
+    pricePerPixelRef.current = () => {
       const series = candleSeriesRef.current;
       if (!series) return null;
       const top = series.coordinateToPrice(100);
@@ -1132,7 +1209,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       if (top === null || bottom === null) return null;
       const perPixel = Math.abs((top as number) - (bottom as number)) / 100;
       return perPixel > 0 ? perPixel : null;
-    });
+    };
 
     let zoomSaveTimer: ReturnType<typeof setTimeout> | null = null;
     let lastViewport: { from: number; to: number } | null = null;
@@ -1326,7 +1403,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
       }
       return true;
     };
-    registerCrosshairAimer(placeCrosshair);
+    crosshairAimerRef.current = placeCrosshair;
 
     const aimCrosshair = (clientX: number, clientY: number) => {
       if (!placeCrosshair(clientX, clientY)) return;
@@ -1482,7 +1559,8 @@ export function PriceChart({ symbol, timeframe }: Props) {
       probeTarget.removeEventListener("pointerdown", onAnyDown, { capture: true });
       probeTarget.removeEventListener("pointerup", onAnyUp, { capture: true });
       probeTarget.removeEventListener("pointercancel", onAnyUp, { capture: true });
-      registerCrosshairAimer(null);
+      crosshairAimerRef.current = null;
+      if (activeRef.current) registerCrosshairAimer(null);
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
@@ -3175,8 +3253,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         const shape = viewShapeRef.current;
 
         // Immediately wipe previous symbol's data so stale candles never linger.
-        candlesRef.current = [];
-        globalCandlesRef.current = [];
+        publishCandles([]);
         candleSeriesRef.current?.setData([]);
         lineSeriesRef.current?.setData([]);
         areaSeriesRef.current?.setData([]);
@@ -3187,8 +3264,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
         const synthetic = source.kind === "synthetic";
         const klines = await fetchCandles(symbol, timeframe, 1000);
         if (cancelled) return;
-        candlesRef.current = klines;
-        globalCandlesRef.current = klines;
+        publishCandles(klines);
         if (candleSeriesRef.current) {
           candleSeriesRef.current.setData(
             klines.map((k) => ({
@@ -3314,8 +3390,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
             try {
               const fresh = await fetchCandles(symbol, timeframe, 1000);
               if (cancelled || !candleSeriesRef.current || fresh.length === 0) return;
-              candlesRef.current = fresh;
-              globalCandlesRef.current = fresh;
+              publishCandles(fresh);
               candleSeriesRef.current.setData(
                 fresh.map((k) => ({
                   time: k.time as UTCTimestamp,
@@ -3393,7 +3468,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
               interval: timeframe,
               onCandle: (k) => {
                 if (useReplayStore.getState().active) return; // frozen during replay
-                markChartTick();
+                if (activeRef.current) markChartTick();
                 lastBySym.set(s, k);
                 if (lastBySym.size !== symbols.length) return;
                 const synth = evaluateCandleAt(symbol, lastBySym);
@@ -3458,7 +3533,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
           interval: timeframe,
           onCandle: (k) => {
             if (useReplayStore.getState().active) return; // frozen during replay
-            markChartTick();
+            if (activeRef.current) markChartTick();
             if (!candleSeriesRef.current) return;
             const arr = candlesRef.current;
             const lastCandle = arr[arr.length - 1];
@@ -3602,8 +3677,7 @@ export function PriceChart({ symbol, timeframe }: Props) {
   }
 
   function applyReplayCandles(arr: Candle[]) {
-    candlesRef.current = arr;
-    globalCandlesRef.current = arr;
+    publishCandles(arr);
     if (candleSeriesRef.current) {
       candleSeriesRef.current.setData(
         arr.map((k) => ({ time: k.time as UTCTimestamp, open: k.open, high: k.high, low: k.low, close: k.close })),
