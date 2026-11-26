@@ -36,6 +36,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { useFeedStatus } from "@/hooks/useFeedStatus";
 import { cn } from "@/lib/utils";
 import { barCloseTime } from "@/lib/chart/countdown";
+import { missingBars, tailConnects, tailIsNoop } from "@/lib/chart/tail-repair";
 import {
   markChartTick,
   resetChartTick,
@@ -213,6 +214,19 @@ const STALE_BAR_CHECK_MS = 5_000;
  *  real reason (a genuinely dead market, a blocked host) can't turn into a
  *  reconnect loop. */
 const RESUBSCRIBE_MIN_GAP_MS = 60_000;
+/**
+ * Most bars a stale chart will try to repair by splicing a tail in. Beyond
+ * this the gap stops looking like a quiet feed and starts looking like a chart
+ * that was left behind entirely, which only a full refetch fixes.
+ */
+const MAX_SPLICE_BARS = 200;
+/**
+ * Floor between full 1000-bar refetches. The staleness check cannot tell "no
+ * newer bar exists" from "a newer bar is missing", so on a thin symbol it goes
+ * on firing however many times it is repaired — and a reload every five
+ * seconds is the chart visibly rebuilding itself.
+ */
+const FULL_REFETCH_MIN_GAP_MS = 60_000;
 
 const RSI_LINE_COLOR = "#ffffff";
 const RSI_MA_COLOR = "#e3a33d";
@@ -505,6 +519,9 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
    *  the socket looks healthy but this symbol's stream has gone quiet. */
   const [feedNonce, setFeedNonce] = useState(0);
   const lastResubAtRef = useRef(0);
+  const lastFullFetchAtRef = useRef(0);
+  /** `symbol|timeframe` the load effect last ran for; see `resubscribeOnly`. */
+  const loadedKeyRef = useRef<string | null>(null);
   const [dragKey, setDragKey] = useState<IndicatorKey | null>(null);
   const pointerDragRef = useRef<{ key: IndicatorKey } | null>(null);
   const [renderTick, setRenderTick] = useState(0);
@@ -3382,29 +3399,58 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
         // same zoom + scroll position on the new symbol.
         const shape = viewShapeRef.current;
 
-        // Immediately wipe previous symbol's data so stale candles never linger.
-        publishCandles([]);
-        candleSeriesRef.current?.setData([]);
-        lineSeriesRef.current?.setData([]);
-        areaSeriesRef.current?.setData([]);
-        volumeSeriesRef.current?.setData([]);
-        setLastPrice(null);
+        // A `feedNonce` bump re-runs this effect to rebuild a subscription
+        // that went quiet, with the same symbol and timeframe as before.
+        // Nothing on screen is stale then, so wiping every series, re-setting
+        // them all from the fetched array and re-applying the saved viewport
+        // is not just wasted work, it is *visible* work: the chart blanks for
+        // as long as the fetch takes and then snaps back into place. That is
+        // the "the chart reloaded itself" flicker, and on a quiet feed it
+        // happened once a minute. Only a real symbol/timeframe change needs
+        // the wipe-and-rebuild; a resubscribe reconciles instead.
+        //
+        // "Same key" is not enough on its own: React runs this effect twice on
+        // mount in development, and the first run is cancelled mid-fetch after
+        // it has already wiped the series. The second run would then see a
+        // matching key over an empty chart and skip the viewport restore that
+        // only the full path does. The series actually holding data is the
+        // condition that matters.
+        const loadKey = `${symbol}|${timeframe}`;
+        const resubscribeOnly =
+          loadedKeyRef.current === loadKey && candlesRef.current.length > 0;
+        loadedKeyRef.current = loadKey;
+
+        if (!resubscribeOnly) {
+          // Immediately wipe previous symbol's data so stale candles never linger.
+          publishCandles([]);
+          candleSeriesRef.current?.setData([]);
+          lineSeriesRef.current?.setData([]);
+          areaSeriesRef.current?.setData([]);
+          volumeSeriesRef.current?.setData([]);
+          setLastPrice(null);
+        }
 
         const source = resolveSource(symbol);
         const synthetic = source.kind === "synthetic";
         const klines = await fetchCandles(symbol, timeframe, 1000);
         if (cancelled) return;
-        publishCandles(klines);
-        if (candleSeriesRef.current) {
-          candleSeriesRef.current.setData(
-            klines.map((k) => ({
-              time: k.time as UTCTimestamp,
-              open: k.open,
-              high: k.high,
-              low: k.low,
-              close: k.close,
-            })),
-          );
+        if (resubscribeOnly) {
+          // No-ops when the refetch brought back what is already drawn, and
+          // holds the view when it did not.
+          applyCandlesKeepingView(klines);
+        } else {
+          publishCandles(klines);
+          if (candleSeriesRef.current) {
+            candleSeriesRef.current.setData(
+              klines.map((k) => ({
+                time: k.time as UTCTimestamp,
+                open: k.open,
+                high: k.high,
+                low: k.low,
+                close: k.close,
+              })),
+            );
+          }
         }
         // Scale the price scale's decimal places to this symbol's price —
         // start from the magnitude-based guess so a sub-cent altcoin doesn't
@@ -3442,28 +3488,30 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
             }
           }
         }
-        const closeData = klines.map((k) => ({ time: k.time as UTCTimestamp, value: k.close }));
-        lineSeriesRef.current?.setData(closeData);
-        areaSeriesRef.current?.setData(closeData);
-        if (volumeSeriesRef.current) {
-          volumeSeriesRef.current.setData(
-            klines.map((k) => ({
-              time: k.time as UTCTimestamp,
-              value: k.volume,
-              color: k.close >= k.open ? `${TV_COLORS.green}66` : `${TV_COLORS.red}66`,
-            })),
-          );
+        if (!resubscribeOnly) {
+          const closeData = klines.map((k) => ({ time: k.time as UTCTimestamp, value: k.close }));
+          lineSeriesRef.current?.setData(closeData);
+          areaSeriesRef.current?.setData(closeData);
+          if (volumeSeriesRef.current) {
+            volumeSeriesRef.current.setData(
+              klines.map((k) => ({
+                time: k.time as UTCTimestamp,
+                value: k.volume,
+                color: k.close >= k.open ? `${TV_COLORS.green}66` : `${TV_COLORS.red}66`,
+              })),
+            );
+          }
+          updateEMAs();
+          updateVWAP();
+          updateRSI();
+          updateStochRsi();
+          updateMACD();
+          updateADX();
+          updateSqueeze();
+          updateVumanchu();
+          updateOBV();
         }
-        updateEMAs();
-        updateVWAP();
-        updateRSI();
-        updateStochRsi();
-        updateMACD();
-        updateADX();
-        updateSqueeze();
-        updateVumanchu();
-        updateOBV();
-        if (chartRef.current && klines.length > 0) {
+        if (!resubscribeOnly && chartRef.current && klines.length > 0) {
           const lastIdx = klines.length - 1;
           // Where this exact chart was last left wins: it is the place the
           // user chose, and after a restart it is the only record of it.
@@ -3952,10 +4000,43 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       inFlight = true;
       try {
         if (barsStale) {
-          // A hole where closed bars should be: only a full refetch fills it.
-          const fresh = await fetchCandles(symbol, timeframe, 1000);
-          if (cancelled || useReplayStore.getState().active || fresh.length === 0) return;
-          applyCandlesKeepingView(fresh);
+          // A hole where closed bars should be — but a *bounded* one. Candle
+          // history never changes, so the only bars that can be missing are
+          // the ones that closed since the newest one held, and a tail that
+          // size fills exactly the same hole as a 1000-bar reload for a
+          // fraction of the work.
+          //
+          // The reload is what made this the flicker the user sees. The check
+          // above cannot tell "a newer bar is missing" from "no newer bar
+          // exists", so on a thin symbol — or any symbol between trades on a
+          // low timeframe — it stays true however many times it is repaired,
+          // and the repair ran every five seconds: a full `setData` on every
+          // series plus every indicator recomputed, forever. The reload is
+          // kept only for a gap too wide to splice or a tail that does not
+          // reach back to what we hold, and then at most once a minute.
+          const arr = candlesRef.current;
+          const last = arr[arr.length - 1] ?? null;
+          const tfSec = timeframeToSeconds(timeframe);
+          const gap = last ? missingBars(last.time, tfSec, Date.now() / 1000) : Infinity;
+          const spliceable = last !== null && gap <= MAX_SPLICE_BARS;
+
+          let tail: Candle[] | null = null;
+          if (spliceable) {
+            tail = await fetchCandles(symbol, timeframe, Math.max(3, Math.min(MAX_SPLICE_BARS, gap + 2)));
+            if (cancelled || useReplayStore.getState().active) return;
+          }
+
+          if (tail && tail.length > 0 && tailConnects(last!.time, tail[0].time, tfSec)) {
+            // Splicing an unchanged tail would still recompute every study,
+            // which on a symbol the exchange has nothing new for is the whole
+            // cost for no change at all.
+            if (!tailIsNoop(arr, tail)) mergeLiveCandles(tail);
+          } else if (Date.now() - lastFullFetchAtRef.current > FULL_REFETCH_MIN_GAP_MS) {
+            lastFullFetchAtRef.current = Date.now();
+            const fresh = await fetchCandles(symbol, timeframe, 1000);
+            if (cancelled || useReplayStore.getState().active || fresh.length === 0) return;
+            applyCandlesKeepingView(fresh);
+          }
         } else {
           // Socket open but mute, and the bars are still current: keep the
           // chart live over REST instead of standing still until the bar

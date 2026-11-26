@@ -107,16 +107,27 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
   }
 
   return (
+    /*
+     * The bar is never allowed to be wider than the chart it floats over.
+     *
+     * At touch size every control is 32px, and a long/short drawing carries
+     * three colour pickers, seven actions and the limit-order button — more
+     * than a phone is wide. The bar then ran off both edges whatever the
+     * clamp did, because the clamp can only move something that fits. Capping
+     * the width and letting the controls scroll sideways keeps all of them
+     * reachable, the same way the mobile chart toolbar below it works. The
+     * drag handle stays outside the scroller so the bar can always be moved.
+     */
     <div
       ref={toolbarRef}
-      className="pointer-events-auto absolute z-30 flex h-7 [@media(hover:none)]:h-11 items-stretch overflow-visible rounded border border-tv-border bg-tv-panel shadow-lg"
-      style={{ left: pos.x, top: pos.y, userSelect: "none" }}
+      className="pointer-events-auto absolute z-30 flex h-7 [@media(hover:none)]:h-11 max-w-full items-stretch rounded border border-tv-border bg-tv-panel shadow-lg"
+      style={{ left: pos.x, top: pos.y, maxWidth: containerSize.width, userSelect: "none" }}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
       {/* Drag handle */}
       <div
-        className="flex cursor-grab items-center px-1.5 [@media(hover:none)]:px-2.5 text-[11px] text-tv-text-muted/50 hover:text-tv-text-muted active:cursor-grabbing"
+        className="flex shrink-0 cursor-grab items-center px-1.5 [@media(hover:none)]:px-2.5 text-[11px] text-tv-text-muted/50 hover:text-tv-text-muted active:cursor-grabbing"
         onPointerDown={startDrag}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -124,90 +135,92 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
         ⠿
       </div>
 
-      <Sep />
+      <div className="no-scrollbar flex min-w-0 flex-1 items-stretch overflow-x-auto">
+        <Sep />
 
-      {/* Line drawings: color + width */}
-      {!isPosition && (
-        <>
-          <Seg>
-            <SwatchPicker
-              value={drawing.color ?? "#2962ff"}
-              onChange={(c) => patch({ color: c })}
-            />
+        {/* Line drawings: color + width */}
+        {!isPosition && (
+          <>
+            <Seg>
+              <SwatchPicker
+                value={drawing.color ?? "#2962ff"}
+                onChange={(c) => patch({ color: c })}
+              />
+            </Seg>
+            {"lineWidth" in drawing && (
+              <>
+                <Sep />
+                <Seg>
+                  {[1, 2, 3].map((w) => (
+                    <button
+                      key={w}
+                      onClick={() => patch({ lineWidth: w })}
+                      title={`Width ${w}`}
+                      className={cn(
+                        "flex h-5 w-5 [@media(hover:none)]:h-8 [@media(hover:none)]:w-8 items-center justify-center rounded text-[9px] font-bold",
+                        (drawing.lineWidth ?? 1) === w
+                          ? "bg-tv-text/15 text-tv-text"
+                          : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
+                      )}
+                    >
+                      {w}
+                    </button>
+                  ))}
+                </Seg>
+              </>
+            )}
+          </>
+        )}
+
+        {/* Position drawings: E / S / T color pickers */}
+        {isPosition && (
+          <Seg gap>
+            <MiniColorLabel label="E">
+              <SwatchPicker
+                value={drawing.color ?? "#d1d4dc"}
+                onChange={(c) => patch({ color: c })}
+              />
+            </MiniColorLabel>
+            <MiniColorLabel label="S">
+              <SwatchPicker
+                value={(drawing as { stopColor?: string }).stopColor ?? "#ef5350"}
+                onChange={(c) => patch({ stopColor: c } as Partial<Drawing>)}
+              />
+            </MiniColorLabel>
+            <MiniColorLabel label="T">
+              <SwatchPicker
+                value={(drawing as { targetColor?: string }).targetColor ?? "#26a69a"}
+                onChange={(c) => patch({ targetColor: c } as Partial<Drawing>)}
+              />
+            </MiniColorLabel>
           </Seg>
-          {"lineWidth" in drawing && (
-            <>
-              <Sep />
-              <Seg>
-                {[1, 2, 3].map((w) => (
-                  <button
-                    key={w}
-                    onClick={() => patch({ lineWidth: w })}
-                    title={`Width ${w}`}
-                    className={cn(
-                      "flex h-5 w-5 [@media(hover:none)]:h-8 [@media(hover:none)]:w-8 items-center justify-center rounded text-[9px] font-bold",
-                      (drawing.lineWidth ?? 1) === w
-                        ? "bg-tv-text/15 text-tv-text"
-                        : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
-                    )}
-                  >
-                    {w}
-                  </button>
-                ))}
-              </Seg>
-            </>
-          )}
-        </>
-      )}
+        )}
 
-      {/* Position drawings: E / S / T color pickers */}
-      {isPosition && (
-        <Seg gap>
-          <MiniColorLabel label="E">
-            <SwatchPicker
-              value={drawing.color ?? "#d1d4dc"}
-              onChange={(c) => patch({ color: c })}
-            />
-          </MiniColorLabel>
-          <MiniColorLabel label="S">
-            <SwatchPicker
-              value={(drawing as { stopColor?: string }).stopColor ?? "#ef5350"}
-              onChange={(c) => patch({ stopColor: c } as Partial<Drawing>)}
-            />
-          </MiniColorLabel>
-          <MiniColorLabel label="T">
-            <SwatchPicker
-              value={(drawing as { targetColor?: string }).targetColor ?? "#26a69a"}
-              onChange={(c) => patch({ targetColor: c } as Partial<Drawing>)}
-            />
-          </MiniColorLabel>
+        <Sep />
+
+        {/* Common actions */}
+        <Seg>
+          <Btn title="Settings" onClick={onOpenSettings}>
+            <Settings2 className="h-3.5 w-3.5 [@media(hover:none)]:h-[18px] [@media(hover:none)]:w-[18px]" />
+          </Btn>
+          <VisBtn drawing={drawing} onPatch={patch} />
+          <LockBtn drawing={drawing} onPatch={patch} />
+          <Btn title="Duplicate (Ctrl+D)" onClick={() => void duplicate(drawing.id)}>
+            <Copy className="h-3.5 w-3.5 [@media(hover:none)]:h-[18px] [@media(hover:none)]:w-[18px]" />
+          </Btn>
+          <SaveAsDefaultButton drawing={drawing} />
+          <TemplatesButton drawing={drawing} onApply={patch} />
+          <Btn title="Delete" danger onClick={() => {
+            void remove(drawing.id);
+            useDrawingsStore.getState().setSelected(null);
+          }}>
+            <Trash2 className="h-3.5 w-3.5 [@media(hover:none)]:h-[18px] [@media(hover:none)]:w-[18px]" />
+          </Btn>
         </Seg>
-      )}
 
-      <Sep />
-
-      {/* Common actions */}
-      <Seg>
-        <Btn title="Settings" onClick={onOpenSettings}>
-          <Settings2 className="h-3.5 w-3.5 [@media(hover:none)]:h-[18px] [@media(hover:none)]:w-[18px]" />
-        </Btn>
-        <VisBtn drawing={drawing} onPatch={patch} />
-        <LockBtn drawing={drawing} onPatch={patch} />
-        <Btn title="Duplicate (Ctrl+D)" onClick={() => void duplicate(drawing.id)}>
-          <Copy className="h-3.5 w-3.5 [@media(hover:none)]:h-[18px] [@media(hover:none)]:w-[18px]" />
-        </Btn>
-        <SaveAsDefaultButton drawing={drawing} />
-        <TemplatesButton drawing={drawing} onApply={patch} />
-        <Btn title="Delete" danger onClick={() => {
-          void remove(drawing.id);
-          useDrawingsStore.getState().setSelected(null);
-        }}>
-          <Trash2 className="h-3.5 w-3.5 [@media(hover:none)]:h-[18px] [@media(hover:none)]:w-[18px]" />
-        </Btn>
-      </Seg>
-
-      {/* Create Limit Order from the long/short drawing */}
-      {isPosition && <LimitOrderButton drawing={drawing} />}
+        {/* Create Limit Order from the long/short drawing */}
+        {isPosition && <LimitOrderButton drawing={drawing} />}
+      </div>
     </div>
   );
 }
@@ -215,12 +228,12 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
 /* ── Primitives ─────────────────────────────────────────────────── */
 
 function Sep() {
-  return <div className="w-px self-stretch bg-tv-border" />;
+  return <div className="w-px shrink-0 self-stretch bg-tv-border" />;
 }
 
 function Seg({ children, gap }: { children: React.ReactNode; gap?: boolean }) {
   return (
-    <div className={cn("flex items-center px-1 [@media(hover:none)]:px-1.5", gap && "gap-1.5")}>
+    <div className={cn("flex shrink-0 items-center px-1 [@media(hover:none)]:px-1.5", gap && "gap-1.5")}>
       {children}
     </div>
   );
@@ -281,7 +294,11 @@ function LockBtn({ drawing, onPatch }: { drawing: Drawing; onPatch: (p: Partial<
 function MiniColorLabel({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-px">
-      <span className="text-[7px] font-bold uppercase tracking-wider text-tv-text-muted/60">{label}</span>
+      {/* `leading-none`: the global 11px floor (see globals.css) turns this
+          into an 11px label with a ~17px line box, and label + swatch then
+          stood 2px taller than the touch-size bar — enough for the scroller
+          to clip the letters off the top. */}
+      <span className="text-[7px] font-bold uppercase leading-none tracking-wider text-tv-text-muted/60">{label}</span>
       {children}
     </div>
   );

@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { placePopover } from "@/lib/ui/popover-position";
 
 /**
  * TradingView-style palette.
@@ -49,11 +51,45 @@ export function ColorPicker({ value, onChange, className }: Props) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
+  const [place, setPlace] = useState<{ left: number; top: number } | null>(null);
   const { hex, opacity } = parseColor(value);
+
+  /*
+   * The palette is placed against the *viewport*, in a portal on the body.
+   *
+   * It used to be `absolute right-0 top-full` on the trigger, which on a
+   * phone put it off the screen twice over: the drawing toolbar sits near the
+   * bottom of the chart, so opening downwards ran straight off the bottom
+   * edge, and right-aligning a 280px panel to a swatch near the left ran off
+   * the other side. The portal also takes it out of any ancestor that clips
+   * or scrolls — the toolbar now scrolls horizontally on a narrow screen.
+   */
+  useLayoutEffect(() => {
+    if (!open) return;
+    const reposition = () => {
+      const t = triggerRef.current?.getBoundingClientRect();
+      const el = popupRef.current;
+      if (!t || !el) return;
+      setPlace(
+        placePopover(
+          { left: t.left, top: t.top, right: t.right, bottom: t.bottom },
+          { width: el.offsetWidth, height: el.offsetHeight },
+          { width: window.innerWidth, height: window.innerHeight },
+        ),
+      );
+    };
+    reposition();
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
-    function onDocClick(e: MouseEvent) {
+    function onDocDown(e: Event) {
       if (
         !popupRef.current?.contains(e.target as Node) &&
         !triggerRef.current?.contains(e.target as Node)
@@ -61,8 +97,15 @@ export function ColorPicker({ value, onChange, className }: Props) {
         setOpen(false);
       }
     }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
+    // `pointerdown` as well as `mousedown`: a touch that lands outside the
+    // panel has to close it, and a synthesised `mousedown` does not always
+    // follow one.
+    document.addEventListener("mousedown", onDocDown);
+    document.addEventListener("pointerdown", onDocDown);
+    return () => {
+      document.removeEventListener("mousedown", onDocDown);
+      document.removeEventListener("pointerdown", onDocDown);
+    };
   }, [open]);
 
   function pickHex(h: string) {
@@ -91,10 +134,18 @@ export function ColorPicker({ value, onChange, className }: Props) {
             : { background: value }
         }
       />
-      {open && (
+      {open && typeof document !== "undefined" && createPortal(
         <div
           ref={popupRef}
-          className="absolute right-0 top-full z-50 mt-1 w-[280px] rounded-md border border-tv-border bg-tv-panel p-3 shadow-xl"
+          onPointerDown={(e) => e.stopPropagation()}
+          className="fixed z-[60] w-[280px] rounded-md border border-tv-border bg-tv-panel p-3 shadow-xl"
+          style={{
+            left: place?.left ?? 0,
+            top: place?.top ?? 0,
+            // Hidden for the one frame before it has been measured, so it
+            // never flashes at the top-left corner on the way to its place.
+            visibility: place ? "visible" : "hidden",
+          }}
         >
           <div className="grid grid-cols-10 gap-[3px]">
             {PALETTE_ROWS.flat().map((c) => (
@@ -160,7 +211,8 @@ export function ColorPicker({ value, onChange, className }: Props) {
               {Math.round(opacity * 100)}%
             </span>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
