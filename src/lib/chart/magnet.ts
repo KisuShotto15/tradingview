@@ -16,9 +16,11 @@ import { useDrawingsStore } from "@/lib/store/drawings-store";
  * feels right: measured from the levels, aiming at the middle of a long wick
  * was too far from both ends to snap to either.
  *
- * The strong magnet ignores it for the candle, by design — see
- * `MagnetStrength`. It still bounds the drawings' levels there, since those
- * have no column to own the aim and there is always *some* nearest one.
+ * The strong magnet ignores it inside a bar's column — for the candle and
+ * for every other level there alike, so that the target is always simply the
+ * nearest one and never jumps between a near level and a far one. Outside a
+ * column the reach applies again, whichever strength is set. See
+ * `MagnetStrength` and `snapToLevels`.
  *
  * A coarse pointer gets more room, because a fingertip both aims worse and
  * hides the level it is aiming at.

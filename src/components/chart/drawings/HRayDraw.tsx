@@ -106,16 +106,23 @@ export function HRayDraw({
         strokeDasharray={strokeDasharray}
         style={{ pointerEvents: "none" }}
       />
-      {/* Anchor handle */}
-      <circle
-        cx={anchorX}
-        cy={y}
-        r={4}
-        fill={color}
-        stroke="#ffffff"
-        strokeWidth={1}
-        style={{ pointerEvents: "none" }}
-      />
+      {/* The anchor mark belongs to the selection, not to the drawing.
+          A dot the size and colour of a handle, left on screen with nothing
+          selected, reads as a grab point that cannot be grabbed — and the
+          ray's own line already shows where it starts. Every other drawing
+          here mounts its handles under `selected`; this one was the
+          exception. */}
+      {selected && (
+        <circle
+          cx={anchorX}
+          cy={y}
+          r={4}
+          fill={color}
+          stroke="#ffffff"
+          strokeWidth={1}
+          style={{ pointerEvents: "none" }}
+        />
+      )}
       {/* The price is written on the price scale, by DrawingAxisLabels. */}
       {drawing.alert?.enabled && (
         <text x={anchorX + 10} y={y + 4} fontSize={11} style={{ pointerEvents: "none" }}>

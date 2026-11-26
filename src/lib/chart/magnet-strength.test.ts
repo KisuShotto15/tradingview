@@ -60,18 +60,31 @@ describe("snapToLevels, by strength", () => {
     expect(snapToLevels(20, 151, bars, [], undefined, REACH, "strong")).toBeNull();
   });
 
-  it("keeps the drawings' levels bounded even on strong", () => {
+  it("takes the nearest level in the column, near or far, on strong", () => {
     const base = {
       symbol: "BTCUSDT",
       createdAt: 0,
       style: {},
     } as unknown as Drawing;
     const far: Drawing = { ...base, id: "a", kind: "hline", price: 500 };
-    // "Regardless of the distance" is answerable for a candle, which owns the
-    // column under the cursor. For a line at any price on the pane it would
-    // mean dragging the point to whichever one happened to be nearest, so the
-    // bar wins here rather than the line 480 units away.
+    const near: Drawing = { ...base, id: "b", kind: "hline", price: 18 };
+    // The bar wins over a line 480 away...
     expect(snapToLevels(20, 100, bars, [far], undefined, REACH, "strong")).toBe(12);
+    // ...and loses to one 2 away, even though that is outside the weak
+    // reach. Bounding the lines while the candle went unbounded is what let
+    // one pixel of movement flip the target between 18 and 12: the level
+    // dropped out of reach and the far bar won instead. The nearest
+    // candidate, full stop, is the only rule that moves with the aim.
+    expect(snapToLevels(20, 100, bars, [near], undefined, REACH, "strong")).toBe(18);
+    expect(snapToLevels(20, 100, bars, [near, far], undefined, REACH, "strong")).toBe(18);
+  });
+
+  it("but outside a bar's column the reach applies on strong too", () => {
+    const base = { symbol: "BTCUSDT", createdAt: 0, style: {} } as unknown as Drawing;
+    const far: Drawing = { ...base, id: "a", kind: "hline", price: 500 };
+    // Past the last bar there is no column to own the aim, so a level far up
+    // the pane must not grab a point placed in the empty space to the right.
+    expect(snapToLevels(20, 151, bars, [far], undefined, REACH, "strong")).toBeNull();
   });
 });
 

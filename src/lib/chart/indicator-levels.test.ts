@@ -73,12 +73,15 @@ describe("snapToLevels with indicator levels", () => {
     expect(snapToLevels(11.9, 120, bars, [], undefined, 1, "weak", [12.5])).toBe(12);
   });
 
-  it("keeps the reach around an indicator line, on either strength", () => {
-    // A line 40 away is not something the cursor was aiming at. The strong
-    // magnet's "regardless of the distance" is about the bar under the
-    // cursor, which owns its column; a line has no column to own.
-    expect(snapToLevels(12.4, 120, bars, [], undefined, 1, "strong", [52])).toBe(12);
+  it("keeps the reach around an indicator line on weak, not on strong", () => {
+    // Weak: a line 40 away is not something the cursor was aiming at.
     expect(snapToLevels(60, 120, bars, [], undefined, 1, "weak", [52])).toBeNull();
+    // Strong, inside the bar's column: the nearest candidate wins outright,
+    // so the bar keeps a cursor at 12.4 and the line takes one at 60. Any
+    // rule that bounds one candidate and not the other makes the target jump
+    // between them as the cursor crosses the reach.
+    expect(snapToLevels(12.4, 120, bars, [], undefined, 1, "strong", [52])).toBe(12);
+    expect(snapToLevels(60, 120, bars, [], undefined, 1, "strong", [52])).toBe(52);
   });
 
   it("can snap where there is no bar at all", () => {

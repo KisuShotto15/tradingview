@@ -200,13 +200,14 @@ export function drawingPriceLevels(
  *
  * `maxDistance` is a reach in price units, beyond which nothing is snapped.
  * The caller converts a pixel reach through the series' own scale, so the pull
- * feels the same at any zoom level. It bounds a drawing's level always, and
- * the candle only on the weak setting — see `MagnetStrength`.
+ * feels the same at any zoom level. The weak magnet bounds everything by it;
+ * the strong one drops it entirely inside a bar's column and keeps it outside
+ * one — see `MagnetStrength` and the note in the body.
  *
  * `extraLevels` are prices some other source offers at `time` — in practice
  * the indicator lines on the price pane, which the chart publishes through
  * `indicator-levels.ts`. They are treated exactly like a drawing's level: no
- * thickness, so plain distance, bounded by the reach under either strength.
+ * thickness, so plain distance.
  */
 export function snapToLevels(
   price: number,
@@ -218,19 +219,32 @@ export function snapToLevels(
   strength: MagnetStrength = "weak",
   extraLevels: readonly number[] = [],
 ): number | null {
-  // A drawing's level has no thickness, so it is taken on plain distance —
-  // and it keeps its reach even on the strong setting. "Regardless of the
-  // distance" is answerable for a candle, which owns the column under the
-  // cursor; for the levels it would mean dragging the point to whichever fib
-  // rung on the pane happened to be nearest, which is not a snap at all.
-  const candidates = [...drawingPriceLevels(drawings, time, excludeId), ...extraLevels].filter(
-    (level) => maxDistance === undefined || Math.abs(level - price) <= maxDistance,
-  );
   const ohlc = snapToOHLC(
     price,
     time,
     candles,
     strength === "strong" ? undefined : maxDistance,
+  );
+  /*
+   * Inside a bar's column the strong magnet ignores the reach for *every*
+   * candidate, not only the candle's own OHLC.
+   *
+   * Bounding the levels while the candle went unbounded was incoherent, and
+   * on a dragged line it was the whole complaint: at the edge of the reach a
+   * level 48px away dropped out and the bar's high, 111px away, won instead,
+   * so one pixel of finger movement threw the line across the pane — and the
+   * next pixel threw it back. A magnet has to be a monotone function of the
+   * aim. With everything unbounded in the column, the answer is simply the
+   * nearest level there is, which moves the same way the finger does.
+   *
+   * Outside any column there is no candle (`ohlc` is null), and the reach
+   * comes back — otherwise a horizontal ray's level would grab the cursor
+   * from anywhere in the empty space past the last bar, where the strong
+   * magnet is supposed to leave it alone.
+   */
+  const bound = strength === "strong" && ohlc !== null ? undefined : maxDistance;
+  const candidates = [...drawingPriceLevels(drawings, time, excludeId), ...extraLevels].filter(
+    (level) => bound === undefined || Math.abs(level - price) <= bound,
   );
   if (ohlc !== null) candidates.push(ohlc);
   if (candidates.length === 0) return null;
