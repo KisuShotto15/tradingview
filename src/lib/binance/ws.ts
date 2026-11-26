@@ -57,7 +57,36 @@ interface BookTickerMsg {
   };
 }
 
-type WSMsg = KlineMsg | MiniTickerMsg | BookTickerMsg;
+/**
+ * A single executed trade. This is the fastest price Binance publishes: the
+ * kline stream is sent on a fixed interval (250ms on futures, 1s on spot)
+ * however busy the market is, so a chart driven by klines alone can never
+ * move more often than that. TradingView's own last price comes from the
+ * trade feed, which is why its number changes several times a second.
+ */
+interface AggTradeMsg {
+  stream: string;
+  data: {
+    e: string;
+    E: number;
+    s: string;
+    p: string;
+    q: string;
+    T: number;
+    m: boolean;
+  };
+}
+
+export interface Trade {
+  /** Trade price. */
+  price: number;
+  /** Trade size, in the base asset. */
+  qty: number;
+  /** Trade time, in seconds. */
+  time: number;
+}
+
+type WSMsg = KlineMsg | MiniTickerMsg | BookTickerMsg | AggTradeMsg;
 
 export interface KlineSubscription {
   symbol: string;
@@ -77,6 +106,7 @@ class BinanceWSConn {
   private klineSubs = new Map<string, KlineSubscription>();
   private tickerSubs = new Map<string, (m: MiniTickerMsg["data"]) => void>();
   private bookTickerSubs = new Map<string, (m: { bid: number; ask: number }) => void>();
+  private tradeSubs = new Map<string, (t: Trade) => void>();
   private connected = false;
   private closing = false;
   /** When the last frame arrived. Drives the staleness watchdog below. */
@@ -87,7 +117,12 @@ class BinanceWSConn {
   constructor(private url: string, private symbolDecorator: (s: string) => string) {}
 
   private subCount(): number {
-    return this.klineSubs.size + this.tickerSubs.size + this.bookTickerSubs.size;
+    return (
+      this.klineSubs.size +
+      this.tickerSubs.size +
+      this.bookTickerSubs.size +
+      this.tradeSubs.size
+    );
   }
 
   /**
@@ -136,6 +171,7 @@ class BinanceWSConn {
       });
       this.tickerSubs.forEach((_v, k) => streams.push(k));
       this.bookTickerSubs.forEach((_v, k) => streams.push(k));
+      this.tradeSubs.forEach((_v, k) => streams.push(k));
       if (streams.length > 0) {
         this.send({ method: "SUBSCRIBE", params: streams, id: this.nextId++ });
       }
@@ -194,6 +230,16 @@ class BinanceWSConn {
     } else if (msg.stream.includes("@miniTicker")) {
       const handler = this.tickerSubs.get(msg.stream);
       if (handler) handler((msg as MiniTickerMsg).data);
+    } else if (msg.stream.includes("@aggTrade")) {
+      const handler = this.tradeSubs.get(msg.stream);
+      if (handler) {
+        const d = (msg as AggTradeMsg).data;
+        handler({
+          price: parseFloat(d.p),
+          qty: parseFloat(d.q),
+          time: Math.floor(d.T / 1000),
+        });
+      }
     } else if (msg.stream.includes("@bookTicker")) {
       const handler = this.bookTickerSubs.get(msg.stream);
       if (handler) {
@@ -248,6 +294,23 @@ class BinanceWSConn {
       streams.forEach((s) => this.tickerSubs.delete(s));
       if (this.connected) {
         this.send({ method: "UNSUBSCRIBE", params: streams, id: this.nextId++ });
+      }
+    };
+  }
+
+  /** Every executed trade on a symbol. See `AggTradeMsg` for why. */
+  subscribeTrades(symbol: string, onTrade: (t: Trade) => void): () => void {
+    const stream = `${cleanSym(symbol).toLowerCase()}@aggTrade`;
+    this.tradeSubs.set(stream, onTrade);
+    if (this.connected) {
+      this.send({ method: "SUBSCRIBE", params: [stream], id: this.nextId++ });
+    } else if (!this.ws) {
+      this.connect();
+    }
+    return () => {
+      this.tradeSubs.delete(stream);
+      if (this.connected) {
+        this.send({ method: "UNSUBSCRIBE", params: [stream], id: this.nextId++ });
       }
     };
   }
@@ -316,6 +379,11 @@ export class BinanceWS {
     if (perpSyms.length > 0)
       unsubs.push(this.futures.subscribeMiniTickers(perpSyms, onTick));
     return () => unsubs.forEach((u) => u());
+  }
+
+  subscribeTrades(symbol: string, onTrade: (t: Trade) => void): () => void {
+    const conn = isPerp(symbol) ? this.futures : this.spot;
+    return conn.subscribeTrades(symbol, onTrade);
   }
 
   subscribeBookTicker(

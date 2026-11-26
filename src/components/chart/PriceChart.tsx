@@ -210,6 +210,12 @@ interface LastValues {
  */
 const STALE_BAR_GRACE_SEC = 30;
 const STALE_BAR_CHECK_MS = 5_000;
+/**
+ * How often a trade may re-render this component with a new last price.
+ * The chart's own series is updated every frame regardless; this only paces
+ * the React render behind the legend and the price plate.
+ */
+const PRICE_RENDER_MS = 100;
 /** Floor between forced resubscriptions, so a stream that stays quiet for a
  *  real reason (a genuinely dead market, a blocked host) can't turn into a
  *  reconnect loop. */
@@ -3860,7 +3866,82 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
           unsub = () => unsubs.forEach((u) => u());
           return;
         }
-        unsub = ws.subscribeKline({
+        /*
+         * The price comes off the trade feed; the bar comes off the kline
+         * feed.
+         *
+         * Both exchanges publish klines on a fixed interval — 250ms on
+         * Binance futures, 1s on spot — however busy the market is, so a
+         * chart driven by klines alone cannot show a price moving faster
+         * than that. TradingView's last price comes from the trade stream,
+         * which pushes per execution, and that is the difference you see
+         * between the two numbers on a liquid perp.
+         *
+         * So trades move the last price and stretch the live bar, and that
+         * is all they do: the kline frame right behind them carries the
+         * exchange's authoritative open/high/low/volume and is what
+         * recomputes the studies. Recomputing every study per trade would
+         * cost 5.4ms over 2000 candles on a desktop and several times that
+         * on a phone, dozens of times a second, for a number that the next
+         * kline frame was about to correct anyway.
+         *
+         * Two rates, for two different costs. The series update is
+         * imperative and cheap, so it runs once per animation frame — a
+         * burst of trades inside one frame collapses into the last price,
+         * which is the only one that would have been drawn. `setLastPrice`
+         * re-renders this component, which is not cheap, so it is held to
+         * PRICE_RENDER_MS; the eye cannot read a number changing faster.
+         */
+        let pendingTrade: number | null = null;
+        let tradeFrame = 0;
+        let lastPriceRenderAt = 0;
+        const applyTrade = () => {
+          tradeFrame = 0;
+          const price = pendingTrade;
+          pendingTrade = null;
+          if (price === null || cancelled) return;
+          if (useReplayStore.getState().active) return;
+          const series = candleSeriesRef.current;
+          const arr = candlesRef.current;
+          const bar = arr[arr.length - 1];
+          if (!series || !bar) return;
+          // Past the bar's close there is a new bar to open, and only the
+          // kline stream knows when: leave it to the frame behind this one.
+          if (Date.now() / 1000 >= bar.time + timeframeToSeconds(timeframe)) return;
+          bar.close = price;
+          if (price > bar.high) bar.high = price;
+          if (price < bar.low) bar.low = price;
+          series.update({
+            time: bar.time as UTCTimestamp,
+            open: bar.open,
+            high: bar.high,
+            low: bar.low,
+            close: bar.close,
+          });
+          lineSeriesRef.current?.update({ time: bar.time as UTCTimestamp, value: price });
+          areaSeriesRef.current?.update({ time: bar.time as UTCTimestamp, value: price });
+          const now = Date.now();
+          if (now - lastPriceRenderAt < PRICE_RENDER_MS) return;
+          lastPriceRenderAt = now;
+          const prev = arr[arr.length - 2] ?? bar;
+          const lp = {
+            value: price,
+            pct: prev.close === 0 ? 0 : ((price - prev.close) / prev.close) * 100,
+          };
+          setLastPrice(lp);
+          setCurrentLivePrice(price);
+        };
+        const unsubTrades = ws.subscribeTrades(symbol, (t) => {
+          if (useReplayStore.getState().active) return;
+          // A trade is proof this symbol's stream is alive, which is what
+          // keeps the REST repair loop from treating a quiet kline interval
+          // as a dead subscription.
+          if (activeRef.current) markChartTick();
+          pendingTrade = t.price;
+          if (tradeFrame === 0) tradeFrame = requestAnimationFrame(applyTrade);
+        });
+
+        const unsubKline = ws.subscribeKline({
           symbol,
           interval: timeframe,
           onCandle: (k) => {
@@ -3909,8 +3990,14 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
             };
             setLastPrice(lp4);
             setCurrentLivePrice(lp4.value);
+            lastPriceRenderAt = Date.now();
           },
         });
+        unsub = () => {
+          if (tradeFrame !== 0) cancelAnimationFrame(tradeFrame);
+          unsubTrades();
+          unsubKline();
+        };
       } catch (e) {
         console.error("Failed to load chart data:", e);
       }

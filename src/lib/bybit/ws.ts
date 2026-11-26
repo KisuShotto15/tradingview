@@ -41,6 +41,24 @@ interface BybitTickerMsg {
   data: { symbol: string; lastPrice?: string; price24hPcnt?: string };
 }
 
+/**
+ * A public trade. Bybit's kline topic is published on an interval, so a chart
+ * driven by it alone cannot move faster than that however busy the market is.
+ * The trade topic pushes per execution, which is where TradingView's
+ * several-times-a-second last price comes from.
+ */
+interface BybitTradeMsg {
+  topic: string;
+  data: { T: number; s: string; p: string; v: string }[];
+}
+
+export interface Trade {
+  price: number;
+  qty: number;
+  /** Trade time, in seconds. */
+  time: number;
+}
+
 export interface MiniTick {
   symbol: string;
   close: number;
@@ -61,6 +79,7 @@ class BybitWS {
   // subscriber isn't "last in", and unsubscribing one would delete the topic
   // out from under the other. Fan out to a Set of listeners per topic instead.
   private tickerSubs = new Map<string, Set<{ onTick: (t: MiniTick) => void; ticker: string }>>();
+  private tradeSubs = new Map<string, (t: Trade) => void>();
   // `last` retains price/pct across delta frames (Bybit ticker deltas only
   // carry changed fields), shared by every listener on a topic.
   private tickerLast = new Map<string, { price: number; pct: number }>();
@@ -76,7 +95,7 @@ class BybitWS {
   }
 
   private subCount(): number {
-    return this.subs.size + this.tickerSubs.size;
+    return this.subs.size + this.tickerSubs.size + this.tradeSubs.size;
   }
 
   /**
@@ -122,7 +141,7 @@ class BybitWS {
       this.lastMsgAt = Date.now();
       this.status.set("live");
       this.startWatchdog();
-      const topics = [...this.subs.keys(), ...this.tickerSubs.keys()];
+      const topics = [...this.subs.keys(), ...this.tickerSubs.keys(), ...this.tradeSubs.keys()];
       if (topics.length > 0) this.send({ op: "subscribe", args: topics });
       this.pingTimer = setInterval(() => this.send({ op: "ping" }), 20000);
     };
@@ -131,10 +150,11 @@ class BybitWS {
       // Any frame counts as proof of life, a pong or a subscribe ack included.
       this.lastMsgAt = Date.now();
       try {
-        const msg = JSON.parse(ev.data) as BybitKlineMsg | BybitTickerMsg | { op?: string };
+        const msg = JSON.parse(ev.data) as BybitKlineMsg | BybitTickerMsg | BybitTradeMsg | { op?: string };
         if (!("topic" in msg) || !msg.topic) return;
         if (msg.topic.startsWith("kline.")) this.dispatch(msg as BybitKlineMsg);
         else if (msg.topic.startsWith("tickers.")) this.dispatchTicker(msg as BybitTickerMsg);
+        else if (msg.topic.startsWith("publicTrade.")) this.dispatchTrade(msg as BybitTradeMsg);
       } catch {
         // ignore
       }
@@ -195,6 +215,27 @@ class BybitWS {
     for (const { onTick, ticker } of listeners) {
       onTick({ symbol: ticker, close: last.price, open: 0, pct: last.pct });
     }
+  }
+
+  private dispatchTrade(msg: BybitTradeMsg) {
+    const handler = this.tradeSubs.get(msg.topic);
+    if (!handler || !Array.isArray(msg.data)) return;
+    // Bybit batches executions into one frame; the last is the current price.
+    for (const t of msg.data) {
+      handler({ price: parseFloat(t.p), qty: parseFloat(t.v), time: Math.floor(t.T / 1000) });
+    }
+  }
+
+  /** Every public execution on a symbol. See `BybitTradeMsg` for why. */
+  subscribeTrades(symbol: string, onTrade: (t: Trade) => void): () => void {
+    const topic = `publicTrade.${bybitSymbol(symbol)}`;
+    this.tradeSubs.set(topic, onTrade);
+    if (this.connected) this.send({ op: "subscribe", args: [topic] });
+    else if (!this.ws) this.connect();
+    return () => {
+      this.tradeSubs.delete(topic);
+      if (this.connected) this.send({ op: "unsubscribe", args: [topic] });
+    };
   }
 
   subscribeKline(sub: KlineSubscription): () => void {
