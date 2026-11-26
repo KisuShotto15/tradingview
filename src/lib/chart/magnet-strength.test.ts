@@ -27,18 +27,71 @@ function candle(time: number, o: number, h: number, l: number, c: number): Candl
 const bars = [candle(0, 10, 12, 8, 11), candle(100, 10, 12, 8, 11)];
 const REACH = 0.5;
 
+const drawingBase = {
+  symbol: "BTCUSDT",
+  createdAt: 0,
+  style: {},
+} as unknown as Drawing;
+
 describe("snapToLevels, by strength", () => {
   it("weak lets go once the aim is past the reach", () => {
     expect(snapToLevels(20, 100, bars, [], undefined, REACH, "weak")).toBeNull();
     expect(snapToLevels(-5, 100, bars, [], undefined, REACH, "weak")).toBeNull();
   });
 
-  it("strong pulls from anywhere in the bar's column", () => {
-    // Eight units above the high, sixteen times the reach — and it still lands
-    // on the high. That is the behaviour, not a bug: a point placed with the
-    // strong magnet is always on an OHLC value.
-    expect(snapToLevels(20, 100, bars, [], undefined, REACH, "strong")).toBe(12);
-    expect(snapToLevels(-5, 100, bars, [], undefined, REACH, "strong")).toBe(8);
+  it("strong pulls from anywhere between the levels, however far", () => {
+    // A line 480 units away loses to the bar; a line 2.5 away beats it. Both
+    // are far outside the weak reach, and neither is bounded by it — inside
+    // the span the answer is simply the nearest candidate there is.
+    const far: Drawing = { ...drawingBase, id: "a", kind: "hline", price: 500 };
+    expect(snapToLevels(20, 100, bars, [far], undefined, REACH, "strong")).toBe(12);
+  });
+
+  it("lets go above the topmost level and below the bottommost, even on strong", () => {
+    /*
+     * This pinned the opposite until a phone measurement showed what it cost.
+     *
+     * "Nearest regardless of distance" stops being a pull and becomes a clamp
+     * once there is nothing further out: above the bar's high the high stayed
+     * the nearest candidate for ever, so a dragged line pinned there and the
+     * region above it became unreachable with the magnet on — the line died
+     * after three moves while the finger travelled another 77px, and a touch
+     * screen has no Ctrl to escape with. Outside the span the strong magnet
+     * therefore behaves as the weak one, which is the vertical half of the
+     * rule the column gate already applies horizontally.
+     */
+    expect(snapToLevels(20, 100, bars, [], undefined, REACH, "strong")).toBeNull();
+    expect(snapToLevels(-5, 100, bars, [], undefined, REACH, "strong")).toBeNull();
+    /*
+     * It lets go *at* the level, not a reach beyond it.
+     *
+     * Holding on for another `maxDistance` and then dropping the point is
+     * what the weak magnet does, and on a dragged line it measured as a 53px
+     * jump: the line sat on the high for four moves of the finger and then
+     * leapt to catch up. Releasing exactly at the outermost level is the only
+     * continuous answer — a hair inside, the target is that level; a hair
+     * outside, it is the aim, which is the same price.
+     */
+    expect(snapToLevels(12.3, 100, bars, [], undefined, REACH, "strong")).toBeNull();
+    expect(snapToLevels(7.7, 100, bars, [], undefined, REACH, "strong")).toBeNull();
+    expect(snapToLevels(12, 100, bars, [], undefined, REACH, "strong")).toBe(12);
+  });
+
+  it("never moves the target backwards, or far, as the aim rises", () => {
+    // A magnet has to be monotone in the aim, through the release point as
+    // much as anywhere else: a target that steps back as the finger goes on
+    // rising is the jumping this file already guards against. The step is
+    // bounded too — the gaps between a bar's own levels, and nothing wider,
+    // which is what rules out holding the point past the top and then
+    // dropping it.
+    const widestGap = 2; // 8 → 10 → 11 → 12 on this bar
+    let prev = -Infinity;
+    for (let aim = 6; aim <= 14; aim += 0.05) {
+      const got = snapToLevels(aim, 100, bars, [], undefined, REACH, "strong") ?? aim;
+      expect(got >= prev - 1e-9).toBe(true);
+      if (prev !== -Infinity) expect(got - prev <= widestGap + 1e-9).toBe(true);
+      prev = got;
+    }
   });
 
   it("both agree when the aim is on the bar", () => {
@@ -56,27 +109,20 @@ describe("snapToLevels, by strength", () => {
     // Half a bar past the last bar's centre is still its column; beyond that
     // the cursor must move freely or a drawing could never be placed in the
     // empty space to the right of the series.
-    expect(snapToLevels(20, 150, bars, [], undefined, REACH, "strong")).toBe(12);
-    expect(snapToLevels(20, 151, bars, [], undefined, REACH, "strong")).toBeNull();
+    expect(snapToLevels(11.9, 150, bars, [], undefined, REACH, "strong")).toBe(12);
+    expect(snapToLevels(11.9, 151, bars, [], undefined, REACH, "strong")).toBeNull();
   });
 
   it("takes the nearest level in the column, near or far, on strong", () => {
-    const base = {
-      symbol: "BTCUSDT",
-      createdAt: 0,
-      style: {},
-    } as unknown as Drawing;
-    const far: Drawing = { ...base, id: "a", kind: "hline", price: 500 };
-    const near: Drawing = { ...base, id: "b", kind: "hline", price: 18 };
-    // The bar wins over a line 480 away...
-    expect(snapToLevels(20, 100, bars, [far], undefined, REACH, "strong")).toBe(12);
-    // ...and loses to one 2 away, even though that is outside the weak
-    // reach. Bounding the lines while the candle went unbounded is what let
-    // one pixel of movement flip the target between 18 and 12: the level
-    // dropped out of reach and the far bar won instead. The nearest
-    // candidate, full stop, is the only rule that moves with the aim.
-    expect(snapToLevels(20, 100, bars, [near], undefined, REACH, "strong")).toBe(18);
-    expect(snapToLevels(20, 100, bars, [near, far], undefined, REACH, "strong")).toBe(18);
+    const far: Drawing = { ...drawingBase, id: "a", kind: "hline", price: 500 };
+    const near: Drawing = { ...drawingBase, id: "b", kind: "hline", price: 18 };
+    // A line 2.5 away beats the bar's high 3.5 away, even though both are
+    // outside the weak reach. Bounding the lines while the candle went
+    // unbounded is what let one pixel of movement flip the target between
+    // them: the level dropped out of reach and the far bar won instead. The
+    // nearest candidate, full stop, is the only rule that moves with the aim.
+    expect(snapToLevels(15.5, 100, bars, [near], undefined, REACH, "strong")).toBe(18);
+    expect(snapToLevels(15.5, 100, bars, [near, far], undefined, REACH, "strong")).toBe(18);
   });
 
   it("but outside a bar's column the reach applies on strong too", () => {

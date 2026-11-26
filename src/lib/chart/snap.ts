@@ -34,6 +34,25 @@ function barSpan(candles: Candle[]): number | null {
 export type MagnetStrength = "weak" | "strong";
 
 /**
+ * The four prices the bar under `time` offers, or null when the cursor is not
+ * over a bar.
+ *
+ * Separate from `snapToOHLC` because two different questions are asked of the
+ * same bar: which level to snap to, and how far its prices reach — the latter
+ * is what decides whether the strong magnet still has anything to pull toward
+ * (see `snapToLevels`).
+ */
+export function barLevelsAt(time: number, candles: Candle[]): number[] | null {
+  if (candles.length === 0) return null;
+  const candle = candles.reduce((best, c) =>
+    Math.abs(c.time - time) < Math.abs(best.time - time) ? c : best,
+  );
+  const span = barSpan(candles);
+  if (span !== null && Math.abs(candle.time - time) > span / 2) return null;
+  return [candle.open, candle.high, candle.low, candle.close];
+}
+
+/**
  * Snap a price to the nearest OHLC level of the bar the cursor is over.
  * Returns null when there are no candles, or when the cursor is not over one.
  *
@@ -66,13 +85,8 @@ export function snapToOHLC(
   candles: Candle[],
   maxDistance?: number,
 ): number | null {
-  if (candles.length === 0) return null;
-  const candle = candles.reduce((best, c) =>
-    Math.abs(c.time - time) < Math.abs(best.time - time) ? c : best,
-  );
-  const span = barSpan(candles);
-  if (span !== null && Math.abs(candle.time - time) > span / 2) return null;
-  const levels = [candle.open, candle.high, candle.low, candle.close];
+  const levels = barLevelsAt(time, candles);
+  if (levels === null) return null;
   if (maxDistance !== undefined) {
     const low = Math.min(...levels);
     const high = Math.max(...levels);
@@ -219,36 +233,58 @@ export function snapToLevels(
   strength: MagnetStrength = "weak",
   extraLevels: readonly number[] = [],
 ): number | null {
-  const ohlc = snapToOHLC(
-    price,
-    time,
-    candles,
-    strength === "strong" ? undefined : maxDistance,
-  );
+  const others = [...drawingPriceLevels(drawings, time, excludeId), ...extraLevels];
+  const bar = barLevelsAt(time, candles);
+
   /*
-   * Inside a bar's column the strong magnet ignores the reach for *every*
-   * candidate, not only the candle's own OHLC.
+   * The strong magnet, over a bar: the nearest level between the outermost
+   * ones on offer, and nothing at all past them.
    *
-   * Bounding the levels while the candle went unbounded was incoherent, and
-   * on a dragged line it was the whole complaint: at the edge of the reach a
-   * level 48px away dropped out and the bar's high, 111px away, won instead,
-   * so one pixel of finger movement threw the line across the pane — and the
-   * next pixel threw it back. A magnet has to be a monotone function of the
-   * aim. With everything unbounded in the column, the answer is simply the
-   * nearest level there is, which moves the same way the finger does.
+   * The unbounded half is what "regardless of the distance" means, and it has
+   * to apply to *every* candidate, not only the candle's own OHLC. Bounding
+   * the drawings' levels while the candle went unbounded is what let one pixel
+   * of movement throw a dragged line across the pane: at the edge of the reach
+   * a level 48px away dropped out and the bar's high, 111px away, won instead
+   * — and the next pixel threw it back. A magnet has to be monotone in the aim.
    *
-   * Outside any column there is no candle (`ohlc` is null), and the reach
-   * comes back — otherwise a horizontal ray's level would grab the cursor
-   * from anywhere in the empty space past the last bar, where the strong
-   * magnet is supposed to leave it alone.
+   * The release is the other half, and it was missing. Past the outermost
+   * level there is nothing to pull toward, so "nearest regardless of distance"
+   * stops being a pull and becomes a clamp: above the bar's high the high
+   * stayed nearest for ever, so a dragged line pinned there and the whole pane
+   * above it became unreachable. Measured on a phone, the line died after
+   * three moves while the finger travelled another 77px — the reported "it
+   * stops following my finger" — and a touch screen has no Ctrl to escape
+   * with. Letting go *exactly* at the outermost level is what keeps that
+   * continuous: a hair inside, the answer is that level; a hair outside, the
+   * answer is the aim, which is the same price. Falling back to the weak
+   * magnet's reach there instead was tried and is visibly worse — it holds the
+   * line for another `maxDistance` and then drops it, which measured as a
+   * 53px jump.
+   *
+   * Past the last bar there is no candle at all, and this does not apply: the
+   * weak path below keeps a level from grabbing the cursor out of the empty
+   * space to the right of the series.
    */
-  const bound = strength === "strong" && ohlc !== null ? undefined : maxDistance;
-  const candidates = [...drawingPriceLevels(drawings, time, excludeId), ...extraLevels].filter(
-    (level) => bound === undefined || Math.abs(level - price) <= bound,
+  if (strength === "strong" && bar !== null) {
+    const reachable = [...others, ...bar];
+    const lo = Math.min(...reachable);
+    const hi = Math.max(...reachable);
+    if (price < lo || price > hi) return null;
+    return nearest(reachable, price);
+  }
+
+  const ohlc = snapToOHLC(price, time, candles, maxDistance);
+  const candidates = others.filter(
+    (level) => maxDistance === undefined || Math.abs(level - price) <= maxDistance,
   );
   if (ohlc !== null) candidates.push(ohlc);
   if (candidates.length === 0) return null;
-  return candidates.reduce((closest, level) =>
+  return nearest(candidates, price);
+}
+
+/** The candidate closest to `price`. `levels` must not be empty. */
+function nearest(levels: number[], price: number): number {
+  return levels.reduce((closest, level) =>
     Math.abs(level - price) < Math.abs(closest - price) ? level : closest,
   );
 }

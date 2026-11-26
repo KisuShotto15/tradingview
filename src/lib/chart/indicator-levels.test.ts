@@ -74,14 +74,25 @@ describe("snapToLevels with indicator levels", () => {
   });
 
   it("keeps the reach around an indicator line on weak, not on strong", () => {
-    // Weak: a line 40 away is not something the cursor was aiming at.
-    expect(snapToLevels(60, 120, bars, [], undefined, 1, "weak", [52])).toBeNull();
-    // Strong, inside the bar's column: the nearest candidate wins outright,
-    // so the bar keeps a cursor at 12.4 and the line takes one at 60. Any
-    // rule that bounds one candidate and not the other makes the target jump
-    // between them as the cursor crosses the reach.
+    // Weak: a line 20 away is not something the cursor was aiming at.
+    expect(snapToLevels(32, 120, bars, [], undefined, 1, "weak", [52])).toBeNull();
+    // Strong, between the levels on offer: the nearest candidate wins
+    // outright, so the bar keeps a cursor at 12.4 and the line takes one at
+    // 40. Any rule that bounds one candidate and not the other makes the
+    // target jump between them as the cursor crosses the reach.
     expect(snapToLevels(12.4, 120, bars, [], undefined, 1, "strong", [52])).toBe(12);
-    expect(snapToLevels(60, 120, bars, [], undefined, 1, "strong", [52])).toBe(52);
+    expect(snapToLevels(40, 120, bars, [], undefined, 1, "strong", [52])).toBe(52);
+  });
+
+  it("lets go above the highest line, so the pane above it stays reachable", () => {
+    // 60 is past everything the chart offers here — bar and indicator alike.
+    // Clamping to the topmost candidate there is what made a dragged line
+    // pin itself and stop following the finger.
+    expect(snapToLevels(60, 120, bars, [], undefined, 1, "strong", [52])).toBeNull();
+    // And it lets go *at* the line rather than a reach beyond it, so the
+    // target never has to leap to catch the cursor up.
+    expect(snapToLevels(52.8, 120, bars, [], undefined, 1, "strong", [52])).toBeNull();
+    expect(snapToLevels(51.5, 120, bars, [], undefined, 1, "strong", [52])).toBe(52);
   });
 
   it("can snap where there is no bar at all", () => {
