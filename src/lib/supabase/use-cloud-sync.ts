@@ -40,6 +40,8 @@ export function useCloudSync() {
   const keyLevels = useChartStore((s) => s.keyLevels);
   const userEMAs = useChartStore((s) => s.userEMAs);
   const chartType = useChartStore((s) => s.chartType);
+  const toolDefaults = useChartStore((s) => s.toolDefaults);
+  const drawingTemplates = useChartStore((s) => s.drawingTemplates);
   const watchlists = useChartStore((s) => s.watchlists);
   const activeWatchlistId = useChartStore((s) => s.activeWatchlistId);
 
@@ -89,6 +91,19 @@ export function useCloudSync() {
             ...(vs.keyLevels     && { keyLevels:     vs.keyLevels }),
             ...(vs.userEMAs      !== undefined && { userEMAs: vs.userEMAs }),
             ...(vs.chartType     && { chartType:     vs.chartType }),
+            /*
+             * Merged per kind under what this device already has, not
+             * replaced: a row written before these fields were synced has
+             * none, and a device can hold a style for a tool the other one
+             * never touched. The cloud wins for a kind both have, being the
+             * last one saved from anywhere.
+             */
+            ...(vs.toolDefaults && {
+              toolDefaults: { ...useChartStore.getState().toolDefaults, ...vs.toolDefaults },
+            }),
+            ...(vs.drawingTemplates && {
+              drawingTemplates: { ...useChartStore.getState().drawingTemplates, ...vs.drawingTemplates },
+            }),
           });
         }
       }
@@ -153,6 +168,8 @@ export function useCloudSync() {
           keyLevels,
           userEMAs,
           chartType,
+          toolDefaults,
+          drawingTemplates,
         },
       });
     }, DEBOUNCE_MS);
@@ -163,6 +180,7 @@ export function useCloudSync() {
     user,
     symbol, timeframe, indicators, hidden, config,
     chartColors, adxStyle, squeezeStyle, keyLevels, userEMAs, chartType,
+    toolDefaults, drawingTemplates,
   ]);
 
   // ── Sync debounced de watchlist (items completos con labels) ─────────────

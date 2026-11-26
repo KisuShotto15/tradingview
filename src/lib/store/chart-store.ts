@@ -354,7 +354,7 @@ const SYMBOL_DEFAULTS: Partial<Record<string, { timeframe?: Timeframe; chartType
 
 export type { ChartPane };
 
-interface ChartState {
+export interface ChartState {
   /**
    * The **active pane's** symbol and timeframe.
    *

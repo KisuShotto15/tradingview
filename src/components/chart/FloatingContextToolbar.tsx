@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import type { Drawing } from "@/lib/drawings/types";
+import { LINE_STYLE_KINDS, WIDTH_KINDS, pickStyle, styleOf } from "@/lib/drawings/style";
 import type { DrawingTemplate } from "@/lib/store/chart-store";
 
 // Stable empty-array reference: a fresh `[]` on every selector call would
@@ -99,11 +100,19 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
 
   function patch(p: Partial<Drawing>) {
     void update(drawing!.id, p);
-    // Keep tool defaults in sync so next drawing reuses the same style
-    useChartStore.getState().setToolDefault(
-      drawing!.kind as DrawingTool,
-      p as Parameters<ReturnType<typeof useChartStore.getState>["setToolDefault"]>[1],
-    );
+    /*
+     * The last style used becomes the next drawing's style — but only the
+     * style. Hide and lock go through this same function, and writing them
+     * into the defaults made every following drawing of the kind arrive
+     * hidden or locked.
+     */
+    const style = pickStyle(p);
+    if (Object.keys(style).length > 0) {
+      useChartStore.getState().setToolDefault(
+        drawing!.kind as DrawingTool,
+        style as Parameters<ReturnType<typeof useChartStore.getState>["setToolDefault"]>[1],
+      );
+    }
   }
 
   return (
@@ -147,23 +156,59 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
                 onChange={(c) => patch({ color: c })}
               />
             </Seg>
-            {"lineWidth" in drawing && (
+            {/* Offered by kind, not by `"lineWidth" in drawing`: a fresh
+                drawing has no width set, so that test hid the control on
+                every new line and the width could never carry over. */}
+            {WIDTH_KINDS.has(drawing.kind) && (
               <>
                 <Sep />
                 <Seg>
-                  {[1, 2, 3].map((w) => (
+                  {(drawing.kind === "highlighter" ? [8, 14, 20, 28] : [1, 2, 3, 4]).map((w, i) => (
                     <button
                       key={w}
                       onClick={() => patch({ lineWidth: w })}
                       title={`Width ${w}`}
+                      aria-pressed={drawing.lineWidth === w}
                       className={cn(
-                        "flex h-5 w-5 [@media(hover:none)]:h-8 [@media(hover:none)]:w-8 items-center justify-center rounded text-[9px] font-bold",
-                        (drawing.lineWidth ?? 1) === w
+                        "flex h-5 w-5 [@media(hover:none)]:h-8 [@media(hover:none)]:w-8 items-center justify-center rounded",
+                        drawing.lineWidth === w
                           ? "bg-tv-text/15 text-tv-text"
                           : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
                       )}
                     >
-                      {w}
+                      <span
+                        className="block w-3 rounded-full bg-current [@media(hover:none)]:w-4"
+                        style={{ height: i + 1 }}
+                      />
+                    </button>
+                  ))}
+                </Seg>
+              </>
+            )}
+            {LINE_STYLE_KINDS.has(drawing.kind) && (
+              <>
+                <Sep />
+                <Seg>
+                  {([0, 1, 2] as const).map((ls) => (
+                    <button
+                      key={ls}
+                      onClick={() => patch({ lineStyle: ls })}
+                      title={ls === 0 ? "Solid" : ls === 1 ? "Dashed" : "Dotted"}
+                      aria-pressed={(drawing.lineStyle ?? 0) === ls}
+                      className={cn(
+                        "flex h-5 w-5 [@media(hover:none)]:h-8 [@media(hover:none)]:w-8 items-center justify-center rounded",
+                        (drawing.lineStyle ?? 0) === ls
+                          ? "bg-tv-text/15 text-tv-text"
+                          : "text-tv-text-muted hover:bg-tv-panel-hover hover:text-tv-text",
+                      )}
+                    >
+                      <svg viewBox="0 0 16 4" className="w-3.5 [@media(hover:none)]:w-[18px]" aria-hidden>
+                        <line
+                          x1="1" y1="2" x2="15" y2="2"
+                          stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"
+                          strokeDasharray={ls === 1 ? "4 3" : ls === 2 ? "0.1 3" : undefined}
+                        />
+                      </svg>
                     </button>
                   ))}
                 </Seg>
@@ -317,34 +362,6 @@ function SwatchPicker({ value, onChange }: { value: string; onChange: (v: string
   );
 }
 
-/**
- * The subset of fields worth saving/restoring as a template or a tool default:
- * everything that describes how the drawing *looks*, and nothing that
- * describes where it sits. Fib ratios count as style here — copying a
- * customized ladder onto the next fib is the whole point of saving it.
- */
-const STYLE_FIELDS = [
-  "color",
-  "lineWidth",
-  "lineStyle",
-  "stopColor",
-  "targetColor",
-  "textColor",
-  "showLabels",
-  "fillColor",
-  "fillOpacity",
-  "fontSize",
-  "levels",
-] as const;
-
-function styleOf(d: Drawing): Record<string, unknown> {
-  const src = d as unknown as Record<string, unknown>;
-  const style: Record<string, unknown> = {};
-  for (const f of STYLE_FIELDS) {
-    if (src[f] !== undefined) style[f] = src[f];
-  }
-  return style;
-}
 
 /**
  * One-click "make this the default for the tool".

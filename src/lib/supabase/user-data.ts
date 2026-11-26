@@ -10,6 +10,7 @@ import type {
   UserEMA,
   ChartType,
   WatchlistItem,
+  ChartState,
 } from "@/lib/store/chart-store";
 import type { Timeframe } from "@/lib/binance/types";
 
@@ -24,6 +25,11 @@ export interface VisualSettings {
   keyLevels?: KeyLevelsConfig;
   userEMAs?: UserEMA[];
   chartType?: ChartType;
+  /** Each drawing tool's last-used style, so a line made white on the phone
+   *  is white on the desktop too. */
+  toolDefaults?: ChartState["toolDefaults"];
+  /** Named drawing style presets, per kind. */
+  drawingTemplates?: ChartState["drawingTemplates"];
 }
 
 export interface CloudChartSettings {

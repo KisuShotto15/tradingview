@@ -2912,8 +2912,10 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
     svg.setAttribute("style", "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:15;overflow:visible");
     const pathEl = document.createElementNS(ns, "path");
     pathEl.setAttribute("fill", "none");
-    pathEl.setAttribute("stroke", isHighlighter ? "#ffeb3b" : "#ffffff");
-    pathEl.setAttribute("stroke-width", isHighlighter ? "14" : "2");
+    // Drawn in the style the stroke will land with (the tool's last style).
+    const brushStyle = useChartStore.getState().toolDefaults[tool] ?? {};
+    pathEl.setAttribute("stroke", brushStyle.color ?? (isHighlighter ? "#ffeb3b" : "#ffffff"));
+    pathEl.setAttribute("stroke-width", String(brushStyle.lineWidth ?? (isHighlighter ? 14 : 2)));
     pathEl.setAttribute("stroke-linecap", "round");
     pathEl.setAttribute("stroke-linejoin", "round");
     pathEl.setAttribute("opacity", isHighlighter ? "0.35" : "1");
@@ -3022,6 +3024,8 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
           logicals,
           color: isHighlighter ? "#ffeb3b" : "#ffffff",
           lineWidth: isHighlighter ? 14 : 2,
+          // The last style used, like every other tool.
+          ...(useChartStore.getState().toolDefaults[tool] ?? {}),
         });
       }
     }
