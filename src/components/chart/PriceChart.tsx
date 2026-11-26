@@ -381,6 +381,9 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
   const chartCaptureRef = useRef<(() => Promise<Blob | null>) | null>(null);
   const pricePerPixelRef = useRef<(() => number | null) | null>(null);
   const crosshairAimerRef = useRef<((x: number, y: number) => boolean) | null>(null);
+  /** The touch cursor puck (see `movePuck`), moved imperatively. */
+  const puckRef = useRef<HTMLDivElement>(null);
+  const hidePuckRef = useRef<(() => void) | null>(null);
   // Shape of the current view (bar span + offset from the last bar), kept fresh
   // as the user pans/zooms so it survives a symbol change and can be reapplied
   // to keep the same zoom + scroll position on the next symbol.
@@ -1428,19 +1431,79 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       const intervalSec = timeframeToSeconds(useChartStore.getState().timeframe);
       const time = xToTime(chart, x, candlesRef.current, intervalSec);
       if (price === null || time === null) return false;
-      // Only a real bar can anchor the crosshair; past the last one the
-      // preview still follows via our own handler.
+      /*
+       * The crosshair shows where the point will LAND, not where the finger
+       * is — the puck above shows the finger.
+       *
+       * This is TradingView's mobile model, and it is what makes a strong
+       * magnet legible instead of broken. There the cursor puck tracks the
+       * finger 1:1 while the crosshair and its price-scale label sit on the
+       * snapped level, however far that is. Aiming the crosshair at the raw
+       * finger instead — what this did — meant the axis label read a price
+       * the point was never going to take, and nothing on screen said where
+       * it *was* going.
+       */
       const bars = candlesRef.current;
-      const logical = chart.timeScale().coordinateToLogical(x);
-      if (logical !== null && bars.length > 0 && logical >= 0 && logical <= bars.length - 1) {
-        chart.setCrosshairPosition(price as number, bars[Math.round(logical)].time as UTCTimestamp, series);
+      const magnet = magnetNow();
+      let aimPrice = price as number;
+      let aimTime: number = time;
+      if (magnet.on) {
+        const snapped = magnetSnap(
+          price as number,
+          time,
+          bars,
+          useDrawingsStore.getState().selectedId ?? undefined,
+          magnetRadius(series, y),
+          magnet.strength,
+        );
+        if (snapped !== null) {
+          aimPrice = snapped;
+          // Snap the vertical to the bar's own centre too, the way the
+          // magnet's horizontal gate already picked that bar.
+          const logical = chart.timeScale().coordinateToLogical(x);
+          if (logical !== null && bars.length > 0 && logical >= 0 && logical <= bars.length - 1) {
+            aimTime = bars[Math.round(logical)].time;
+          }
+        }
       }
+      chart.setCrosshairPosition(aimPrice, aimTime as UTCTimestamp, series);
       return true;
     };
-    crosshairAimerRef.current = placeCrosshair;
+
+    /*
+     * The cursor puck: a mark that follows the finger exactly, always.
+     *
+     * A finger covers what it points at, and with the magnet on the crosshair
+     * is somewhere else entirely — so without this there is nothing on screen
+     * that moves with the drag, and the gesture reads as frozen even while it
+     * is working. TradingView's mobile app draws the same puck for the same
+     * reason. It is positioned imperatively rather than through state: this
+     * runs on every touch move, and a React render per move is what made the
+     * crosshair lag behind the finger once before.
+     */
+    const movePuck = (clientX: number, clientY: number) => {
+      const puck = puckRef.current;
+      const el = outerRef.current;
+      if (!puck || !el) return;
+      if (lastPointerTypeRef.current === "mouse") return; // a mouse has its own cursor
+      const rect = el.getBoundingClientRect();
+      puck.style.transform = `translate(${clientX - rect.left}px, ${clientY - rect.top}px)`;
+      puck.style.opacity = "1";
+    };
+    const hidePuck = () => {
+      if (puckRef.current) puckRef.current.style.opacity = "0";
+    };
+    hidePuckRef.current = hidePuck;
+    crosshairAimerRef.current = (cx: number, cy: number) => {
+      // Every drawing drag routes through here (see `crosshair.ts`), so the
+      // puck follows a dragged shape as well as a point being placed.
+      movePuck(cx, cy);
+      return placeCrosshair(cx, cy);
+    };
 
     const aimCrosshair = (clientX: number, clientY: number) => {
       if (!placeCrosshair(clientX, clientY)) return;
+      movePuck(clientX, clientY);
       placing.x = clientX;
       placing.y = clientY;
     };
@@ -1482,6 +1545,7 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
     };
 
     const onClickUp = (e: PointerEvent) => {
+      hidePuckRef.current?.();
       if (!clickTrack.ok || e.pointerId !== clickTrack.id) return;
       clickTrack.ok = false;
       const wasPlacing = placing.active;
@@ -4353,6 +4417,23 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
     };
   }, []);
 
+  /*
+   * The puck belongs to the finger, so it goes when the finger does —
+   * wherever that happens. A drawing drag takes pointer capture on the SVG
+   * overlay, so the chart container never hears that gesture's `pointerup`;
+   * listening on the window is the only place that sees every ending,
+   * including a cancel from a second finger or an incoming call.
+   */
+  useEffect(() => {
+    const end = () => hidePuckRef.current?.();
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    return () => {
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+    };
+  }, []);
+
   // Pressing/releasing Shift snaps the placement preview to horizontal/vertical
   // instantly (no mouse move needed), matching TradingView.
   useEffect(() => {
@@ -4433,6 +4514,14 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
   return (
     <div ref={outerRef} className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" />
+      {/* The touch cursor puck. Hidden until a finger moves it (see
+          `movePuck`), centred on the touch point by the -50% translate, and
+          inert so it never takes a gesture of its own. */}
+      <div
+        ref={puckRef}
+        aria-hidden
+        className="pointer-events-none absolute left-0 top-0 z-30 -ml-[11px] -mt-[11px] h-[22px] w-[22px] rounded-full border-2 border-white bg-white/50 opacity-0 shadow-[0_1px_4px_rgba(0,0,0,0.55)]"
+      />
       <DrawingsLayer
         symbol={symbol}
         chart={chartRef.current}
