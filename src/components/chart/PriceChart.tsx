@@ -1730,8 +1730,29 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       });
     };
 
+    /*
+     * A cancelled pointer ends the gesture as surely as a lift does.
+     *
+     * Nothing used to clear `clickTrack`/`placing` on a cancel, so the chart
+     * was left believing a finger was still down: the next press looked like
+     * a second pointer and was dropped, and panning stayed switched off. The
+     * browser stealing the touch was one way in — the `touch-action` write in
+     * the tool effect closes that one — but an incoming call, a second finger
+     * or the system back gesture all cancel a pointer too, and none of those
+     * should cost the user a tap.
+     */
+    const onClickCancel = (e: PointerEvent) => {
+      hidePuckRef.current?.();
+      if (clickTrack.ok && e.pointerId === clickTrack.id) clickTrack.ok = false;
+      if (placing.active) {
+        placing.active = false;
+        chart.applyOptions({ handleScroll: true, handleScale: true });
+      }
+    };
+
     containerRef.current.addEventListener("pointerdown", onClickDown, { capture: true });
     containerRef.current.addEventListener("pointerup", onClickUp);
+    containerRef.current.addEventListener("pointercancel", onClickCancel);
     containerRef.current.addEventListener("pointermove", onPlaceMove);
     containerRef.current.addEventListener("pointerdown", onAnyDown, { capture: true });
     containerRef.current.addEventListener("pointerup", onAnyUp, { capture: true });
@@ -1770,6 +1791,7 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       probeTarget.removeEventListener("pointerdown", onPointerTypeProbe, { capture: true });
       probeTarget.removeEventListener("pointerdown", onClickDown, { capture: true });
       probeTarget.removeEventListener("pointerup", onClickUp);
+      probeTarget.removeEventListener("pointercancel", onClickCancel);
       probeTarget.removeEventListener("pointermove", onPlaceMove);
       probeTarget.removeEventListener("pointerdown", onAnyDown, { capture: true });
       probeTarget.removeEventListener("pointerup", onAnyUp, { capture: true });
@@ -2844,6 +2866,25 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       containerRef.current.style.cursor =
         tool === "brush" || tool === "highlighter" ? "crosshair"
         : tool !== "cursor" && tool !== "eraser" ? "crosshair" : "";
+      /*
+       * And the browser does not get to take the gesture.
+       *
+       * The chart's canvases carry `touch-action: auto`, so once a finger has
+       * travelled a few pixels the browser claims the touch for scrolling and
+       * fires `pointercancel` — the move events stop, and with them the aim.
+       * Measured: a 176px drag with a tool armed produced one `pointerdown`,
+       * one `pointercancel` after the first move, and then nothing, so the
+       * crosshair froze at the position it reached on that first move and the
+       * next tap was eaten as a stray second pointer. That is the whole of
+       * "the cursor is stuck and it takes two taps to draw".
+       *
+       * Panning with no tool armed is unaffected: lightweight-charts handles
+       * touch panning itself and calls `preventDefault`, so it never needed
+       * the browser's gesture. This is the same fix `DrawingsLayer` and
+       * `OrderLinesLayer` already carry for their overlays.
+       */
+      containerRef.current.style.touchAction =
+        tool === "cursor" || tool === "eraser" ? "" : "none";
     }
     if (tool !== "measure") setMeasure(INITIAL_MEASURE);
     // Reset multi-click placement when switching tools
