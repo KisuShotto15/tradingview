@@ -17,7 +17,7 @@ import { SymbolSelector } from "@/components/chart/SymbolSelector";
  * Bridges the mobile sheet state (useMobileStore.sheet) to the various
  * dialogs / sheets across the app:
  *
- *  - "drawings"        → MobileDrawingsSheet (custom fullscreen list)
+ *  - "drawings"        → MobileDrawingsSheet (custom bottom sheet, tool grid)
  *  - "indicators"      → MobileIndicatorsSheet (custom fullscreen list)
  *  - "alerts"          → MobileAlertsSheet (custom fullscreen list)
  *  - "journal"         → MobileJournalSheet (desktop JournalPanel, reused)
