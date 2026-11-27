@@ -8,7 +8,9 @@ import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { useReplayStore } from "@/lib/replay/replay-store";
 import { PriceChart } from "@/components/chart/PriceChart";
-import { timeframeLabel } from "@/lib/chart/coords";
+import { timeframeLabel, timeframeToSeconds } from "@/lib/chart/coords";
+import { wheelIndex } from "@/lib/ui/wheel-step";
+import { hapticTick } from "@/lib/ui/haptics";
 import { ChartTypeSelector } from "@/components/chart/ChartTypeSelector";
 import { SnapshotButton } from "@/components/chart/SnapshotButton";
 import { cn } from "@/lib/utils";
@@ -72,26 +74,21 @@ export function ChartScreen() {
   const replayActive = useReplayStore((s) => s.active);
   const enterReplayPicking = useReplayStore((s) => s.enterPicking);
 
-  // Build the rotating symbol list from the active watchlist.
+  // The symbol wheel runs through the active watchlist. A charted symbol
+  // that is not in it goes first, so the wheel still has a place to start.
   const wlSymbols = (() => {
     const w = watchlists.find((x) => x.id === activeWatchlistId);
     const list = (w?.items ?? []).filter((i) => i.type === "symbol").map((i) => i.value);
-    return list.length > 0 ? list : [symbol];
+    return list.includes(symbol) ? list : [symbol, ...list];
   })();
 
-  function cycle<T>(arr: T[], cur: T, dir: 1 | -1): T {
-    if (arr.length === 0) return cur;
-    const idx = arr.indexOf(cur);
-    const next = idx === -1 ? 0 : (idx + dir + arr.length) % arr.length;
-    return arr[next];
-  }
-
-  function nextSymbol(dir: 1 | -1) { setSymbol(cycle(wlSymbols, symbol, dir)); }
-  // Cycles the *pinned* timeframes (same "quick access" list desktop's
-  // header shows as chips) — the full set lives behind the tap-to-open sheet.
-  function nextTimeframe(dir: 1 | -1) {
-    setTimeframe(cycle(pinnedTimeframes.length > 0 ? pinnedTimeframes : [timeframe], timeframe, dir));
-  }
+  // The timeframe wheel runs through the *pinned* timeframes (the same
+  // quick-access list desktop's header shows as chips) in ascending order;
+  // the full set lives behind the tap-to-open sheet. The current one is slotted
+  // in by length when it is not pinned.
+  const tfWheel = [...new Set([...pinnedTimeframes, timeframe])].sort(
+    (a, b) => timeframeToSeconds(a) - timeframeToSeconds(b),
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -104,16 +101,20 @@ export function ChartScreen() {
           narrow phone, since it packs in every desktop header action. */}
       <footer className="no-scrollbar flex shrink-0 items-center gap-1 overflow-x-auto border-t border-tv-border bg-tv-panel px-1.5 py-1.5 [@media(max-height:500px)]:py-0.5">
         <SwipeChip
-          label={symbol}
-          onSwipe={nextSymbol}
+          values={wlSymbols}
+          current={symbol}
+          format={(v) => v}
+          onCommit={setSymbol}
           onTap={() => openSheet("symbolSearch")}
-          ariaLabel="Symbol — tap to search, swipe to switch"
+          ariaLabel="Symbol — tap to search, hold and slide to switch"
         />
         <SwipeChip
-          label={timeframeLabel(timeframe)}
-          onSwipe={nextTimeframe}
+          values={tfWheel}
+          current={timeframe}
+          format={(v) => timeframeLabel(v)}
+          onCommit={setTimeframe}
           onTap={() => openSheet("timeframe")}
-          ariaLabel="Timeframe — tap to pick, swipe to cycle pinned"
+          ariaLabel="Timeframe — tap to pick, hold and slide to switch"
           compact
         />
         {/* Lit while a tool is armed: on a phone there is no Esc and no
@@ -207,34 +208,46 @@ export function ChartScreen() {
 }
 
 /**
- * A chip with swipe-up / swipe-down detection (and a tap fallback).
- * Uses passive pointer events so it does not interfere with native scrolling.
+ * A chip that works as a wheel: hold it and slide up or down, and the value
+ * steps once per `WHEEL_STEP_PX` of travel with a haptic tick on each step, so
+ * a single gesture can go from 5m to 4h — or down a whole watchlist — rather
+ * than one value per swipe. The chip previews the value under the finger and
+ * the change is committed on release: committing each step would load every
+ * symbol or timeframe passed on the way, a 1000-bar fetch apiece.
  */
-function SwipeChip({
-  label, onSwipe, onTap, ariaLabel, compact,
+const WHEEL_STEP_PX = 26;
+
+function SwipeChip<T extends string>({
+  values, current, format, onCommit, onTap, ariaLabel, compact,
 }: {
-  label: string;
-  onSwipe: (dir: 1 | -1) => void;
+  values: T[];
+  current: T;
+  format: (v: T) => string;
+  onCommit: (v: T) => void;
   onTap: () => void;
   ariaLabel: string;
   compact?: boolean;
 }) {
-  const startRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  const startRef = useRef<{ x: number; y: number; idx: number } | null>(null);
   /**
-   * Set when the gesture turned out to be a swipe, so the click the browser
+   * Set when the gesture turned out to be a slide, so the click the browser
    * sends afterwards is dropped instead of being read as a tap.
    */
   const swipedRef = useRef(false);
   const [active, setActive] = useState(false);
+  /** The value under the finger while sliding; null at rest. */
+  const [previewIdx, setPreviewIdx] = useState<number | null>(null);
+  const previewRef = useRef<number | null>(null);
+  const label = format(previewIdx !== null ? values[previewIdx] ?? current : current);
 
   /**
    * Direction-aware slide between values.
    *
-   * A swipe that silently replaces the text gives no sense of having moved
+   * A change that silently replaces the text gives no sense of having moved
    * through a list — the chip just blinks and you check the label to find
    * out whether anything happened. Sliding the old value out the way the
    * thumb went and the new one in behind it is what makes the gesture read
-   * as scrolling a wheel, which is how it behaves.
+   * as turning a wheel, which is how it behaves.
    *
    * `prev` holds the value being replaced and is cleared when the animation
    * ends, so only one label is in the DOM at rest.
@@ -268,11 +281,36 @@ function SwipeChip({
       )}
       style={{ touchAction: "none" }}
       onPointerDown={(e) => {
-        startRef.current = { x: e.clientX, y: e.clientY, t: Date.now() };
+        const idx = values.indexOf(current);
+        startRef.current = { x: e.clientX, y: e.clientY, idx: idx < 0 ? 0 : idx };
+        swipedRef.current = false;
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          /* capture is a nicety; touch captures implicitly anyway */
+        }
         setActive(true);
       }}
+      onPointerMove={(e) => {
+        const s = startRef.current;
+        if (!s) return;
+        const dx = e.clientX - s.x;
+        const dy = e.clientY - s.y;
+        // Until the first step, a mostly sideways move is not a slide.
+        if (!swipedRef.current && Math.abs(dx) > Math.abs(dy)) return;
+        const idx = wheelIndex(s.idx, dy, values.length, WHEEL_STEP_PX);
+        const shown = previewRef.current ?? s.idx;
+        if (idx === shown) return;
+        // Recorded before the value changes, so the slide animation knows
+        // which way to go: up the list slides up, down slides down.
+        dirRef.current = idx > shown ? 1 : -1;
+        swipedRef.current = true;
+        previewRef.current = idx;
+        setPreviewIdx(idx);
+        hapticTick();
+      }}
       /*
-       * The swipe resolves here, but a tap deliberately does not: it waits for
+       * The slide commits here, but a tap deliberately does not: it waits for
        * the click the browser sends afterwards.
        *
        * Opening a fullscreen sheet from `pointerup` puts it under the finger
@@ -282,25 +320,16 @@ function SwipeChip({
        * which read as "the chip does nothing". Letting the button's own click
        * do the opening is what every other control in this toolbar does.
        */
-      onPointerUp={(e) => {
+      onPointerUp={() => {
         setActive(false);
         const s = startRef.current;
         startRef.current = null;
-        if (!s) return;
-        const dx = e.clientX - s.x;
-        const dy = e.clientY - s.y;
-        const SWIPE_PX = 24;
-        // Vertical swipe wins — sign convention: swipe DOWN (positive dy) = previous,
-        // swipe UP (negative dy) = next, matching how a wheel feels.
-        if (Math.abs(dy) > SWIPE_PX && Math.abs(dy) > Math.abs(dx)) {
-          const dir: 1 | -1 = dy < 0 ? 1 : -1;
-          // Recorded before the value changes, so the effect above knows
-          // which way to animate; a tap-driven change keeps the last
-          // direction, which reads fine because it has no direction of its own.
-          dirRef.current = dir;
-          swipedRef.current = true;
-          onSwipe(dir);
-        }
+        const idx = previewRef.current;
+        previewRef.current = null;
+        setPreviewIdx(null);
+        if (!s || idx === null) return;
+        const next = values[idx];
+        if (next !== undefined && next !== current) onCommit(next);
       }}
       onClick={() => {
         if (swipedRef.current) {
@@ -310,8 +339,11 @@ function SwipeChip({
         onTap();
       }}
       onPointerCancel={() => {
+        // A cancelled gesture is never a tap, and never a choice either.
         startRef.current = null;
-        swipedRef.current = true; // a cancelled gesture is never a tap
+        previewRef.current = null;
+        setPreviewIdx(null);
+        swipedRef.current = true;
         setActive(false);
       }}
     >

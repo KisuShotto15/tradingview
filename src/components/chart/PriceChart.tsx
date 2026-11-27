@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
-  createChart,
+  createChartEx,
   CandlestickSeries,
   LineSeries,
   BaselineSeries,
@@ -64,6 +64,7 @@ import { OrderLinesLayer } from "@/components/trading/OrderLinesLayer";
 import { BuySellOverlay } from "@/components/trading/BuySellOverlay";
 import { FloatingContextToolbar } from "./FloatingContextToolbar";
 import { BarCountdown } from "./BarCountdown";
+import { LocalTimeScale } from "@/lib/chart/local-time-scale";
 import { ChartQuickActionsSheet } from "@/components/mobile/ChartQuickActionsSheet";
 import { AxisPlusButton } from "./AxisPlusButton";
 import { AlertPriceLines } from "@/components/alerts/AlertPriceLines";
@@ -333,6 +334,9 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const outerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const localTimeRef = useRef<LocalTimeScale | null>(null);
+  /** The timeframe at chart creation; the load effect keeps the mode current. */
+  const initialTimeframeRef = useRef(timeframe);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const lineSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const areaSeriesRef = useRef<ISeriesApi<"Area"> | null>(null);
@@ -673,7 +677,14 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
     for (const [key, s] of Object.entries(bySeries)) {
       if (s) next[key] = s.priceScale().options().autoScale;
     }
-    setAutoScaleOn(next);
+    // Keep the previous object when nothing changed: this runs on every
+    // pointer release, and a fresh object would re-render the whole chart.
+    setAutoScaleOn((prev) => {
+      const keys = Object.keys(next);
+      const same =
+        keys.length === Object.keys(prev).length && keys.every((k) => prev[k] === next[k]);
+      return same ? prev : next;
+    });
   }
 
   // Create chart once
@@ -684,7 +695,13 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
     // rule cannot know that and the warning is worth not carrying.
     const overlayLevels = overlayLevelsRef.current;
     const initColors = chartColorsRef.current;
-    const chart = createChart(containerRef.current, {
+    // The library's time scale, reading times in the viewer's zone rather
+    // than UTC (see local-time.ts). The data stays in real UTC seconds.
+    const localTime = new LocalTimeScale();
+    localTime.setIntraday(timeframeToSeconds(initialTimeframeRef.current) < 86_400);
+    localTimeRef.current = localTime;
+    const chart = createChartEx<Time, LocalTimeScale>(containerRef.current, localTime, {
+      localization: { timeFormatter: localTime.formatCrosshair },
       layout: {
         background: { color: initColors.bg },
         textColor: TV_COLORS.text,
@@ -1385,6 +1402,14 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
         resyncAutoScaleStates();
       });
     containerRef.current.addEventListener("mouseup", onPaneMouseUp);
+    // A finger never raises `mouseup` after a drag, so on a phone a price-axis
+    // drag turned auto scale off while the "A" went on reading on. Any pointer
+    // that ends anywhere re-reads the flags — on the window, in the capture
+    // phase, so a release outside the chart (or one a handler stops) counts.
+    // The re-read is a few option lookups and React drops an unchanged result.
+    window.addEventListener("pointerup", onPaneMouseUp, true);
+    window.addEventListener("pointercancel", onPaneMouseUp, true);
+    window.addEventListener("touchend", onPaneMouseUp, true);
 
     // Right-click context menu — "Add alert at [price]"
     //
@@ -1829,6 +1854,9 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(logicalRangeHandler);
       ro.disconnect();
       containerRef.current?.removeEventListener("mouseup", onPaneMouseUp);
+      window.removeEventListener("pointerup", onPaneMouseUp, true);
+      window.removeEventListener("pointercancel", onPaneMouseUp, true);
+      window.removeEventListener("touchend", onPaneMouseUp, true);
       containerRef.current?.removeEventListener("contextmenu", onContextMenu);
       // Captured target: the ref may already be null by teardown, and a
       // capture-phase listener has to be removed with the same flag it was
@@ -3746,6 +3774,9 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
           volumeSeriesRef.current?.setData([]);
           setLastPrice(null);
         }
+        // Before any new data goes in: the tick weights are computed as the
+        // points arrive, and intraday reads local time while daily reads UTC.
+        localTimeRef.current?.setIntraday(timeframeToSeconds(timeframe) < 86_400);
 
         const source = resolveSource(symbol);
         const synthetic = source.kind === "synthetic";
