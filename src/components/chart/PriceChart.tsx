@@ -72,6 +72,7 @@ import { KeyLevelsOverlay } from "./KeyLevelsOverlay";
 import { computeKeyLevels } from "@/lib/indicators/keylevels";
 import type { SqueezePoint } from "@/lib/indicators/squeeze";
 import { xToTime, timeToX, timeframeToSeconds, timeframeLabel } from "@/lib/chart/coords";
+import { volumeColor } from "@/lib/chart/volume-color";
 import { getTvColors } from "@/lib/chart/theme";
 import { useReplayStore } from "@/lib/replay/replay-store";
 import { ReplayToolbar } from "./ReplayToolbar";
@@ -242,8 +243,9 @@ const FULL_REFETCH_MIN_GAP_MS = 60_000;
 
 const RSI_LINE_COLOR = "#ffffff";
 const RSI_MA_COLOR = "#e3a33d";
-/** Tint over the 30..70 middle, where the RSI is saying nothing in particular. */
-const RSI_BAND_FILL = "rgba(124, 92, 214, 0.13)";
+/** Tint over the 30..70 middle, where the RSI is saying nothing in particular.
+ *  TradingView's own RSI background, sampled off its app. */
+const RSI_BAND_FILL = "rgba(126, 87, 194, 0.12)";
 /** Flat rectangles for the extreme zones. */
 const RSI_ZONE_UP_FILL = "rgba(229, 72, 77, 0.26)";
 const RSI_ZONE_DOWN_FILL = "rgba(47, 168, 79, 0.26)";
@@ -271,7 +273,17 @@ function smaOf(
   return out;
 }
 
-const RSI_RAIL_COLOR = "rgba(180, 176, 200, 0.45)";
+/**
+ * Level lines of the RSI and Stoch RSI panes, in TradingView's style: its
+ * `#787b86` grey in long dashes for the two bands, and the middle line the
+ * same at half strength. Short 1px dashes, which these used to be, all but
+ * disappear on a phone zoomed out.
+ */
+const OSC_RAIL_COLOR = "#787b86";
+const OSC_MID_RAIL_COLOR = "rgba(120, 123, 134, 0.5)";
+const OSC_RAIL_STYLE = 3; // LineStyle.LargeDashed
+/** Stoch RSI's 20..80 background, TradingView's blue at its own strength. */
+const STOCH_RSI_BAND_FILL = "rgba(33, 150, 243, 0.12)";
 
 /**
  * Stochastic RSI pane constants.
@@ -343,6 +355,8 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
   const stochRsiDRef = useRef<ISeriesApi<"Line"> | null>(null);
   const stochRsi20Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const stochRsi80Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const stochRsi50Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const stochRsiBandRef = useRef<ISeriesApi<"Baseline"> | null>(null);
   const rsi30Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const rsi50Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const rsi70Ref = useRef<ISeriesApi<"Line"> | null>(null);
@@ -491,6 +505,9 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
   const keyLevelsCfg = useChartStore((s) => s.keyLevels);
   const chartColors = useChartStore((s) => s.chartColors);
   chartColorsRef.current = chartColors;
+  /** Volume bar colour for a candle: the candle palette's own, see `volumeColor`. */
+  const volColor = (k: { open: number; close: number }) =>
+    volumeColor(chartColorsRef.current, k.close >= k.open);
   const chartType = useChartStore((s) => s.chartType);
   const tool = useChartStore((s) => s.tool);
   const setTool = useChartStore((s) => s.setTool);
@@ -2016,7 +2033,7 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       const data = candlesRef.current.map((k) => ({
         time: k.time as UTCTimestamp,
         value: k.volume,
-        color: k.close >= k.open ? `${TV_COLORS.green}66` : `${TV_COLORS.red}66`,
+        color: volColor(k),
       }));
       v.setData(data);
     } else if (!indicators.volume && volumeSeriesRef.current && chartRef.current) {
@@ -2051,8 +2068,19 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
 
       // 30..70 tint, and the two solid extreme zones. Each is a constant
       // series filled down to a baseValue, which renders as a rectangle.
+      //
+      // The extreme zones run out to 0 and 100, and left in the autoscale
+      // they pinned the pane to the whole 0..100 range: the line, which lives
+      // between about 25 and 75, got half the pane's height. TradingView
+      // scales to the line and its bands and lets the zones run off the
+      // edge, which is what makes its RSI read bigger — so these two opt out.
+      const outOfScale = { autoscaleInfoProvider: () => null };
       rsiBandRef.current = chart.addSeries(BaselineSeries, flatBand(RSI_BAND_FILL), paneIndex);
-      rsiZoneUpRef.current = chart.addSeries(BaselineSeries, flatBand(RSI_ZONE_UP_FILL), paneIndex);
+      rsiZoneUpRef.current = chart.addSeries(
+        BaselineSeries,
+        { ...flatBand(RSI_ZONE_UP_FILL), ...outOfScale },
+        paneIndex,
+      );
       // The lower zone fills *downwards* from its baseline, so it uses the
       // bottom pair instead.
       rsiZoneDownRef.current = chart.addSeries(
@@ -2061,20 +2089,21 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
           ...flatBand("rgba(0,0,0,0)"),
           bottomFillColor1: RSI_ZONE_DOWN_FILL,
           bottomFillColor2: RSI_ZONE_DOWN_FILL,
+          ...outOfScale,
         },
         paneIndex,
       );
 
       const rail = {
-        color: RSI_RAIL_COLOR,
+        color: OSC_RAIL_COLOR,
         lineWidth: 1 as const,
-        lineStyle: 2,
+        lineStyle: OSC_RAIL_STYLE,
         priceLineVisible: false,
         lastValueVisible: false,
         crosshairMarkerVisible: false,
       };
       const r30 = chart.addSeries(LineSeries, rail, paneIndex);
-      const r50 = chart.addSeries(LineSeries, rail, paneIndex);
+      const r50 = chart.addSeries(LineSeries, { ...rail, color: OSC_MID_RAIL_COLOR }, paneIndex);
       const r70 = chart.addSeries(LineSeries, rail, paneIndex);
 
       // The two gradient fills follow the RSI itself. `relativeGradient` ties
@@ -2543,7 +2572,9 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
     if (!chartRef.current) return;
     // Teardown first, like the other sub-panes: a change to the overlay target
     // moves the series to a different pane index, which addSeries cannot do.
-    for (const ref of [stochRsiKRef, stochRsiDRef, stochRsi20Ref, stochRsi80Ref]) {
+    for (const ref of [
+      stochRsiKRef, stochRsiDRef, stochRsi20Ref, stochRsi80Ref, stochRsi50Ref, stochRsiBandRef,
+    ] as React.RefObject<ISeriesApi<"Line" | "Baseline"> | null>[]) {
       if (ref.current) {
         try { chartRef.current.removeSeries(ref.current); } catch {}
         ref.current = null;
@@ -2553,16 +2584,43 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       const paneIndex = panelIndexFor("stochrsi");
       ensurePane(paneIndex);
       const band = {
-        color: TV_COLORS.textMuted,
+        color: OSC_RAIL_COLOR,
         lineWidth: 1 as const,
-        lineStyle: 2,
+        lineStyle: OSC_RAIL_STYLE,
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
         // These two deliberately DO feed autoscale (no `autoscaleInfoProvider:
         // () => null` here, unlike ADX's key level): they are what keeps the
         // pane showing at least 20..80 when K and D are pinned at an extreme,
         // which is most of the time for this oscillator.
       };
+      // Creation order is z-order: the 20..80 background first, the levels,
+      // then K and D on top.
+      stochRsiBandRef.current = chartRef.current.addSeries(
+        BaselineSeries,
+        {
+          baseValue: { type: "price", price: STOCH_RSI_OVERSOLD },
+          topFillColor1: STOCH_RSI_BAND_FILL,
+          topFillColor2: STOCH_RSI_BAND_FILL,
+          bottomFillColor1: "rgba(0,0,0,0)",
+          bottomFillColor2: "rgba(0,0,0,0)",
+          topLineColor: "rgba(0,0,0,0)",
+          bottomLineColor: "rgba(0,0,0,0)",
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        },
+        paneIndex,
+      );
+      stochRsi20Ref.current = chartRef.current.addSeries(LineSeries, band, paneIndex);
+      stochRsi50Ref.current = chartRef.current.addSeries(
+        LineSeries,
+        { ...band, color: OSC_MID_RAIL_COLOR },
+        paneIndex,
+      );
+      stochRsi80Ref.current = chartRef.current.addSeries(LineSeries, band, paneIndex);
       stochRsiKRef.current = chartRef.current.addSeries(
         LineSeries,
         { color: STOCH_RSI_K_COLOR, lineWidth: 2, priceLineVisible: false, lastValueVisible: false },
@@ -2573,8 +2631,6 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
         { color: STOCH_RSI_D_COLOR, lineWidth: 2, priceLineVisible: false, lastValueVisible: false },
         paneIndex,
       );
-      stochRsi20Ref.current = chartRef.current.addSeries(LineSeries, band, paneIndex);
-      stochRsi80Ref.current = chartRef.current.addSeries(LineSeries, band, paneIndex);
       try {
         chartRef.current.panes()[paneIndex]?.setStretchFactor(1);
         chartRef.current.panes()[0]?.setStretchFactor(mainPaneStretch);
@@ -2635,6 +2691,8 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
     if (stochRsiDRef.current) stochRsiDRef.current.applyOptions({ visible: v("stochrsi") });
     if (stochRsi20Ref.current) stochRsi20Ref.current.applyOptions({ visible: v("stochrsi") });
     if (stochRsi80Ref.current) stochRsi80Ref.current.applyOptions({ visible: v("stochrsi") });
+    stochRsi50Ref.current?.applyOptions({ visible: v("stochrsi") });
+    stochRsiBandRef.current?.applyOptions({ visible: v("stochrsi") });
     if (macdRef.current) macdRef.current.applyOptions({ visible: v("macd") });
     if (macdSignalRef.current) macdSignalRef.current.applyOptions({ visible: v("macd") });
     if (macdHistRef.current) macdHistRef.current.applyOptions({ visible: v("macd") });
@@ -2738,6 +2796,15 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
         wickDownColor: chartColors.wickDown,
       });
     }
+    // The volume bars take their colour from the candles, per bar, so a
+    // palette change has to re-set them.
+    volumeSeriesRef.current?.setData(
+      candlesRef.current.map((k) => ({
+        time: k.time as UTCTimestamp,
+        value: k.volume,
+        color: volumeColor(chartColors, k.close >= k.open),
+      })),
+    );
   }, [chartColors]);
 
   // Sync user EMAs: create/remove series, update color/lineWidth, refresh data
@@ -3260,10 +3327,24 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       value: p.value,
     }));
     rsiRef.current.setData(data);
-    // Both gradient fills plot the same series; only their base value and
-    // which half is coloured differ.
-    rsiSpikeUpRef.current?.setData(data);
-    rsiSpikeDownRef.current?.setData(data);
+    // Each gradient fill plots the RSI held at its own level: the overbought
+    // one never below 70, the oversold one never above 30.
+    //
+    // Fed the raw line, a stretch with no point past the level drew a solid
+    // red band between 70 and the highest visible RSI. `relativeGradient`
+    // runs the gradient from the visible extreme to the base, and when the
+    // extreme is on the wrong side of the base the canvas pads everything
+    // beyond it with the first stop — the full-strength red. Clamped, a
+    // stretch that never crosses has no area at all to paint. The fill's
+    // edge then starts at the bar before a crossing rather than at the
+    // crossing itself, but the gradient is transparent at the level, so the
+    // difference does not show.
+    rsiSpikeUpRef.current?.setData(
+      data.map((p) => ({ time: p.time, value: Math.max(p.value, 70) })),
+    );
+    rsiSpikeDownRef.current?.setData(
+      data.map((p) => ({ time: p.time, value: Math.min(p.value, 30) })),
+    );
     rsiMaRef.current?.setData(
       smaOf(pts, cfg.rsiMaLength).map((p) => ({
         time: p.time as UTCTimestamp,
@@ -3328,6 +3409,14 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
         { time: last, value: STOCH_RSI_OVERSOLD },
       ]);
       stochRsi80Ref.current?.setData([
+        { time: first, value: STOCH_RSI_OVERBOUGHT },
+        { time: last, value: STOCH_RSI_OVERBOUGHT },
+      ]);
+      stochRsi50Ref.current?.setData([
+        { time: first, value: 50 },
+        { time: last, value: 50 },
+      ]);
+      stochRsiBandRef.current?.setData([
         { time: first, value: STOCH_RSI_OVERBOUGHT },
         { time: last, value: STOCH_RSI_OVERBOUGHT },
       ]);
@@ -3721,7 +3810,7 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
               klines.map((k) => ({
                 time: k.time as UTCTimestamp,
                 value: k.volume,
-                color: k.close >= k.open ? `${TV_COLORS.green}66` : `${TV_COLORS.red}66`,
+                color: volColor(k),
               })),
             );
           }
@@ -3875,10 +3964,7 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
                   volumeSeriesRef.current.update({
                     time: synth.time as UTCTimestamp,
                     value: synth.volume,
-                    color:
-                      synth.close >= synth.open
-                        ? `${TV_COLORS.green}66`
-                        : `${TV_COLORS.red}66`,
+                    color: volColor(synth),
                   });
                 }
                 updateEMAs();
@@ -4018,7 +4104,7 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
               volumeSeriesRef.current.update({
                 time: k.time as UTCTimestamp,
                 value: k.volume,
-                color: k.close >= k.open ? `${TV_COLORS.green}66` : `${TV_COLORS.red}66`,
+                color: volColor(k),
               });
             }
             updateEMAs();
@@ -4089,7 +4175,7 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       volumeSeriesRef.current?.update({
         time: t,
         value: k.volume,
-        color: k.close >= k.open ? `${TV_COLORS.green}66` : `${TV_COLORS.red}66`,
+        color: volColor(k),
       });
     }
     updateEMAs();
@@ -4157,7 +4243,7 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
         arr.map((k) => ({
           time: k.time as UTCTimestamp,
           value: k.volume,
-          color: k.close >= k.open ? `${TV_COLORS.green}66` : `${TV_COLORS.red}66`,
+          color: volColor(k),
         })),
       );
     }
