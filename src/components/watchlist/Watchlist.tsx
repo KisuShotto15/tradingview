@@ -23,6 +23,7 @@ import { sortWatchlistItems, cycleSort } from "@/lib/watchlist/sort";
 import { getBinanceWS } from "@/lib/binance/ws";
 import { getBybitWS } from "@/lib/bybit/ws";
 import { resolveSource } from "@/lib/symbols/source";
+import { fetchRestQuotes, isStreamed, REST_QUOTE_MS } from "@/lib/data/quotes";
 import { stripExchangePrefix } from "@/lib/symbols/prefix";
 import { useChartStore, type WatchlistItem } from "@/lib/store/chart-store";
 import { useTradingStore } from "@/lib/store/trading-store";
@@ -182,7 +183,11 @@ export function Watchlist() {
     // Split by data source: Bybit-exclusive perps stream from Bybit, everything
     // else (shared perps, spot, stocks) from Binance.
     const bybitSyms = symbols.filter((s) => resolveSource(s).kind === "bybit");
-    const binanceSyms = symbols.filter((s) => resolveSource(s).kind !== "bybit");
+    // Only exchange symbols go to an exchange ticker. Everything else — a
+    // stock, an index, a macro series, a synthetic expression — used to land
+    // here too, so Binance was asked for AAPL and the row sat on "--".
+    const binanceSyms = symbols.filter((s) => resolveSource(s).kind === "binance");
+    const restSyms = symbols.filter((s) => !isStreamed(s));
 
     function seed(tickers: { symbol: string; lastPrice: number; priceChangePercent: number }[]) {
       if (cancelled) return;
@@ -196,6 +201,14 @@ export function Watchlist() {
     }
     if (binanceSyms.length > 0) fetchTickers24h(binanceSyms).then(seed).catch(console.error);
     if (bybitSyms.length > 0) fetchBybitTickers24h(bybitSyms).then(seed).catch(console.error);
+    if (restSyms.length > 0) fetchRestQuotes(restSyms).then(seed).catch(console.error);
+    // No socket streams these, so they are polled for as long as the list is up.
+    const restPollId =
+      restSyms.length > 0
+        ? setInterval(() => {
+            if (!cancelled && !document.hidden) fetchRestQuotes(restSyms).then(seed).catch(() => {});
+          }, REST_QUOTE_MS)
+        : null;
 
     const unsubs: (() => void)[] = [];
     if (binanceSyms.length > 0) unsubs.push(getBinanceWS().subscribeMiniTickers(binanceSyms, onBinanceTick));
@@ -221,6 +234,7 @@ export function Watchlist() {
     return () => {
       cancelled = true;
       clearInterval(pollId);
+      if (restPollId !== null) clearInterval(restPollId);
       unsubs.forEach((u) => u());
     };
       // eslint-disable-next-line react-hooks/exhaustive-deps

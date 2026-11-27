@@ -47,6 +47,8 @@ const TF_MAP: Record<string, string> = {
   "1M": "1mo",
 };
 
+const SHORT_RANGES = new Set(["1d", "5d", "1mo"]);
+
 /** Pick a Yahoo "range" suitable for the timeframe. */
 function pickRange(interval: string): string {
   if (interval === "1m") return "7d";
@@ -66,7 +68,12 @@ export async function GET(req: Request) {
   }
 
   const yfInterval = TF_MAP[interval] ?? interval;
-  const range = pickRange(yfInterval);
+  // A short explicit range for callers that only need the latest bars — the
+  // watchlist's quote of a stock is the last two daily closes, and the
+  // default daily range is ten years. Whitelisted so the CDN cache can't be
+  // fanned out across arbitrary values.
+  const requested = url.searchParams.get("range");
+  const range = requested && SHORT_RANGES.has(requested) ? requested : pickRange(yfInterval);
   const yfUrl =
     `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}` +
     `?interval=${yfInterval}&range=${range}&includePrePost=false`;

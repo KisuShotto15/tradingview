@@ -27,6 +27,7 @@ import { sortWatchlistItems } from "@/lib/watchlist/sort";
 import { getBinanceWS } from "@/lib/binance/ws";
 import { getBybitWS } from "@/lib/bybit/ws";
 import { resolveSource } from "@/lib/symbols/source";
+import { fetchRestQuotes, isStreamed, REST_QUOTE_MS } from "@/lib/data/quotes";
 import { stripExchangePrefix } from "@/lib/symbols/prefix";
 import { useChartStore, type WatchlistItem } from "@/lib/store/chart-store";
 import { useMobileStore } from "@/lib/store/mobile-store";
@@ -113,6 +114,11 @@ export function WatchlistScreen() {
   const drawingsForAlerts = useDrawingsStore((st) => st.drawings);
 
   const active = watchlists.find((w) => w.id === activeWatchlistId) ?? watchlists[0];
+  /** The selected tab, scrolled into view when the list changes from elsewhere. */
+  const activeTabRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeWatchlistId, watchlists.length]);
   const items = active?.items ?? [];
   const symbols = useMemo(
     () => items.filter((i) => i.type === "symbol").map((i) => i.value),
@@ -186,7 +192,11 @@ export function WatchlistScreen() {
     }
     let cancelled = false;
     const bybitSyms = symbols.filter((s) => resolveSource(s).kind === "bybit");
-    const binanceSyms = symbols.filter((s) => resolveSource(s).kind !== "bybit");
+    // Only exchange symbols go to an exchange ticker. Everything else — a
+    // stock, an index, a macro series, a synthetic expression — used to land
+    // here too, so Binance was asked for AAPL and the row sat on "--".
+    const binanceSyms = symbols.filter((s) => resolveSource(s).kind === "binance");
+    const restSyms = symbols.filter((s) => !isStreamed(s));
 
     function seed(tickers: { symbol: string; lastPrice: number; priceChangePercent: number }[]) {
       if (cancelled) return;
@@ -200,6 +210,14 @@ export function WatchlistScreen() {
     }
     if (binanceSyms.length > 0) fetchTickers24h(binanceSyms).then(seed).catch(console.error);
     if (bybitSyms.length > 0) fetchBybitTickers24h(bybitSyms).then(seed).catch(console.error);
+    if (restSyms.length > 0) fetchRestQuotes(restSyms).then(seed).catch(console.error);
+    // No socket streams these, so they are polled for as long as the list is up.
+    const restPollId =
+      restSyms.length > 0
+        ? setInterval(() => {
+            if (!cancelled && !document.hidden) fetchRestQuotes(restSyms).then(seed).catch(() => {});
+          }, REST_QUOTE_MS)
+        : null;
 
     const unsubs: (() => void)[] = [];
     if (binanceSyms.length > 0) unsubs.push(getBinanceWS().subscribeMiniTickers(binanceSyms, onBinanceTick));
@@ -225,6 +243,7 @@ export function WatchlistScreen() {
     return () => {
       cancelled = true;
       clearInterval(pollId);
+      if (restPollId !== null) clearInterval(restPollId);
       unsubs.forEach((u) => u());
     };
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -515,11 +534,11 @@ export function WatchlistScreen() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header, after TradingView's: lists menu, the flag filters, and the
-          list's name as a pill. Everything that used to sit here as a row of
-          small icons (reorder, add label, sort) is now a gesture or lives in
-          the lists sheet, where it is used. */}
-      <header className="flex shrink-0 items-center gap-1 px-3 pt-2 pb-2">
+      {/* Header, after TradingView's: the lists menu, then every list as a
+          tab — one tap to switch, where the single name pill took two (open
+          the lists sheet, pick) — and add-symbol. Reorder, labels and sort
+          are gestures or live in the lists sheet. */}
+      <header className="flex shrink-0 items-center gap-1 px-3 pt-2 pb-1">
         <button
           onClick={() => setManageOpen(true)}
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-tv-text active:bg-tv-panel-hover"
@@ -528,9 +547,48 @@ export function WatchlistScreen() {
           <Menu className="h-6 w-6" />
         </button>
         <span className="mx-1 h-6 w-px shrink-0 bg-tv-border" />
-        {/* Flag filter: every colour actually in use. A tap narrows the list
-            to it; tap again to clear. */}
-        <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
+        <div
+          className="no-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
+          role="tablist"
+          aria-label="Watchlists"
+        >
+          {watchlists.map((w) => {
+            const on = w.id === active.id;
+            return (
+              <button
+                key={w.id}
+                ref={on ? activeTabRef : undefined}
+                role="tab"
+                aria-selected={on}
+                onClick={() => setActiveWatchlist(w.id)}
+                className={cn(
+                  "shrink-0 whitespace-nowrap rounded-xl px-3.5 py-2 text-[17px] font-semibold transition-colors",
+                  on
+                    ? "bg-tv-panel-hover text-tv-text"
+                    : "text-tv-text-muted active:bg-tv-panel-hover",
+                )}
+              >
+                {w.name}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          onClick={() => {
+            setSymbolDialogInsertAfterId(null);
+            openSymbolDialog(true);
+          }}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-tv-text active:bg-tv-panel-hover"
+          aria-label="Add symbol"
+        >
+          <Plus className="h-6 w-6" />
+        </button>
+      </header>
+
+      {/* Flag filter: every colour actually in use, and only when there is
+          one. A tap narrows the list to it; tap again to clear. */}
+      {flagsInUse.length > 0 && (
+        <div className="no-scrollbar flex shrink-0 items-center gap-0.5 overflow-x-auto px-3 pb-1">
           {flagsInUse.map((c) => {
             const on = flagFilter.has(c);
             return (
@@ -547,33 +605,17 @@ export function WatchlistScreen() {
                 aria-pressed={on}
                 aria-label={on ? "Stop filtering by this flag" : "Filter by this flag"}
                 className={cn(
-                  "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors",
+                  "flex h-9 w-10 shrink-0 items-center justify-center rounded-lg transition-colors",
                   on ? "bg-tv-panel-hover" : "active:bg-tv-panel-hover",
                   flagFilter.size > 0 && !on && "opacity-40",
                 )}
               >
-                <FlagPennant color={c} height={20} />
+                <FlagPennant color={c} height={18} />
               </button>
             );
           })}
         </div>
-        <button
-          onClick={() => setManageOpen(true)}
-          className="max-w-[45%] shrink-0 truncate rounded-xl bg-tv-panel-hover px-3.5 py-2 text-[17px] font-semibold text-tv-text active:bg-tv-text/15"
-        >
-          {active.name}
-        </button>
-        <button
-          onClick={() => {
-            setSymbolDialogInsertAfterId(null);
-            openSymbolDialog(true);
-          }}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-tv-text active:bg-tv-panel-hover"
-          aria-label="Add symbol"
-        >
-          <Plus className="h-6 w-6" />
-        </button>
-      </header>
+      )}
 
       {/* Only shown while it is in effect: a sorted list cannot be reordered,
           and nothing else on screen would say why. */}
