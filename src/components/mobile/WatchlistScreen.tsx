@@ -64,9 +64,9 @@ const LONG_PRESS_SLOP = 10;
  * Mobile watchlist — feature parity with the desktop <Watchlist /> (same
  * store actions), laid out and handled the way TradingView's phone list is:
  *  - tap a row → its chart (or, in select mode, toggle it)
- *  - hold a row → it lifts and follows the finger; drop it to reorder
- *    (desktop uses native HTML5 drag, which touch browsers don't fire)
- *  - hold and release without moving → the row's settings sheet: flag
+ *  - hold a row → a buzz, it lifts and follows the finger; drop it to
+ *    reorder (desktop uses native HTML5 drag, which touch browsers don't fire)
+ *  - keep holding, still, for twice as long → the row's settings sheet: flag
  *    colour, alert, trade, select, sections, move to list, remove
  *    (desktop puts these behind right-click)
  *  - watchlist management and sorting live in the lists sheet
@@ -417,30 +417,37 @@ export function WatchlistScreen() {
   }, [activeWatchlistId]);
 
   /**
-   * What holding a row does. Lifting it is the default; a hold that ends
-   * where it began opens the row's settings instead (see `onRelease`). In
-   * select mode the hold extends the selection, and in a sorted list —
-   * where a manual position means nothing — it goes straight to settings.
+   * The first stage of a hold: a buzz, and the row lifts to be dragged. In
+   * select mode it extends the selection instead, and in a sorted list —
+   * where a manual position means nothing — nothing lifts, but the hold
+   * still counts towards the second stage.
    */
-  function onRowHold(item: WatchlistItem, clientY: number): "drag" | "done" {
+  function onRowHold(item: WatchlistItem, clientY: number): "drag" | "wait" | "done" {
     if (selectMode) {
       toggleSelected(item.id);
       return "done";
     }
     if (isSorted) {
-      swallowNextClick();
-      setActionsFor(item);
-      return "done";
+      navigator.vibrate?.(12);
+      return "wait";
     }
-    return beginDrag(item.id, clientY) ? "drag" : "done";
+    return beginDrag(item.id, clientY) ? "drag" : "wait";
   }
 
-  function onRowRelease(item: WatchlistItem) {
-    const moved = endDrag(true);
-    // The click the browser sends after this lift would otherwise land on
-    // whatever is now under the finger — the sheet below, or the row.
+  /** The second stage: still held, still in place — the row's settings. */
+  function onRowSettings(item: WatchlistItem) {
+    endDrag(false);
+    navigator.vibrate?.(25);
+    // The click the browser sends when the finger lifts would otherwise
+    // land on whatever the sheet put under it.
     swallowNextClick();
-    if (!moved) setActionsFor(item);
+    setActionsFor(item);
+  }
+
+  function onRowRelease() {
+    endDrag(true);
+    // Same reason: the lift's click must not reach the row under the finger.
+    swallowNextClick();
   }
 
   function toggleSelected(id: string) {
@@ -664,8 +671,9 @@ export function WatchlistScreen() {
             };
             const gesture = {
               onHold: (clientY: number) => onRowHold(item, clientY),
+              onSettings: () => onRowSettings(item),
               onDragMove: moveDrag,
-              onRelease: () => onRowRelease(item),
+              onRelease: onRowRelease,
               onCancel: () => endDrag(false),
             };
 
@@ -720,7 +728,7 @@ export function WatchlistScreen() {
         )}
         {items.length > 0 && !selectMode && (
           <p className="px-6 py-5 text-center text-xs text-tv-text-dim">
-            Hold a symbol to move it · hold and release for its settings
+            Hold a symbol to move it · keep holding for its settings
           </p>
         )}
       </div>
@@ -978,26 +986,37 @@ interface DragSession {
 }
 
 interface RowGesture {
-  onHold: (clientY: number) => "drag" | "done";
+  onHold: (clientY: number) => "drag" | "wait" | "done";
+  onSettings: () => void;
   onDragMove: (clientY: number) => void;
   onRelease: () => void;
   onCancel: () => void;
 }
 
 /**
- * Tap, or hold. A tap is a quick touch that does not travel; a hold is one
- * that stays put for `LONG_PRESS_MS`, and from then the finger drives a lift
- * until it comes off. Moving before the hold completes is a scroll, and
- * belongs to the list.
+ * Tap, hold, or hold longer — TradingView's two-stage press.
+ *
+ *  - A tap is a quick touch that does not travel.
+ *  - Held still for `LONG_PRESS_MS`, the phone buzzes and the row lifts: from
+ *    then the finger drags it, until it comes off.
+ *  - Held still for twice that, it buzzes again and the row's settings open
+ *    instead; the lift is dropped where it started. Any movement past the
+ *    slop before then commits to the drag and cancels this stage.
+ *
+ * Moving before the first stage completes is a scroll, and belongs to the
+ * list.
  */
 function useRowGesture(onTap: () => void, g: RowGesture) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const settingsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const start = useRef<{ x: number; y: number } | null>(null);
   const state = useRef<"idle" | "pressing" | "held" | "dragging">("idle");
 
   const clear = () => {
     if (timer.current) clearTimeout(timer.current);
+    if (settingsTimer.current) clearTimeout(settingsTimer.current);
     timer.current = null;
+    settingsTimer.current = null;
   };
 
   return {
@@ -1012,23 +1031,41 @@ function useRowGesture(onTap: () => void, g: RowGesture) {
       timer.current = setTimeout(() => {
         timer.current = null;
         const r = g.onHold(y);
-        if (r === "drag") {
-          state.current = "dragging";
-          try { el.setPointerCapture(id); } catch { /* pointer already gone */ }
-        } else {
+        if (r === "done") {
           state.current = "held";
           swallowNextClick();
+          return;
         }
+        state.current = r === "drag" ? "dragging" : "held";
+        if (r === "drag") {
+          try { el.setPointerCapture(id); } catch { /* pointer already gone */ }
+        }
+        settingsTimer.current = setTimeout(() => {
+          settingsTimer.current = null;
+          state.current = "held";
+          g.onSettings();
+        }, LONG_PRESS_MS);
       }, LONG_PRESS_MS);
     },
     onPointerMove(e: React.PointerEvent) {
+      const s0 = start.current;
+      const travelled =
+        !!s0 && (Math.abs(e.clientX - s0.x) > LONG_PRESS_SLOP || Math.abs(e.clientY - s0.y) > LONG_PRESS_SLOP);
       if (state.current === "dragging") {
+        // Moving means this is a drag: the settings stage is off.
+        if (travelled && settingsTimer.current) {
+          clearTimeout(settingsTimer.current);
+          settingsTimer.current = null;
+        }
         g.onDragMove(e.clientY);
         return;
       }
-      const s0 = start.current;
-      if (state.current !== "pressing" || !s0) return;
-      if (Math.abs(e.clientX - s0.x) > LONG_PRESS_SLOP || Math.abs(e.clientY - s0.y) > LONG_PRESS_SLOP) {
+      if (state.current === "held" && travelled && settingsTimer.current) {
+        clearTimeout(settingsTimer.current);
+        settingsTimer.current = null;
+        return;
+      }
+      if (state.current === "pressing" && travelled) {
         clear();
         state.current = "idle";
       }
@@ -1104,7 +1141,7 @@ function LabelRow({
 }
 
 /** A symbol: tap opens its chart (or toggles it in select mode), hold lifts
- *  it to reorder, hold-and-release opens its settings. */
+ *  it to reorder, a longer hold opens its settings. */
 function SymbolRow({
   item, rowRef, style, lifted, row, flash, isActive, isSelected, selectMode, posSide, hasAlert,
   onTap, ...g
