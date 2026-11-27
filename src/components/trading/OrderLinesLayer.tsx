@@ -682,7 +682,17 @@ export function OrderLinesLayer({
   // Actual tick precision for this symbol — a hardcoded 2 decimals breaks
   // dragging the preview EP/TP/SL lines on sub-$1 symbols (e.g. a $0.04
   // altcoin needs 4+ decimals just to move the price at all).
-  const pricePrecision = useSymbolInfo(symbol).pricePrecision;
+  //
+  // Only asked for when there is something here to price: an exchange is
+  // connected, or the order form is open (its preview lines are draggable
+  // without keys). Otherwise every symbol change cost a Vercel invocation for
+  // a layer that draws nothing — and for a stock, an uncached one.
+  const apiKey = useTradingStore((s) => s.apiKey);
+  const apiSecret = useTradingStore((s) => s.apiSecret);
+  const srcKind = resolveSource(symbol).kind;
+  const needsSymbolInfo =
+    (srcKind === "binance" || srcKind === "bybit") && (!!(apiKey && apiSecret) || tradingPanelOpen);
+  const pricePrecision = useSymbolInfo(symbol, needsSymbolInfo).pricePrecision;
   const rawOrders = useTradingStore((s) => s.orders);
   const rawPositions = useTradingStore((s) => s.positions);
   const updateForm = useTradingStore((s) => s.updateForm);

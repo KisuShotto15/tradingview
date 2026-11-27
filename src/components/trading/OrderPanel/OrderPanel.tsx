@@ -7,6 +7,9 @@ import { useTradingStore } from "@/lib/store/trading-store";
 import { useChartStore } from "@/lib/store/chart-store";
 import { useBookTicker } from "@/lib/binance/use-book-ticker";
 import { useSymbolInfo } from "@/lib/trading/symbol-info";
+import { useMobileStore } from "@/lib/store/mobile-store";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { resolveSource } from "@/lib/symbols/source";
 import {
   qtyToSizings,
   sizingToQty,
@@ -140,7 +143,19 @@ export function OrderPanel() {
   const keyDialogOpen = useTradingStore((s) => s.apiKeyDialogOpen);
   const setKeyDialogOpen = useTradingStore((s) => s.setApiKeyDialogOpen);
 
-  const symInfo = useSymbolInfo(symbol);
+  // The desktop sidebar keeps this panel mounted behind its other tabs, so
+  // asking unconditionally cost a Vercel invocation per symbol change for a
+  // form nobody was looking at — and for a stock, an uncached one. Ask only
+  // for an exchange symbol, and only while connected or actually on screen.
+  const isMobile = useIsMobile();
+  const sidebarTab = useChartStore((s) => s.rightSidebarTab);
+  const mobileTab = useMobileStore((s) => s.tab);
+  const onScreen = isMobile ? mobileTab === "trade" : sidebarTab === "trade";
+  const srcKind = resolveSource(symbol).kind;
+  const symInfo = useSymbolInfo(
+    symbol,
+    (srcKind === "binance" || srcKind === "bybit") && (!!(apiKey && apiSecret) || onScreen),
+  );
   const { bid, ask } = useBookTicker(symbol);
   const perp = isPerp(symbol);
   const baseAsset = getBaseAsset(symbol);

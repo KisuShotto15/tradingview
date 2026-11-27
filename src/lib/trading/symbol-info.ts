@@ -60,8 +60,17 @@ export async function getSymbolInfo(
   }
 }
 
-/** React hook — returns either a real SymbolInfo or the defaults. */
-export function useSymbolInfo(symbol: string): SymbolInfo {
+/**
+ * React hook — returns either a real SymbolInfo or the defaults.
+ *
+ * `enabled: false` skips the request and keeps the defaults. The route is a
+ * Vercel Function, and a symbol that is not on the exchange (a stock, an
+ * index) gets an error back, which the CDN does not cache: every time one was
+ * charted, the function downloaded and parsed the exchange's whole symbol
+ * list just to say "not found". A caller that only needs precision while
+ * trading should pass `enabled` and not ask otherwise.
+ */
+export function useSymbolInfo(symbol: string, enabled = true): SymbolInfo {
   const testnet = useTradingStore((s) => s.testnet);
   const exchange = useTradingStore((s) => s.exchange);
   const [info, setInfo] = useState<SymbolInfo>(() => {
@@ -70,6 +79,7 @@ export function useSymbolInfo(symbol: string): SymbolInfo {
   });
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     void getSymbolInfo(symbol, testnet, exchange)
       .then((data) => {
@@ -81,7 +91,7 @@ export function useSymbolInfo(symbol: string): SymbolInfo {
     return () => {
       cancelled = true;
     };
-  }, [symbol, testnet, exchange]);
+  }, [symbol, testnet, exchange, enabled]);
 
   return info;
 }
