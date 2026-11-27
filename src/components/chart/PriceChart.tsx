@@ -2106,14 +2106,23 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       const r50 = chart.addSeries(LineSeries, { ...rail, color: OSC_MID_RAIL_COLOR }, paneIndex);
       const r70 = chart.addSeries(LineSeries, rail, paneIndex);
 
-      // The two gradient fills follow the RSI itself. `relativeGradient` ties
-      // the gradient to the base value rather than to the pane's edges, so the
-      // fade always starts exactly at the level that was crossed.
+      // The two gradient fills follow the RSI itself. The gradient has a stop
+      // exactly at the base value whatever else it spans, so the fade always
+      // starts at the level that was crossed.
+      //
+      // Deliberately not `relativeGradient`, which runs the gradient between
+      // the base and the visible extreme instead of across the pane, and
+      // breaks both ways the visible data can fall short of the level. With
+      // no point past it, the extreme sits on the wrong side of the base and
+      // the canvas pads the gap with the first stop: a solid red bar on the
+      // 70 line. With every point exactly on it, the span is zero, the stop
+      // offset is NaN, `addColorStop` throws mid-paint, and this pane and
+      // every pane painted after it freeze — the RSI line "disappearing"
+      // while zooming. Spanning the pane has neither edge case.
       rsiSpikeUpRef.current = chart.addSeries(
         BaselineSeries,
         {
           baseValue: { type: "price", price: 70 },
-          relativeGradient: true,
           topFillColor1: RSI_SPIKE_UP_STRONG,
           topFillColor2: RSI_SPIKE_UP_FADE,
           bottomFillColor1: "rgba(0,0,0,0)",
@@ -2133,7 +2142,6 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
         BaselineSeries,
         {
           baseValue: { type: "price", price: 30 },
-          relativeGradient: true,
           topFillColor1: "rgba(0,0,0,0)",
           topFillColor2: "rgba(0,0,0,0)",
           bottomFillColor1: RSI_SPIKE_DOWN_FADE,
@@ -3327,24 +3335,11 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       value: p.value,
     }));
     rsiRef.current.setData(data);
-    // Each gradient fill plots the RSI held at its own level: the overbought
-    // one never below 70, the oversold one never above 30.
-    //
-    // Fed the raw line, a stretch with no point past the level drew a solid
-    // red band between 70 and the highest visible RSI. `relativeGradient`
-    // runs the gradient from the visible extreme to the base, and when the
-    // extreme is on the wrong side of the base the canvas pads everything
-    // beyond it with the first stop — the full-strength red. Clamped, a
-    // stretch that never crosses has no area at all to paint. The fill's
-    // edge then starts at the bar before a crossing rather than at the
-    // crossing itself, but the gradient is transparent at the level, so the
-    // difference does not show.
-    rsiSpikeUpRef.current?.setData(
-      data.map((p) => ({ time: p.time, value: Math.max(p.value, 70) })),
-    );
-    rsiSpikeDownRef.current?.setData(
-      data.map((p) => ({ time: p.time, value: Math.min(p.value, 30) })),
-    );
+    // Both gradient fills plot the same series; only their base value and
+    // which half is coloured differ. See where they are created for why
+    // neither uses `relativeGradient`.
+    rsiSpikeUpRef.current?.setData(data);
+    rsiSpikeDownRef.current?.setData(data);
     rsiMaRef.current?.setData(
       smaOf(pts, cfg.rsiMaLength).map((p) => ({
         time: p.time as UTCTimestamp,

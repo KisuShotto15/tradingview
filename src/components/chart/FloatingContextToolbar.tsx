@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Bookmark, BookmarkPlus, Check, Copy, Eye, EyeOff, Lock, Pin, RotateCcw, Settings2, Trash2, TrendingUp, Unlock, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Bookmark, BookmarkPlus, Check, Copy, Eye, EyeOff, Lock, MoreHorizontal, Pin, RotateCcw, Settings2, Trash2, TrendingUp, Unlock, X } from "lucide-react";
 import { useDrawingsStore } from "@/lib/store/drawings-store";
 import { useDrawings } from "@/lib/supabase/use-drawings";
 import { useChartStore, type DrawingTool } from "@/lib/store/chart-store";
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils";
 import type { Drawing } from "@/lib/drawings/types";
 import { LINE_STYLE_KINDS, WIDTH_KINDS, pickStyle, styleOf } from "@/lib/drawings/style";
 import type { DrawingTemplate } from "@/lib/store/chart-store";
+import { DrawingActionsSheet, type DrawingSheetView } from "@/components/mobile/DrawingActionsSheet";
 
 // Stable empty-array reference: a fresh `[]` on every selector call would
 // give useSyncExternalStore a snapshot that "changes" on every render even
@@ -43,6 +45,8 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
   const dragRef = useRef<{ ox: number; oy: number; px: number; py: number } | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const prevIdRef = useRef<string | null>(null);
+  /** The phone's "⋯" sheet, and which page of it to open on. */
+  const [sheet, setSheet] = useState<DrawingSheetView | null>(null);
 
   /*
    * Snap on a new selection, after layout so the size is known.
@@ -113,6 +117,92 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
         style as Parameters<ReturnType<typeof useChartStore.getState>["setToolDefault"]>[1],
       );
     }
+  }
+
+  function removeDrawing() {
+    void remove(drawing!.id);
+    useDrawingsStore.getState().setSelected(null);
+  }
+
+  /*
+   * The phone gets TradingView's mobile bar: the handful of things changed
+   * all the time, and a "⋯" that opens every other action as a named list.
+   *
+   * This used to be the desktop bar at touch size — colours, four widths,
+   * three line styles and nine actions — which no phone is wide enough for,
+   * so it scrolled sideways and most of it sat out of sight behind a swipe.
+   * What is left here fits a 360px screen even for a long/short with its
+   * three colours.
+   */
+  if (isMobile) {
+    return (
+      <>
+        <div
+          ref={toolbarRef}
+          className="pointer-events-auto absolute z-30 flex h-12 items-stretch rounded-xl border border-tv-border bg-tv-panel shadow-lg"
+          style={{ left: pos.x, top: pos.y, maxWidth: containerSize.width, userSelect: "none" }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div
+            className="flex shrink-0 cursor-grab items-center px-2.5 text-[13px] text-tv-text-muted/60"
+            onPointerDown={startDrag}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+          >
+            ⠿
+          </div>
+          <div className="flex items-center gap-1 px-1">
+            <MobileBtn label="Templates" onClick={() => setSheet("templates")}>
+              <Bookmark className="h-5 w-5" />
+            </MobileBtn>
+            {isPosition ? (
+              <>
+                <MiniColorLabel label="E">
+                  <SwatchPicker value={drawing.color ?? "#d1d4dc"} onChange={(c) => patch({ color: c })} />
+                </MiniColorLabel>
+                <MiniColorLabel label="S">
+                  <SwatchPicker
+                    value={(drawing as { stopColor?: string }).stopColor ?? "#ef5350"}
+                    onChange={(c) => patch({ stopColor: c } as Partial<Drawing>)}
+                  />
+                </MiniColorLabel>
+                <MiniColorLabel label="T">
+                  <SwatchPicker
+                    value={(drawing as { targetColor?: string }).targetColor ?? "#26a69a"}
+                    onChange={(c) => patch({ targetColor: c } as Partial<Drawing>)}
+                  />
+                </MiniColorLabel>
+              </>
+            ) : (
+              <SwatchPicker value={drawing.color ?? "#2962ff"} onChange={(c) => patch({ color: c })} />
+            )}
+            <MobileBtn label="Remove" onClick={removeDrawing}>
+              <Trash2 className="h-5 w-5" />
+            </MobileBtn>
+            <MobileBtn label="More" onClick={() => setSheet("main")}>
+              <MoreHorizontal className="h-5 w-5" />
+            </MobileBtn>
+          </div>
+        </div>
+        {/* Portalled out of the chart: inside it, a tap on the sheet reached
+            the chart's own listeners, which read it as a tap on empty chart
+            and deselected the drawing — unmounting the sheet mid-tap. */}
+        {sheet &&
+          createPortal(
+            <div onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+              <DrawingActionsSheet
+                drawing={drawing}
+                initialView={sheet}
+                onPatch={patch}
+                onOpenSettings={onOpenSettings}
+                onClose={() => setSheet(null)}
+              />
+            </div>,
+            document.body,
+          )}
+      </>
+    );
   }
 
   return (
@@ -271,6 +361,23 @@ export function FloatingContextToolbar({ containerSize, onOpenSettings }: Props)
 }
 
 /* ── Primitives ─────────────────────────────────────────────────── */
+
+function MobileBtn({
+  children, label, onClick,
+}: {
+  children: React.ReactNode; label: string; onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="flex h-10 w-10 items-center justify-center rounded-lg text-tv-text active:bg-tv-panel-hover"
+    >
+      {children}
+    </button>
+  );
+}
 
 function Sep() {
   return <div className="w-px shrink-0 self-stretch bg-tv-border" />;
