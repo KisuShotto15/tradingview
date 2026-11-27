@@ -40,7 +40,6 @@ import { missingBars, tailConnects, tailIsNoop } from "@/lib/chart/tail-repair";
 import {
   markChartTick,
   resetChartTick,
-  chartTickAgeMs,
   CHART_TICK_STALE_MS,
 } from "@/lib/feed-status";
 import { adx as adxCalc } from "@/lib/indicators/adx";
@@ -210,6 +209,13 @@ interface LastValues {
  */
 const STALE_BAR_GRACE_SEC = 30;
 const STALE_BAR_CHECK_MS = 5_000;
+/**
+ * How long the kline stream must have been silent before the stale-bar check
+ * is believed. Both exchanges push the live bar at least every few seconds
+ * while a market trades, so this is long past a slow frame and still far
+ * inside the stale-bar grace.
+ */
+const KLINE_QUIET_MS = 10_000;
 /**
  * How often a trade may re-render this component with a new last price.
  * The chart's own series is updated every frame regardless; this only paces
@@ -536,6 +542,19 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
    *  the socket looks healthy but this symbol's stream has gone quiet. */
   const [feedNonce, setFeedNonce] = useState(0);
   const lastResubAtRef = useRef(0);
+  /*
+   * This chart's own stream clock, separate from the global `markChartTick`.
+   *
+   * The global one exists for the status badge and is written only by the
+   * focused pane, so in a multi-chart layout every other pane's repair loop
+   * was reading somebody else's ticks: a streaming pane beside a focused
+   * stock or macro chart saw "no tick, ever", rebuilt its subscription after
+   * a minute and then spliced a REST tail over its live bar every five
+   * seconds. Deltas of `Date.now()` only, never compared with exchange times,
+   * so a wrong system clock cannot skew them.
+   */
+  const lastTickAtRef = useRef(0);
+  const lastKlineAtRef = useRef(0);
   const lastFullFetchAtRef = useRef(0);
   /** `symbol|timeframe` the load effect last ran for; see `resubscribeOnly`. */
   const loadedKeyRef = useRef<string | null>(null);
@@ -3773,45 +3792,20 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
             try {
               const fresh = await fetchCandles(symbol, timeframe, 1000);
               if (cancelled || !candleSeriesRef.current || fresh.length === 0) return;
-              publishCandles(fresh);
-              candleSeriesRef.current.setData(
-                fresh.map((k) => ({
-                  time: k.time as UTCTimestamp,
-                  open: k.open,
-                  high: k.high,
-                  low: k.low,
-                  close: k.close,
-                })),
-              );
-              const freshClose = fresh.map((k) => ({ time: k.time as UTCTimestamp, value: k.close }));
-              lineSeriesRef.current?.setData(freshClose);
-              areaSeriesRef.current?.setData(freshClose);
-              if (volumeSeriesRef.current) {
-                volumeSeriesRef.current.setData(
-                  fresh.map((k) => ({
-                    time: k.time as UTCTimestamp,
-                    value: k.volume,
-                    color: k.close >= k.open ? `${TV_COLORS.green}66` : `${TV_COLORS.red}66`,
-                  })),
-                );
+              // A poll almost always brings back the same history with only
+              // the live bar moved. Re-`setData`ing every series and
+              // recomputing every study from 1000 bars for that, every five
+              // seconds, is the chart visibly rebuilding itself; splice the
+              // bars from the one we hold onwards instead, and fall back to a
+              // view-keeping replace only when the poll does not overlap.
+              const held = candlesRef.current[candlesRef.current.length - 1];
+              const from = held ? fresh.findIndex((k) => k.time === held.time) : -1;
+              if (from >= 0) {
+                const tail = fresh.slice(from);
+                if (!tailIsNoop(candlesRef.current, tail)) mergeLiveCandles(tail);
+              } else {
+                applyCandlesKeepingView(fresh);
               }
-              updateEMAs();
-              updateVWAP();
-              updateRSI();
-              updateStochRsi();
-              updateMACD();
-              updateADX();
-              updateSqueeze();
-              updateVumanchu();
-              updateOBV();
-              const last = fresh[fresh.length - 1];
-              const prev = fresh[fresh.length - 2] ?? last;
-              const lp2 = {
-                value: last.close,
-                pct: prev.close === 0 ? 0 : ((last.close - prev.close) / prev.close) * 100,
-              };
-              setLastPrice(lp2);
-              setCurrentLivePrice(lp2.value);
             } catch (e) {
               console.error("Polling refresh failed:", e);
             }
@@ -3851,6 +3845,7 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
               interval: timeframe,
               onCandle: (k) => {
                 if (useReplayStore.getState().active) return; // frozen during replay
+                lastTickAtRef.current = lastKlineAtRef.current = Date.now();
                 if (activeRef.current) markChartTick();
                 lastBySym.set(s, k);
                 if (lastBySym.size !== symbols.length) return;
@@ -3938,6 +3933,7 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
          * PRICE_RENDER_MS; the eye cannot read a number changing faster.
          */
         let pendingTrade: number | null = null;
+        let pendingTradeTime = 0;
         let tradeFrame = 0;
         let lastPriceRenderAt = 0;
         const applyTrade = () => {
@@ -3952,7 +3948,10 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
           if (!series || !bar) return;
           // Past the bar's close there is a new bar to open, and only the
           // kline stream knows when: leave it to the frame behind this one.
-          if (Date.now() / 1000 >= bar.time + timeframeToSeconds(timeframe)) return;
+          // Judged by the trade's own exchange timestamp, not `Date.now()`:
+          // against a system clock running a minute fast, every trade in a
+          // 1m bar's last minute was dropped.
+          if (pendingTradeTime >= barCloseTime(bar.time, timeframe)) return;
           bar.close = price;
           if (price > bar.high) bar.high = price;
           if (price < bar.low) bar.low = price;
@@ -3981,8 +3980,10 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
           // A trade is proof this symbol's stream is alive, which is what
           // keeps the REST repair loop from treating a quiet kline interval
           // as a dead subscription.
+          lastTickAtRef.current = Date.now();
           if (activeRef.current) markChartTick();
           pendingTrade = t.price;
+          pendingTradeTime = t.time;
           if (tradeFrame === 0) tradeFrame = requestAnimationFrame(applyTrade);
         });
 
@@ -3991,6 +3992,7 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
           interval: timeframe,
           onCandle: (k) => {
             if (useReplayStore.getState().active) return; // frozen during replay
+            lastTickAtRef.current = lastKlineAtRef.current = Date.now();
             if (activeRef.current) markChartTick();
             if (!candleSeriesRef.current) return;
             const arr = candlesRef.current;
@@ -4209,6 +4211,8 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
   // A new symbol or timeframe starts with no tick of its own.
   useEffect(() => {
     resetChartTick();
+    lastTickAtRef.current = 0;
+    lastKlineAtRef.current = 0;
   }, [symbol, timeframe]);
 
   // Repair stale data, whatever caused it.
@@ -4264,12 +4268,23 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       // the initial fetch may still be in flight and the subscription may not
       // exist yet, so tearing it down cancels the load. Give it a fair chance
       // first.
-      const tickAge = chartTickAgeMs();
-      const quietFor = tickAge === Infinity ? Date.now() - startedAt : tickAge;
+      const now = Date.now();
+      const tickAge = lastTickAtRef.current ? now - lastTickAtRef.current : Infinity;
+      const klineAge = lastKlineAtRef.current ? now - lastKlineAtRef.current : Infinity;
+      const quietFor = tickAge === Infinity ? now - startedAt : tickAge;
       const streamQuiet = quietFor > CHART_TICK_STALE_MS;
       const mayResubscribe =
-        tickAge !== Infinity || Date.now() - startedAt > RESUBSCRIBE_MIN_GAP_MS;
-      const barsStale = isStale();
+        tickAge !== Infinity || now - startedAt > RESUBSCRIBE_MIN_GAP_MS;
+      // "The newest bar is past its close" compares the exchange's bar times
+      // with this machine's clock, so a clock running fast reads a perfectly
+      // live bar as frozen — 45s fast was enough to splice a REST tail over
+      // the live candle every five seconds for a quarter of every minute,
+      // and the tail lags the socket, so the candle snapped back and every
+      // study was recomputed: the chart "reloading itself". A kline stream
+      // that is still delivering opens each new bar itself, so trailing bars
+      // can only be missing once it has gone quiet; asking that first makes
+      // the check immune to the clock without giving up any case it covers.
+      const barsStale = klineAge > KLINE_QUIET_MS && isStale();
       if (!streamQuiet && !barsStale) return;
 
       if (
