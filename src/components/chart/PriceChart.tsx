@@ -55,7 +55,7 @@ import {
   DEFAULT_CHART_COLORS,
 } from "@/lib/store/chart-store";
 import { formatPrice, formatVolume, priceFormatFor, axisPriceFormatter } from "@/lib/format";
-import { ArrowUpDown, Bell, ChevronUp, Maximize2, Plus, Settings2 } from "lucide-react";
+import { ArrowUpDown, Bell, ChevronUp, ChevronsRight, Maximize2, Plus, Settings2 } from "lucide-react";
 import { IndicatorPill } from "./IndicatorPill";
 import { MeasureOverlay } from "./MeasureOverlay";
 import { DrawingsLayer } from "./drawings/DrawingsLayer";
@@ -546,6 +546,9 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
   const [quickActionsPrice, setQuickActionsPrice] = useState<number | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [lastPrice, setLastPrice] = useState<{ value: number; pct: number } | null>(null);
+  // True while the newest bar is scrolled out of view to the right — what
+  // shows the "back to now" button. Set from the logical-range handler.
+  const [awayFromLive, setAwayFromLive] = useState(false);
   const [lastValues, setLastValues] = useState<LastValues>({});
   const [paneOffsets, setPaneOffsets] = useState<PaneOffset[]>([]);
   // Whether each pane's price scale is currently in auto-scale mode, so the
@@ -1325,6 +1328,12 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
       // Keep the view shape fresh (span + right offset) while there is real data,
       // so a later symbol change can reproduce the same zoom + scroll position.
       const liveRange = chart.timeScale().getVisibleLogicalRange();
+      // The newest bar is off the right edge once the range ends more than a
+      // bar short of it. React drops the update when the value is unchanged,
+      // so calling this on every pan frame costs nothing.
+      setAwayFromLive(
+        !!liveRange && candlesRef.current.length > 0 && liveRange.to < candlesRef.current.length - 2,
+      );
       if (liveRange && liveRange.to > liveRange.from && candlesRef.current.length > 0) {
         viewShapeRef.current = {
           span: liveRange.to - liveRange.from,
@@ -5114,6 +5123,34 @@ export function PriceChart({ symbol, timeframe, active = true }: Props) {
           renderTick={renderTick}
           showCountdown={showBarCountdown}
         />
+      )}
+
+      {/*
+        "Back to now": appears once the newest bar has been scrolled off the
+        right edge, and animates back to the live edge, keeping the zoom. It
+        sits in the bottom-right corner of the price pane, against the price
+        axis and above the time axis, where TradingView puts the same button.
+      */}
+      {awayFromLive && !replayActive && chartRef.current && (
+        <button
+          type="button"
+          aria-label="Scroll to the most recent bar"
+          title="Scroll to the most recent bar"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            chartRef.current?.timeScale().scrollToRealTime();
+          }}
+          className="pointer-events-auto absolute z-20 flex items-center justify-center rounded-full border border-tv-border bg-tv-panel/95 text-tv-text shadow-md hover:bg-tv-panel-hover active:bg-tv-panel-hover"
+          style={{
+            width: isMobile ? 36 : 28,
+            height: isMobile ? 36 : 28,
+            left: chartRef.current.timeScale().width() - (isMobile ? 36 : 28) - 8,
+            top: (paneOffsets[0]?.height ?? containerSize.height) - (isMobile ? 36 : 28) - 8,
+          }}
+        >
+          <ChevronsRight className={isMobile ? "h-5 w-5" : "h-4 w-4"} />
+        </button>
       )}
 
       {/*
